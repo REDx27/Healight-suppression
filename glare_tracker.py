@@ -2,7 +2,7 @@
 Windshield Glare Tracking System — PyQt5 Desktop Application
 =============================================================
 Tracks driver eye position via webcam + MediaPipe, computes where an
-eye-to-light-source ray intersects a virtual windshield plane (Z=0),
+eye-to-light-source ray intersects a virtual windshield plane (Y=0),
 and visualizes everything in a 5-panel dashboard.
 
 Usage:
@@ -36,27 +36,28 @@ from OpenGL.GL import GL_LINES  # noqa: F401  — ensures PyOpenGL is importable
 def compute_intersection(eye_cm, light_cm):
     """
     Compute where the ray from *eye_cm* toward *light_cm* crosses the
-    windshield plane at Z = 0.
+    windshield plane at Y = 0. X is lateral, Y is front/back depth, and
+    Z is vertical height.
 
     Parameters
     ----------
     eye_cm : tuple(float, float, float)
-        Eye position in cm.  Z should be negative (behind the windshield).
+        Eye position in cm. Y should be negative (behind the windshield).
     light_cm : tuple(float, float, float)
-        Light-source position in cm.  Z should be positive (in front).
+        Light-source position in cm. Y should be positive (in front).
 
     Returns
     -------
     tuple(float, float, float) or None
-        (x, y, 0.0) intersection point, or None if the ray is parallel to the plane.
+        (x, 0.0, z) intersection point, or None if the ray is parallel to the plane.
     """
     x1, y1, z1 = eye_cm
     x2, y2, z2 = light_cm
-    dz = z2 - z1
-    if abs(dz) < 1e-9:
+    dy = y2 - y1
+    if abs(dy) < 1e-9:
         return None
-    t = -z1 / dz
-    return (x1 + t * (x2 - x1), y1 + t * (y2 - y1), 0.0)
+    t = -y1 / dy
+    return (x1 + t * (x2 - x1), 0.0, z1 + t * (z2 - z1))
 
 
 def pixel_to_cm(eye_x_px, eye_y_px, frame_w, frame_h,
@@ -64,12 +65,13 @@ def pixel_to_cm(eye_x_px, eye_y_px, frame_w, frame_h,
     """
     Convert pixel-space iris midpoint to approximate real-world cm coordinates.
 
-    The laptop screen acts as the windshield plane at Z = 0.
-    The driver sits *behind* it at Z = -eye_dist_cm.
+    The windshield is the vertical X-Z plane at Y = 0.
+    The driver sits *behind* it at Y = -eye_dist_cm, with the eye height
+    represented by the mapped screen coordinate.
     """
     x_cm = (eye_x_px - frame_w / 2) / frame_w * screen_w_cm
-    y_cm = -(eye_y_px - frame_h / 2) / frame_h * screen_h_cm
-    z_cm = -eye_dist_cm
+    y_cm = -eye_dist_cm
+    z_cm = (frame_h / 2 - eye_y_px) / frame_h * screen_h_cm + screen_h_cm / 2
     return (x_cm, y_cm, z_cm)
 
 
@@ -225,7 +227,7 @@ class VideoWidget(QLabel):
 
 class Windshield2DWidget(QWidget):
     """
-    Custom-painted 2D top-down view of the windshield.
+    Custom-painted 2D front view of the windshield.
     Shows a glowing dot where the glare intersection lands.
     """
 
@@ -299,7 +301,7 @@ class Windshield2DWidget(QWidget):
         # Title
         p.setPen(QColor("#bbe1fa"))
         p.setFont(QFont("Segoe UI", 10, QFont.Bold))
-        p.drawText(int(ws_x), int(ws_y - 20), "Windshield — Top-Down View")
+        p.drawText(int(ws_x), int(ws_y - 20), "Windshield — Front View")
 
         # Glare spot
         if self._has_intersection:
@@ -356,7 +358,7 @@ class Scene3DWidget(QWidget):
 
         self.gl_view = gl.GLViewWidget()
         self.gl_view.setBackgroundColor(QColor("#0a0a1a"))
-        self.gl_view.setCameraPosition(distance=120, elevation=25, azimuth=-60)
+        self.gl_view.setCameraPosition(distance=140, elevation=20, azimuth=-45)
         layout.addWidget(self.gl_view)
 
         # ── Grid ──
@@ -383,16 +385,16 @@ class Scene3DWidget(QWidget):
             axis = gl.GLLinePlotItem(pos=pts, color=color, width=1.5, antialias=True)
             self.gl_view.addItem(axis)
 
-        # ── Light source (orange) ──
+        # ── Light source (orange), in front of the windshield ──
         self._light_scatter = gl.GLScatterPlotItem(
-            pos=np.array([[120, 0, 400]], dtype=np.float32),
+            pos=np.array([[0, 120, 40]], dtype=np.float32),
             size=14, color=(1.0, 0.6, 0.0, 1.0), pxMode=True
         )
         self.gl_view.addItem(self._light_scatter)
 
-        # ── Eye point (blue) ──
+        # ── Eye point (blue), behind the windshield and above the floor ──
         self._eye_scatter = gl.GLScatterPlotItem(
-            pos=np.array([[0, 0, -50]], dtype=np.float32),
+            pos=np.array([[0, -50, 10]], dtype=np.float32),
             size=12, color=(0.3, 0.5, 1.0, 1.0), pxMode=True
         )
         self.gl_view.addItem(self._eye_scatter)
@@ -408,7 +410,7 @@ class Scene3DWidget(QWidget):
 
         # ── Ray line (red dashed) ──
         self._ray_line = gl.GLLinePlotItem(
-            pos=np.array([[0, 0, -50], [120, 0, 400]], dtype=np.float32),
+            pos=np.array([[0, -50, 10], [0, 120, 40]], dtype=np.float32),
             color=(1.0, 0.2, 0.2, 0.8), width=2.5, antialias=True
         )
         self.gl_view.addItem(self._ray_line)
@@ -418,16 +420,16 @@ class Scene3DWidget(QWidget):
         self._hide_tracking()
 
     def _build_windshield(self, w_cm, h_cm):
-        """Create or replace the windshield mesh at Z=0."""
+        """Create or replace the windshield mesh in the vertical X-Z plane at Y=0."""
         if self._ws_mesh is not None:
             self.gl_view.removeItem(self._ws_mesh)
 
         hw, hh = w_cm / 2, h_cm / 2
         verts = np.array([
-            [-hw, -hh, 0],
-            [hw, -hh, 0],
-            [hw, hh, 0],
-            [-hw, hh, 0],
+            [-hw, 0, 0],
+            [hw, 0, 0],
+            [hw, 0, h_cm],
+            [-hw, 0, h_cm],
         ], dtype=np.float32)
         faces = np.array([[0, 1, 2], [0, 2, 3]])
 
@@ -561,9 +563,9 @@ class ControlsPanel(QGroupBox):
         light_group = QGroupBox("Light Source (cm)")
         light_layout = QFormLayout(light_group)
 
-        self.spin_light_x = self._make_spin(-1000, 1000, 120.0, " cm")
-        self.spin_light_y = self._make_spin(-1000, 1000, 0.0, " cm")
-        self.spin_light_z = self._make_spin(-1000, 5000, 400.0, " cm")
+        self.spin_light_x = self._make_spin(-1000, 1000, 0.0, " cm")
+        self.spin_light_y = self._make_spin(-1000, 1000, 120.0, " cm")
+        self.spin_light_z = self._make_spin(-1000, 5000, 40.0, " cm")
 
         light_layout.addRow("X:", self.spin_light_x)
         light_layout.addRow("Y:", self.spin_light_y)
@@ -842,20 +844,20 @@ class MainWindow(QMainWindow):
 
             # Check if within windshield bounds
             hw, hh = ws_w / 2, ws_h / 2
-            in_bounds = (-hw <= ix <= hw) and (-hh <= iy <= hh)
+            in_bounds = (-hw <= ix <= hw) and (0.0 <= iz <= ws_h)
 
             # Update 3D intersection
             self.scene_3d.update_intersection(ix, iy, iz)
 
             # Update 2D windshield (convert to 0-1 normalised coords)
             norm_x = (ix + hw) / ws_w
-            norm_y = (hh - iy) / ws_h  # flip Y: positive up → top of widget
+            norm_y = (ws_h - iz) / ws_h  # flip Z: positive up → top of widget
             self.windshield_2d.update_glare(norm_x, norm_y, in_bounds)
 
             # Update readout
             self.readout.set_value(
                 "intersection",
-                f"X:{ix:7.1f}  Y:{iy:7.1f}",
+                f"X:{ix:7.1f}  Z:{iz:7.1f}",
                 "#ffeb3b" if in_bounds else "#f44336"
             )
             self.readout.set_value(
@@ -888,7 +890,7 @@ class MainWindow(QMainWindow):
 
     # ── 3D View reset ──────────────────────────────────────────────
     def _on_reset_3d_view(self):
-        self.scene_3d.gl_view.setCameraPosition(distance=120, elevation=25, azimuth=-60)
+        self.scene_3d.gl_view.setCameraPosition(distance=140, elevation=20, azimuth=-45)
 
     # ── FPS counter ────────────────────────────────────────────────
     def _update_fps(self):
