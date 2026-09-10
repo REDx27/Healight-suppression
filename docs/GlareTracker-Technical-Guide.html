@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>GlareTracker Technical Guide</title>
+<style>
+@page { size: A4; margin: 16mm 15mm 17mm; }
+:root { --ink:#17202a; --muted:#52606d; --blue:#075985; --cyan:#0e7490; --line:#d8e0e7; --soft:#eef6f8; --green:#166534; --orange:#9a3412; }
+* { box-sizing:border-box; }
+body { font-family: "Segoe UI", Arial, sans-serif; color:var(--ink); line-height:1.45; font-size:10.5pt; margin:0; }
+h1 { font-size:30pt; line-height:1.05; color:#063b5c; margin:0 0 8px; }
+h2 { color:var(--blue); font-size:18pt; margin:24px 0 8px; border-bottom:2px solid #9bd5e2; padding-bottom:4px; break-after:avoid; }
+h3 { color:var(--cyan); font-size:12.5pt; margin:16px 0 5px; break-after:avoid; }
+p { margin:6px 0 9px; }
+ul, ol { margin-top:5px; padding-left:22px; }
+li { margin:3px 0; }
+.cover { min-height:235mm; display:flex; flex-direction:column; justify-content:center; border-top:12px solid #0e7490; }
+.kicker { color:var(--cyan); text-transform:uppercase; letter-spacing:2px; font-weight:700; font-size:10pt; }
+.subtitle { font-size:16pt; color:var(--muted); max-width:145mm; }
+.meta { margin-top:35mm; color:var(--muted); border-left:4px solid #9bd5e2; padding-left:12px; }
+.page-break { break-before:page; }
+.box { background:var(--soft); border:1px solid #b8dce5; border-radius:6px; padding:10px 13px; margin:10px 0; break-inside:avoid; }
+.warning { background:#fff7ed; border-color:#fdba74; }
+.success { background:#f0fdf4; border-color:#86efac; }
+code { font-family:Consolas, "Courier New", monospace; background:#f1f5f9; border:1px solid #e2e8f0; padding:1px 4px; border-radius:3px; font-size:9.2pt; }
+pre { background:#16232d; color:#e5f3f7; padding:10px 12px; border-radius:5px; overflow:hidden; font:8.2pt/1.35 Consolas, monospace; break-inside:avoid; }
+table { border-collapse:collapse; width:100%; margin:8px 0 12px; break-inside:avoid; }
+th { background:#075985; color:white; text-align:left; }
+th, td { border:1px solid var(--line); padding:6px 7px; vertical-align:top; }
+tr:nth-child(even) td { background:#f8fafc; }
+.flow { font-weight:700; color:#075985; text-align:center; background:#f0f9ff; border:1px solid #bae6fd; padding:9px; margin:10px 0; }
+.small { color:var(--muted); font-size:9pt; }
+.toc td { border:0; padding:3px 0; }
+.toc td:last-child { text-align:right; color:var(--muted); }
+.formula { font-family:Consolas, monospace; text-align:center; background:#f8fafc; border-left:4px solid #0e7490; padding:9px; margin:8px 0; }
+footer { color:#718096; font-size:8pt; margin-top:18px; border-top:1px solid var(--line); padding-top:5px; }
+</style>
+</head>
+<body>
+<section class="cover">
+  <div class="kicker">Technical documentation · version 1.0.0</div>
+  <h1>GlareTracker</h1>
+  <div class="subtitle">Windshield glare tracking system<br>Code and program structure guide</div>
+  <div class="meta"><b>Purpose</b><br>Explain how the webcam, MediaPipe face landmarks, geometry model, PyQt5 interface, 2D windshield view, and 3D scene work together.<br><br><b>Project entry point</b><br><code>glare_tracker.py</code></div>
+</section>
+
+<section class="page-break">
+<h2>Contents</h2>
+<table class="toc"><tr><td>1. System overview</td><td>3</td></tr><tr><td>2. Repository structure</td><td>3</td></tr><tr><td>3. Runtime data flow</td><td>4</td></tr><tr><td>4. Geometry and coordinate model</td><td>5</td></tr><tr><td>5. Python module structure</td><td>6</td></tr><tr><td>6. User interface and controls</td><td>8</td></tr><tr><td>7. Packaging and installation</td><td>9</td></tr><tr><td>8. Running, testing, and troubleshooting</td><td>10</td></tr></table>
+
+<h2>1. System Overview</h2>
+<p>GlareTracker is a Windows desktop application. It estimates the driver's eye position from a webcam, creates rays from the eye toward one or more configurable light sources, and finds where those rays meet a virtual windshield.</p>
+<div class="flow">Webcam frame → MediaPipe iris landmarks → pixel-to-centimeter position → ray/plane intersection → 2D, 3D, and telemetry updates</div>
+<table><tr><th>Layer</th><th>Technology</th><th>Responsibility</th></tr><tr><td>Capture</td><td>OpenCV + QThread</td><td>Read frames without freezing the GUI.</td></tr><tr><td>Detection</td><td>MediaPipe Face Mesh</td><td>Locate iris landmarks 468 and 473.</td></tr><tr><td>Model</td><td>NumPy + helper functions</td><td>Convert coordinates and calculate intersections.</td></tr><tr><td>Interface</td><td>PyQt5</td><td>Controls, camera preview, readout, and application lifecycle.</td></tr><tr><td>Visualization</td><td>QPainter + pyqtgraph OpenGL</td><td>Show glare positions and 3D rays.</td></tr></table>
+
+<h2>2. Repository Structure</h2>
+<table><tr><th>File or folder</th><th>Role</th></tr><tr><td><code>glare_tracker.py</code></td><td>Complete application: geometry, worker thread, widgets, state, signals, and entry point.</td></tr><tr><td><code>requirements.txt</code></td><td>Python dependencies required for development and packaging.</td></tr><tr><td><code>glare_tracker.spec</code></td><td>PyInstaller configuration; collects MediaPipe and pyqtgraph resources.</td></tr><tr><td><code>build_exe.ps1</code></td><td>Installs requirements, builds the executable, and optionally runs Inno Setup.</td></tr><tr><td><code>installer.iss</code></td><td>Inno Setup recipe for the per-user Windows installer.</td></tr><tr><td><code>CreateDesktopShortcut.ps1</code></td><td>Creates project-root and Desktop shortcuts to the packaged executable.</td></tr><tr><td><code>generate_icon.py</code></td><td>Regenerates the Windows icon from the SVG source.</td></tr><tr><td><code>version_info.txt</code></td><td>Windows executable version and product metadata.</td></tr><tr><td><code>assets/</code></td><td>Application icon files: ICO for Windows and SVG editable source.</td></tr></table>
+</section>
+
+<section class="page-break">
+<h2>3. Runtime Data Flow</h2>
+<h3>Startup</h3>
+<ol><li><code>main()</code> creates <code>QApplication</code>, applies the Fusion style, constructs <code>MainWindow</code>, and starts the Qt event loop.</li><li><code>MainWindow</code> creates all panels and the <code>VideoCaptureThread</code>, connects signals, pushes initial settings, and starts timers.</li><li>The scene is initially prepared with hidden/off-screen tracking markers.</li></ol>
+<h3>Frame processing</h3>
+<ol><li>Pressing <b>Start Stream</b> starts the worker thread.</li><li>OpenCV opens camera index 0 using DirectShow, requests 640×480 at 30 FPS, and mirrors each frame.</li><li>MediaPipe processes an RGB copy. When a face is found, landmarks 468 and 473 are averaged into an iris midpoint.</li><li>The midpoint becomes an eye position in centimeters and is emitted through <code>eye_detected</code>.</li><li>The GUI callback applies calibration, calculates intersections, and updates every view.</li></ol>
+<h3>Signals and ownership</h3>
+<table><tr><th>Signal</th><th>Emitted by</th><th>Connected to</th><th>Meaning</th></tr><tr><td><code>frame_ready(QImage)</code></td><td>VideoCaptureThread</td><td>VideoWidget.update_frame</td><td>Display the latest camera frame.</td></tr><tr><td><code>eye_detected(x,y,z)</code></td><td>VideoCaptureThread</td><td>MainWindow._on_eye_detected</td><td>Deliver a detected eye position.</td></tr><tr><td><code>eye_lost()</code></td><td>VideoCaptureThread</td><td>MainWindow._on_eye_lost</td><td>Clear tracking visuals and show no-face status.</td></tr></table>
+<div class="box"><b>Threading rule:</b> camera capture and MediaPipe inference run in <code>VideoCaptureThread</code>. Qt signals transfer results to the GUI thread, so widgets are updated in the thread that owns them.</div>
+
+<h2>4. Geometry and Coordinate Model</h2>
+<p>The application uses centimeters and a right-handed conceptual scene:</p>
+<ul><li><b>X:</b> lateral position, left/right.</li><li><b>Y:</b> depth. The windshield is at <code>Y = 0</code>; the driver is normally behind it at negative Y; light sources are in front at positive Y.</li><li><b>Z:</b> vertical height.</li></ul>
+<h3>Pixel mapping</h3>
+<p><code>pixel_to_cm()</code> maps the iris midpoint from the camera image into the configured windshield dimensions. Horizontal image center maps to X=0. Image Y is inverted so higher screen positions produce higher Z. Eye depth is the configured negative <code>eye_dist_cm</code>.</p>
+<div class="formula">x = (pixel_x − frame_width / 2) / frame_width × screen_width<br>y = −eye_distance<br>z = (frame_height / 2 − pixel_y) / frame_height × screen_height + screen_height / 2</div>
+<h3>Ray intersection</h3>
+<p><code>compute_intersection(eye_cm, light_cm)</code> parameterizes the line from eye <code>P₁</code> to light <code>P₂</code> as <code>P(t)=P₁+t(P₂−P₁)</code>. For the windshield plane Y=0:</p>
+<div class="formula">t = −y₁ / (y₂ − y₁)<br>intersection = (x₁ + t(x₂−x₁), 0, z₁ + t(z₂−z₁))</div>
+<p>The function returns <code>None</code> when the ray is parallel to the plane or when the crossing lies outside the segment (<code>t</code> is not between 0 and 1). A returned point is in range only when <code>−width/2 ≤ X ≤ width/2</code> and <code>0 ≤ Z ≤ height</code>.</p>
+</section>
+
+<section class="page-break">
+<h2>5. Python Module Structure</h2>
+<table><tr><th>Component</th><th>Purpose</th><th>Important methods</th></tr><tr><td><code>TrackingConfig</code></td><td>Immutable configuration passed to capture logic.</td><td>Dataclass defaults for dimensions, eye distance, and camera position.</td></tr><tr><td><code>VideoCaptureThread</code></td><td>Background camera and MediaPipe worker.</td><td><code>run</code>, <code>stop</code>, <code>update_config</code>.</td></tr><tr><td><code>VideoWidget</code></td><td>Aspect-ratio-preserving camera preview.</td><td><code>update_frame</code>, <code>clear_feed</code>.</td></tr><tr><td><code>Windshield2DWidget</code></td><td>Custom front-view drawing.</td><td><code>update_glares</code>, <code>paintEvent</code>.</td></tr><tr><td><code>Scene3DWidget</code></td><td>OpenGL scene and visual settings overlay.</td><td><code>update_eye</code>, <code>update_lights</code>, <code>update_rays</code>, <code>update_intersections</code>.</td></tr><tr><td><code>ReadoutPanel</code></td><td>Telemetry labels and intersection messages.</td><td><code>set_value</code>, <code>set_intersections</code>.</td></tr><tr><td><code>ControlsPanel</code></td><td>Spin boxes, modes, and action buttons.</td><td><code>get_light_positions</code>, dimension and camera getters.</td></tr><tr><td><code>MainWindow</code></td><td>Coordinator and application state owner.</td><td><code>_process_tracking</code>, stream, calibration, simulation, and shutdown handlers.</td></tr></table>
+<h3>Main tracking algorithm</h3>
+<pre>_on_eye_detected(x, y, z)
+  observed = (x, y, z)
+  capture baseline on first observation, if needed
+  subtract calibration offset
+  _process_tracking(adjusted_eye)
+
+_process_tracking(eye)
+  choose simulated or configured lights
+  update 3D eye, lights, and rays
+  for each light:
+    intersection = compute_intersection(eye, light)
+    classify as mathematical miss, out of bounds, or valid
+    convert valid/display points to normalized 2D coordinates
+  update 3D intersections, telemetry, and 2D glare spots</pre>
+<h3>Calibration</h3>
+<p>The first detected eye is automatically used as a baseline. The X and Z offsets move that observed point to the windshield center; Y is intentionally left unchanged. The <b>Calibrate Center</b> button captures the latest observed eye again.</p>
+<h3>Missing-face behavior</h3>
+<p><code>_on_eye_lost()</code> clears the latest eye, moves 3D tracking objects off-screen, clears the 2D glare, empties intersection readouts, and reports <code>NO FACE</code>.</p>
+</section>
+
+<section class="page-break">
+<h2>6. User Interface and Controls</h2>
+<h3>Five-panel dashboard</h3>
+<ol><li><b>Camera:</b> mirrored feed with iris overlays.</li><li><b>Windshield front view:</b> proportional windshield rectangle, labels, glowing valid glare spots, and red out-of-range indicators.</li><li><b>3D scene:</b> windshield plane, axes, webcam, eye, light sources, ray lines, and intersections.</li><li><b>Telemetry:</b> eye coordinates, light mode, FPS, status, and per-light intersection results.</li><li><b>Controls:</b> dimensions, camera location, driver distance, vehicle category, source position, movement simulation, stream, calibration, and reset.</li></ol>
+<h3>Light source modes</h3>
+<table><tr><th>Vehicle category</th><th>Sources</th></tr><tr><td>Motorcycle</td><td>One source at the configured position.</td></tr><tr><td>Four-Wheeler/Car</td><td>Two sources offset ±8 cm on X.</td></tr><tr><td>Extreme Vehicle</td><td>Four sources in a ±10 cm X and ±4 cm Z arrangement.</td></tr></table>
+<h3>Movement simulation</h3>
+<p>The 50 ms movement timer translates the complete light arrangement while preserving the relative arrangement of sources. The three modes vary lateral crossing, approach direction, and distance. Simulation uses the same intersection pipeline as live tracking, so it is useful for checking visualization behavior without changing the geometry algorithm.</p>
+<h3>Performance details</h3>
+<p>3D objects are created once and updated in place. Repeated positions are skipped using cached tuples. Unused source slots are moved to coordinates near 9999 so the scene supports up to four sources without repeatedly adding/removing OpenGL items.</p>
+
+<h2>7. Packaging and Installation</h2>
+<div class="flow">requirements.txt → PyInstaller spec → dist/GlareTracker.exe → Inno Setup installer</div>
+<ol><li>Run <code>./build_exe.ps1</code> in PowerShell.</li><li>The script installs dependencies from <code>requirements.txt</code>.</li><li>PyInstaller reads <code>glare_tracker.spec</code>, collects package data and hidden imports for MediaPipe and pyqtgraph, embeds the icon, and creates a windowed executable.</li><li>The executable is copied to the project root as <code>GlareTracker.exe</code>.</li><li>If <code>iscc.exe</code> is on PATH, Inno Setup creates <code>installer-output/GlareTracker-Setup.exe</code>.</li></ol>
+<p>The installer uses a per-user location under <code>%LOCALAPPDATA%\Programs\GlareTracker</code>, creates a Start Menu shortcut, and offers an optional Desktop shortcut. The standalone shortcut script points directly to the root executable.</p>
+</section>
+
+<section class="page-break">
+<h2>8. Running, Testing, and Troubleshooting</h2>
+<h3>Development run</h3>
+<pre>python -m pip install -r requirements.txt
+python glare_tracker.py</pre>
+<h3>Basic functional checklist</h3>
+<ul><li>Application starts with no import errors.</li><li>Start Stream opens the webcam and shows a mirrored frame.</li><li>A detected face changes status to <code>TRACKING</code> and updates eye coordinates.</li><li>Moving light coordinates changes rays and intersection results.</li><li>Changing the vehicle category changes the number of sources.</li><li>Calibrate Center moves the current eye reference to the windshield center.</li><li>Stop Stream releases the camera and clears visual tracking state.</li><li>Closing the window stops timers and waits for the capture thread.</li></ul>
+<h3>Common issues</h3>
+<table><tr><th>Symptom</th><th>Likely cause and action</th></tr><tr><td>Camera feed stays stopped</td><td>Camera unavailable, permissions, or another application owns it. Check Windows camera privacy settings and camera index 0.</td></tr><tr><td>No face detected</td><td>Improve lighting, face the camera, and keep the eyes visible. MediaPipe needs a usable face image.</td></tr><tr><td>3D view is blank</td><td>Check Windows graphics/OpenGL support and the PyOpenGL installation.</td></tr><tr><td>All intersections are out of range</td><td>Review windshield dimensions, eye distance, and light Y/Z positions. The ray must meet the plane inside its X/Z bounds.</td></tr><tr><td>Packaged app cannot find icon</td><td>Confirm <code>assets/glaretracker-icon.ico</code> is included by the spec and rebuild with <code>--clean</code>.</td></tr></table>
+<div class="box warning"><b>Model limitation:</b> pixel-to-centimeter conversion is an approximation based on the configured image-to-windshield dimensions and fixed eye distance. It is not a calibrated camera-pose or depth-estimation system.</div>
+<div class="box success"><b>Good extension points:</b> move geometry helpers into a separate module, add unit tests for intersection edge cases, add camera calibration, and store user settings with <code>QSettings</code>.</div>
+<h2>Quick Reference</h2>
+<table><tr><th>Question</th><th>Answer</th></tr><tr><td>Where does computation start?</td><td><code>MainWindow._process_tracking()</code></td></tr><tr><td>Where is the ray math?</td><td><code>compute_intersection()</code></td></tr><tr><td>Where does webcam work happen?</td><td><code>VideoCaptureThread.run()</code></td></tr><tr><td>Where are controls defined?</td><td><code>ControlsPanel</code></td></tr><tr><td>Where is packaging configured?</td><td><code>glare_tracker.spec</code>, <code>build_exe.ps1</code>, and <code>installer.iss</code></td></tr></table>
+<footer>GlareTracker Technical Guide · generated from the current project structure · 2026-09-10</footer>
+</section>
+</body>
+</html>

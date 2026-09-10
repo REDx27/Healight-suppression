@@ -23,14 +23,13 @@ from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
 from PyQt5.QtGui import QImage, QPixmap, QFont, QColor, QPainter, QPen, QBrush, QRadialGradient, QIcon
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QLabel, QGroupBox,
-    QVBoxLayout, QHBoxLayout, QFormLayout, QSplitter,
-    QPushButton, QDoubleSpinBox, QFrame, QSizePolicy, QComboBox,
+    QVBoxLayout, QFormLayout, QSplitter,
+    QPushButton, QDoubleSpinBox, QFrame, QComboBox,
     QScrollArea, QToolButton, QColorDialog, QGridLayout, QSlider
 )
 
 import pyqtgraph.opengl as gl
 from pyqtgraph.opengl import GLTextItem
-from OpenGL.GL import GL_LINES  # noqa: F401  — ensures PyOpenGL is importable
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
