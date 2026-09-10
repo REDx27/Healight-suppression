@@ -12,6 +12,7 @@ Usage:
 
 import sys
 import time
+import os
 from dataclasses import dataclass
 
 import numpy as np
@@ -292,14 +293,17 @@ class Windshield2DWidget(QWidget):
         # Dark background
         p.fillRect(self.rect(), QColor("#16213e"))
 
-        # Compute windshield rectangle preserving aspect ratio
-        margin = 30
-        avail_w = self.width() - 2 * margin
-        avail_h = self.height() - 2 * margin
+        # Reserve space for annotations so the title and edge labels stay
+        # inside the widget when the dashboard is resized.
+        margin = 18
+        title_space = 24
+        bottom_space = 22
+        avail_w = max(1, self.width() - 2 * margin)
+        avail_h = max(1, self.height() - 2 * margin - title_space - bottom_space)
         ws_w = min(avail_w, avail_h * self._ws_aspect)
         ws_h = ws_w / self._ws_aspect
         ws_x = (self.width() - ws_w) / 2
-        ws_y = (self.height() - ws_h) / 2
+        ws_y = margin + title_space + (avail_h - ws_h) / 2
 
         # Windshield fill
         boundary_color = "#f44336" if self._has_out_of_range else "#0f4c75"
@@ -321,13 +325,13 @@ class Windshield2DWidget(QWidget):
         p.setPen(QColor("#666"))
         p.drawText(int(cx - 10), int(ws_y - 6), "TOP")
         p.drawText(int(cx - 18), int(ws_y + ws_h + 16), "BOTTOM")
-        p.drawText(int(ws_x - 28), int(cy + 4), "LEFT")
-        p.drawText(int(ws_x + ws_w + 4), int(cy + 4), "RIGHT")
+        p.drawText(max(4, int(ws_x - 28)), int(cy + 4), "LEFT")
+        p.drawText(min(self.width() - 40, int(ws_x + ws_w + 4)), int(cy + 4), "RIGHT")
 
         # Title
         p.setPen(QColor("#bbe1fa"))
         p.setFont(QFont("Segoe UI", 10, QFont.Bold))
-        p.drawText(int(ws_x), int(ws_y - 20), "Windshield — Front View")
+        p.drawText(max(8, int(ws_x)), margin + 16, "Windshield — Front View")
 
         # Glare spots
         for norm_x, norm_y, in_bounds in self._glares:
@@ -1066,6 +1070,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Windshield Glare Tracking System")
+        self.setWindowIcon(self._application_icon())
         self.resize(1400, 850)
         self.setStyleSheet(DARK_STYLESHEET)
 
@@ -1116,7 +1121,12 @@ class MainWindow(QMainWindow):
         self.main_splitter.setStretchFactor(0, 1)
         self.main_splitter.setStretchFactor(1, 0)
 
-        self.setCentralWidget(self.main_splitter)
+        central_widget = QWidget()
+        central_layout = QVBoxLayout(central_widget)
+        central_layout.setContentsMargins(12, 12, 12, 12)
+        central_layout.setSpacing(0)
+        central_layout.addWidget(self.main_splitter)
+        self.setCentralWidget(central_widget)
 
         # ── Camera thread ──
         self.cap_thread = VideoCaptureThread()
@@ -1163,6 +1173,14 @@ class MainWindow(QMainWindow):
         self._movement_timer = QTimer(self)
         self._movement_timer.setInterval(50)
         self._movement_timer.timeout.connect(self._advance_light_movement)
+
+    @staticmethod
+    def _application_icon():
+        if getattr(sys, "frozen", False):
+            base_path = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+        else:
+            base_path = os.path.dirname(os.path.abspath(__file__))
+        return QIcon(os.path.join(base_path, "assets", "glaretracker-icon.ico"))
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -1394,6 +1412,7 @@ class MainWindow(QMainWindow):
 def main():
     app = QApplication(sys.argv)
     app.setStyle("Fusion")  # consistent cross-platform look
+    app.setWindowIcon(MainWindow._application_icon())
 
     window = MainWindow()
     window.show()

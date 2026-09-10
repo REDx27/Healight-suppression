@@ -11,6 +11,8 @@ for package in ("mediapipe", "pyqtgraph"):
     binaries += package_binaries
     hiddenimports += package_hiddenimports
 
+datas.append(("assets/glaretracker-icon.ico", "assets"))
+
 
 analysis = Analysis(
     ["glare_tracker.py"],
@@ -39,6 +41,7 @@ executable = EXE(
     strip=False,
     upx=True,
     console=False,
+    icon="assets/glaretracker-icon.ico",
     version="version_info.txt",
     disable_windowed_traceback=False,
 )

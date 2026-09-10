@@ -3,3 +3,5 @@ build/
 dist/
 build_exe.log
 installer-output/
+Launch_GlareTracker.lnk
+GlareTracker.exe

@@ -6,6 +6,8 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 python -m PyInstaller --clean --noconfirm glare_tracker.spec 2>&1
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+Copy-Item .\dist\GlareTracker.exe .\GlareTracker.exe -Force
+
 if (Get-Command iscc -ErrorAction SilentlyContinue) {
 	iscc installer.iss
 	if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
