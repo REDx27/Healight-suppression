@@ -15,7 +15,7 @@ datas.append(("assets/glaretracker-icon.ico", "assets"))
 
 
 analysis = Analysis(
-    ["glare_tracker.py"],
+    ["run.py"],
     pathex=[],
     binaries=binaries,
     datas=datas,
@@ -42,6 +42,6 @@ executable = EXE(
     upx=True,
     console=False,
     icon="assets/glaretracker-icon.ico",
-    version="version_info.txt",
+    version="scripts/version_info.txt",
     disable_windowed_traceback=False,
 )

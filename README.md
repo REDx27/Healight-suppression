@@ -6,7 +6,13 @@ GlareTracker is a Windows desktop application that tracks driver eye position fr
 
 ```bash
 pip install -r requirements.txt
-python glare_tracker.py
+python run.py
+```
+
+Or as a Python module:
+
+```bash
+python -m glare_tracker
 ```
 
 ## Run the standalone executable
@@ -21,29 +27,35 @@ From the project root in PowerShell:
 ./scripts/build_exe.ps1
 ```
 
-The executable is created at `dist/GlareTracker.exe`. The build includes version metadata for GlareTracker 1.0.0. If Inno Setup (`iscc`) is available, an installer is also created at `installer-output/GlareTracker-Setup.exe`.
+The executable is created at `dist/GlareTracker.exe`. If Inno Setup (`iscc`) is available, an installer is also created at `installer-output/GlareTracker-Setup.exe`.
 
 ## Project structure
 
 ```
-├── glare_tracker.py        # Main application source code
-├── requirements.txt        # Python dependencies
-├── README.md               # This file
-├── assets/                 # Branding
-│   ├── glaretracker-icon.ico
-│   └── glaretracker-icon.svg
-├── docs/                   # Documentation
-│   ├── GlareTracker-Technical-Guide.html
-│   └── GlareTracker-Technical-Guide.pdf
-├── scripts/                # Build & utility scripts
-│   ├── build_exe.ps1           # Build the .exe
-│   ├── glare_tracker.spec      # PyInstaller config
-│   ├── installer.iss           # Inno Setup installer config
-│   ├── version_info.txt        # Windows version metadata
-│   ├── generate_icon.py        # Regenerate .ico from code
-│   └── CreateDesktopShortcut.ps1
-└── dist/                   # Built output (git-ignored)
-    └── GlareTracker.exe
+├── run.py                      # Launcher script (entry point)
+├── glare_tracker/              # Main application package
+│   ├── __init__.py             #   Package metadata & version
+│   ├── __main__.py             #   python -m glare_tracker support
+│   ├── app.py                  #   QApplication setup, main()
+│   ├── config.py               #   TrackingConfig dataclass
+│   ├── geometry.py             #   Intersection & coordinate math
+│   ├── styles.py               #   Dark theme stylesheet
+│   ├── camera.py               #   Webcam capture thread (OpenCV + MediaPipe)
+│   ├── tracking.py             #   TrackingController (business logic)
+│   ├── window.py               #   MainWindow (layout + signal wiring)
+│   └── widgets/                #   UI components
+│       ├── __init__.py         #     Re-exports
+│       ├── video.py            #     Camera feed display
+│       ├── windshield_2d.py    #     2D windshield front view
+│       ├── scene_3d.py         #     3D OpenGL visualization
+│       ├── readout.py          #     Telemetry readout panel
+│       └── controls.py        #     User controls & inputs
+├── requirements.txt            # Python dependencies
+├── README.md                   # This file
+├── assets/                     # Branding (icon files)
+├── docs/                       # Technical documentation
+├── scripts/                    # Build & utility scripts
+└── dist/                       # Built executable (git-ignored)
 ```
 
 The application needs a working webcam and Windows graphics support for the 3D view.
