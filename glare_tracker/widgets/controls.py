@@ -114,13 +114,9 @@ class ControlsPanel(QGroupBox):
 
         # ── Action buttons ──
         self.btn_stream = QPushButton("▶  Start Stream")
+        self.btn_stream.setObjectName("primaryAction")
         self.btn_stream.setCheckable(True)
         self.btn_stream.setMinimumHeight(36)
-        self.btn_stream.setStyleSheet(
-            "QPushButton { background-color: #1b5e20; color: white; font-weight: bold; "
-            "border-radius: 4px; padding: 6px; }"
-            "QPushButton:checked { background-color: #b71c1c; }"
-        )
 
         self.btn_calibrate = QPushButton("🎯  Calibrate Center")
         self.btn_calibrate.setMinimumHeight(32)

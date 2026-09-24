@@ -7,6 +7,11 @@ supports an initial single-camera setup (with a user-supplied depth estimate) an
 calibrated or fallback stereo-camera setup. The driver and outdoor camera feeds are
 shown in the sidebar, together with connection and detection status.
 
+Version 1.1 introduces an operator-focused dashboard with a full-size 3D workspace,
+responsive windshield-intersection overlay, live system-state header, reusable camera
+cards, and separate Operations and Configuration tabs. UI colors and component states
+are driven by a centralized theme system.
+
 ## Run from source
 
 ```bash
@@ -53,6 +58,7 @@ The executable is created at `dist/GlareTracker.exe`. If Inno Setup (`iscc`) is 
 │       ├── video.py            #     Camera feed display
 │       ├── windshield_2d.py    #     2D windshield front view
 │       ├── scene_3d.py         #     3D OpenGL visualization
+│       ├── dashboard.py        #     Reusable dashboard and camera components
 │       ├── readout.py          #     Telemetry readout panel
 │       └── controls.py        #     User controls & inputs
 ├── requirements.txt            # Python dependencies

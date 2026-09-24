@@ -6,5 +6,5 @@ eye-to-light-source ray intersects a virtual windshield plane, and
 visualizes everything in a multi-panel PyQt5 dashboard.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __app_name__ = "GlareTracker"

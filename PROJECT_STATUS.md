@@ -64,6 +64,7 @@ Glare suppression system_test2/
 │       ├── video.py            # VideoWidget — live camera feed display
 │       ├── windshield_2d.py    # Windshield2DWidget — 2D glare spot overlay
 │       ├── scene_3d.py         # Scene3DWidget — OpenGL 3D visualization
+│       ├── dashboard.py        # Header, camera cards, workspace, tabbed sidebar
 │       ├── readout.py          # ReadoutPanel — text telemetry display
 │       └── controls.py         # ControlsPanel — parameter inputs, buttons
 │
@@ -358,6 +359,23 @@ dist/GlareTracker-v1.exe
 
 ---
 
+### REQ-16: Advanced Operator UI Architecture
+**Status: ✅ DONE**
+
+| Sub-requirement | Status | Implementation |
+|---|---|---|
+| Centralized visual design system | ✅ | `styles.py` — immutable palette tokens and `ThemeManager` stylesheet generation |
+| Reusable dashboard components | ✅ | `dashboard.py` — header, status badge, camera card, workspace, and sidebar classes |
+| Operations / configuration separation | ✅ | Tabbed sidebar keeps live telemetry distinct from setup controls |
+| Full-size 3D workspace | ✅ | 3D scene is the primary view with a responsive intersection overlay |
+| Live system-state header | ✅ | Displays application version, Manual/Auto mode, and tracking state |
+| Efficient preview rendering | ✅ | Camera cards cache frames and cap preview scaling to 20 FPS |
+| High-DPI support | ✅ | Qt high-DPI scaling and pixmaps enabled before application startup |
+
+**Key files:** `styles.py`, `widgets/dashboard.py`, `window.py`, `app.py`
+
+---
+
 ## 6. Architecture Overview
 
 ### 6.1 Threading Model
@@ -366,7 +384,8 @@ dist/GlareTracker-v1.exe
 Main Thread (Qt Event Loop)
 ├── MainWindow
 │   ├── TrackingController (coordinates all panels)
-│   ├── VideoWidget, Scene3DWidget, Windshield2DWidget, ReadoutPanel, ControlsPanel
+│   ├── ApplicationHeader, SceneWorkspace, OperationsSidebar, CameraPreviewCard
+│   ├── Scene3DWidget, Windshield2DWidget, ReadoutPanel, ControlsPanel
 │   └── QTimers: FPS update (1s), movement animation (50ms)
 │
 ├── VideoCaptureThread (QThread)
@@ -413,7 +432,11 @@ Stereo cams (cam 1+2) → HeadlightDetectorThread → headlight_detected signal
 | `VideoCaptureThread` | `camera.py` | Background webcam + MediaPipe + eye tracking |
 | `HeadlightDetectorThread` | `headlight_detector.py` | Background stereo camera + bright-spot triangulation |
 | `TrackingController` | `tracking.py` | Business logic: calibration, intersection, simulation, FPS |
-| `MainWindow` | `window.py` | Layout (QSplitter), signal wiring, thread lifecycle |
+| `MainWindow` | `window.py` | Application composition, signal wiring, and thread lifecycle |
+| `SceneWorkspace` | `widgets/dashboard.py` | Full-size 3D viewport with responsive intersection overlay |
+| `CameraPreviewCard` | `widgets/dashboard.py` | Throttled camera rendering and semantic device status |
+| `OperationsSidebar` | `widgets/dashboard.py` | Separates live operations from configuration controls |
+| `ThemeManager` | `styles.py` | Generates the stylesheet from centralized design tokens |
 | `CalibrationResult` | `calibration.py` | Holds camera_matrix, dist_coeffs, focal_length, etc. |
 | `StereoCalibrationResult` | `calibration.py` | Holds stereo R, T, E, F, rectification matrices |
 

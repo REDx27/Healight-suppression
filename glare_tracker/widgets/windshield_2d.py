@@ -53,7 +53,7 @@ class Windshield2DWidget(QWidget):
         p.setRenderHint(QPainter.Antialiasing)
 
         # Dark background
-        p.fillRect(self.rect(), QColor("#16213e"))
+        p.fillRect(self.rect(), QColor("#0b1422"))
 
         # Compute windshield rectangle preserving aspect ratio
         margin = 18
@@ -74,9 +74,9 @@ class Windshield2DWidget(QWidget):
         p.end()
 
     def _draw_windshield_outline(self, p, ws_x, ws_y, ws_w, ws_h):
-        boundary_color = "#f44336" if self._has_out_of_range else "#0f4c75"
+        boundary_color = "#ff647c" if self._has_out_of_range else "#168fb5"
         p.setPen(QPen(QColor(boundary_color), 3 if self._has_out_of_range else 2))
-        p.setBrush(QColor(15, 76, 117, 40))
+        p.setBrush(QColor(20, 115, 145, 35))
         p.drawRoundedRect(int(ws_x), int(ws_y), int(ws_w), int(ws_h), 8, 8)
 
     def _draw_crosshairs(self, p, ws_x, ws_y, ws_w, ws_h):
@@ -100,7 +100,7 @@ class Windshield2DWidget(QWidget):
         p.drawText(min(self.width() - 40, int(ws_x + ws_w + 4)), int(cy + 4), "RIGHT")
 
         # Title
-        p.setPen(QColor("#bbe1fa"))
+        p.setPen(QColor("#d9f4ff"))
         p.setFont(QFont("Segoe UI", 10, QFont.Bold))
         p.drawText(max(8, int(ws_x)), margin + 16, "Windshield — Front View")
 

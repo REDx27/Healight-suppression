@@ -6,10 +6,10 @@ from PyQt5.QtWidgets import QGroupBox, QFormLayout, QVBoxLayout, QLabel
 
 
 _READOUT_STYLE = (
-    "color: {color}; background-color: #0d1117; "
-    "padding: 4px 8px; border-radius: 3px; border: 1px solid #222;"
+    "color: {color}; background-color: #09111b; "
+    "padding: 6px 9px; border-radius: 6px; border: 1px solid #1e2d40;"
 )
-_DEFAULT_COLOR = "#4caf50"
+_DEFAULT_COLOR = "#36d399"
 
 
 class ReadoutPanel(QGroupBox):
