@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GlareTracker — Code Architecture &amp; Technical Documentation</title>
+<style>
+  @page { size: A4; margin: 2cm; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', Tahoma, sans-serif; color: #1a1a2e; line-height: 1.7; padding: 40px; max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 28px; color: #0d1117; border-bottom: 3px solid #0f4c75; padding-bottom: 12px; margin-bottom: 8px; }
+  h2 { font-size: 22px; color: #0f4c75; margin-top: 36px; margin-bottom: 12px; border-bottom: 1px solid #ddd; padding-bottom: 6px; }
+  h3 { font-size: 17px; color: #1b262c; margin-top: 24px; margin-bottom: 8px; }
+  h4 { font-size: 14px; color: #3282b8; margin-top: 16px; margin-bottom: 6px; }
+  p { margin-bottom: 12px; }
+  ul, ol { margin-left: 24px; margin-bottom: 12px; }
+  li { margin-bottom: 4px; }
+  code { background: #f0f4f8; padding: 2px 6px; border-radius: 4px; font-family: 'Consolas', 'Courier New', monospace; font-size: 13px; color: #0d419d; }
+  pre { background: #0d1117; color: #c9d1d9; padding: 16px; border-radius: 8px; overflow-x: auto; margin-bottom: 16px; font-family: 'Consolas', monospace; font-size: 12.5px; line-height: 1.5; }
+  pre .comment { color: #8b949e; }
+  pre .keyword { color: #ff7b72; }
+  pre .string { color: #a5d6ff; }
+  pre .class { color: #79c0ff; }
+  pre .func { color: #d2a8ff; }
+  table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 14px; }
+  th { background: #0f4c75; color: white; padding: 10px 12px; text-align: left; }
+  td { border: 1px solid #ddd; padding: 8px 12px; }
+  tr:nth-child(even) { background: #f8f9fa; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; color: white; }
+  .badge-new { background: #1b5e20; }
+  .badge-core { background: #0d419d; }
+  .badge-ui { background: #6a1b9a; }
+  .note { background: #e3f2fd; border-left: 4px solid #1565c0; padding: 12px 16px; border-radius: 4px; margin-bottom: 16px; }
+  .warning { background: #fff3e0; border-left: 4px solid #e65100; padding: 12px 16px; border-radius: 4px; margin-bottom: 16px; }
+  .diagram { background: #f5f5f5; border: 1px solid #ddd; padding: 20px; border-radius: 8px; margin-bottom: 20px; font-family: 'Consolas', monospace; font-size: 13px; line-height: 1.6; white-space: pre; overflow-x: auto; }
+  .subtitle { color: #666; font-size: 16px; margin-bottom: 24px; }
+  .page-break { page-break-before: always; }
+  .toc a { text-decoration: none; color: #0f4c75; }
+  .toc a:hover { text-decoration: underline; }
+  .toc li { margin-bottom: 6px; }
+  .section-label { font-size: 12px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+  hr { border: none; border-top: 1px solid #eee; margin: 24px 0; }
+</style>
+</head>
+<body>
+
+<h1>GlareTracker</h1>
+<p class="subtitle">Code Architecture &amp; Technical Documentation &mdash; v1.0.0</p>
+
+<div class="note">
+<strong>Project:</strong> Windshield Glare Tracking System<br>
+<strong>Purpose:</strong> Track driver eye position via webcam + MediaPipe, compute where headlight rays intersect a virtual windshield, and visualize results in real-time.<br>
+<strong>Stack:</strong> Python 3.11 &bull; PyQt5 &bull; OpenCV &bull; MediaPipe &bull; PyQtGraph (OpenGL)
+</div>
+
+<!-- TABLE OF CONTENTS -->
+<h2>Table of Contents</h2>
+<ol class="toc">
+  <li><a href="#overview">System Overview</a></li>
+  <li><a href="#physical">Physical Setup &amp; Coordinate System</a></li>
+  <li><a href="#structure">Project File Structure</a></li>
+  <li><a href="#architecture">Software Architecture</a></li>
+  <li><a href="#modules">Module-by-Module Breakdown</a>
+    <ol>
+      <li><a href="#mod-config">config.py — Configuration</a></li>
+      <li><a href="#mod-geometry">geometry.py — Intersection Math</a></li>
+      <li><a href="#mod-camera">camera.py — Webcam Capture Thread</a></li>
+      <li><a href="#mod-tracking">tracking.py — Tracking Controller</a></li>
+      <li><a href="#mod-window">window.py — Main Window</a></li>
+      <li><a href="#mod-widgets">widgets/ — UI Components</a></li>
+      <li><a href="#mod-styles">styles.py — Dark Theme</a></li>
+      <li><a href="#mod-app">app.py — Entry Point</a></li>
+    </ol>
+  </li>
+  <li><a href="#data-flow">Data Flow &amp; Signal Architecture</a></li>
+  <li><a href="#threading">Threading Model</a></li>
+  <li><a href="#features">Feature Details</a></li>
+  <li><a href="#build">Build &amp; Distribution</a></li>
+  <li><a href="#glossary">Glossary</a></li>
+</ol>
+
+<!-- 1. SYSTEM OVERVIEW -->
+<h2 id="overview">1. System Overview</h2>
+<p>GlareTracker is a real-time desktop application that simulates and visualizes how headlight glare from an oncoming vehicle strikes a driver's windshield. The system:</p>
+<ol>
+  <li><strong>Captures</strong> the driver's face via laptop webcam</li>
+  <li><strong>Tracks</strong> the iris position using MediaPipe Face Mesh (468+ landmarks)</li>
+  <li><strong>Converts</strong> pixel coordinates to real-world centimetre positions</li>
+  <li><strong>Computes</strong> where the eye-to-light ray intersects the windshield plane</li>
+  <li><strong>Visualizes</strong> everything in a 5-panel dashboard:
+    <ul>
+      <li>Live camera feed with iris overlay</li>
+      <li>3D scene (OpenGL) with windshield, eye, lights, and ray</li>
+      <li>2D windshield front-view with glowing glare spot</li>
+      <li>Real-time telemetry readout</li>
+      <li>Interactive controls panel</li>
+    </ul>
+  </li>
+</ol>
+
+<!-- 2. PHYSICAL SETUP -->
+<h2 id="physical" class="page-break">2. Physical Setup &amp; Coordinate System</h2>
+
+<h3>2.1 Demo Configuration</h3>
+<div class="diagram">
+              Light Source (LED flashlight / headlight)
+                    ●  (x, y, z) — configurable position
+                   /
+                  /  ← ray from light toward driver's eye
+                 /
+   ┌────────────/───────────────┐   ← Windshield plane (Y = 0)
+   │          ✕ glare spot      │     = laptop screen dimensions
+   │           (intersection)   │     Width × Height in cm
+   └────────────────────────────┘
+                 \
+                  \  ← eye-to-light line continues
+                   \
+                    👁 Driver's eye (tracked by webcam)
+                       at Y = -distance (behind windshield)
+</div>
+
+<h3>2.2 Coordinate System</h3>
+<table>
+  <tr><th>Axis</th><th>Direction</th><th>Example</th></tr>
+  <tr><td><strong>X</strong></td><td>Lateral (left/right)</td><td>X = -10 → driver looking left</td></tr>
+  <tr><td><strong>Y</strong></td><td>Depth (front/back)</td><td>Y = 0 at windshield, Y = -50 at driver, Y = +120 at light</td></tr>
+  <tr><td><strong>Z</strong></td><td>Vertical (height)</td><td>Z = 0 at bottom of windshield, Z = 19.5 at top</td></tr>
+</table>
+<div class="note">
+<strong>Key convention:</strong> The windshield sits in the vertical X-Z plane at Y = 0. The driver is at negative Y (behind it). The light source is at positive Y (in front of it).
+</div>
+
+<!-- 3. FILE STRUCTURE -->
+<h2 id="structure">3. Project File Structure</h2>
+<div class="diagram">
+Glare suppression system_test2/
+├── GlareTracker.pyw                # Silent launcher (no console)
+├── GlareTracker.lnk                # Desktop shortcut with icon
+├── run.py                          # Command-line launcher
+│
+├── glare_tracker/                  # ◄◄ MAIN APPLICATION PACKAGE
+│   ├── __init__.py                 #   Package metadata (version)
+│   ├── __main__.py                 #   python -m glare_tracker support
+│   ├── app.py                      #   QApplication setup, main()
+│   ├── config.py                   #   TrackingConfig dataclass
+│   ├── geometry.py                 #   Intersection &amp; coordinate math
+│   ├── styles.py                   #   Dark theme stylesheet
+│   ├── camera.py                   #   Webcam capture thread
+│   ├── tracking.py                 #   TrackingController (business logic)
+│   ├── window.py                   #   MainWindow (layout + wiring)
+│   └── widgets/                    #   UI components
+│       ├── __init__.py             #     Re-exports
+│       ├── video.py                #     VideoWidget (camera feed)
+│       ├── windshield_2d.py        #     Windshield2DWidget (2D view)
+│       ├── scene_3d.py             #     Scene3DWidget (3D OpenGL)
+│       ├── readout.py              #     ReadoutPanel (telemetry)
+│       └── controls.py             #     ControlsPanel (inputs)
+│
+├── assets/                         # Branding
+│   ├── glaretracker-icon.ico
+│   └── glaretracker-icon.svg
+├── docs/                           # Documentation
+├── scripts/                        # Build &amp; utility scripts
+│   ├── build_exe.ps1
+│   ├── glare_tracker.spec
+│   ├── installer.iss
+│   └── ...
+├── dist/                           # Built executables
+│   └── GlareTracker-v1.exe
+├── requirements.txt
+└── README.md
+</div>
+
+<!-- 4. SOFTWARE ARCHITECTURE -->
+<h2 id="architecture" class="page-break">4. Software Architecture</h2>
+
+<h3>4.1 Design Principles</h3>
+<ul>
+  <li><strong>Separation of Concerns:</strong> Each module has a single responsibility — geometry math knows nothing about Qt, widgets know nothing about tracking logic.</li>
+  <li><strong>MVC-inspired:</strong> <code>ControlsPanel</code> (View/Input) → <code>TrackingController</code> (Controller/Logic) → <code>Scene3DWidget</code>, <code>ReadoutPanel</code> (View/Output)</li>
+  <li><strong>Non-blocking I/O:</strong> Camera runs in a <code>QThread</code>; GUI thread only processes signals.</li>
+  <li><strong>In-place updates:</strong> 3D objects are created once and updated via <code>setData()</code> for 60+ FPS.</li>
+</ul>
+
+<h3>4.2 Dependency Graph</h3>
+<div class="diagram">
+  run.py / GlareTracker.pyw
+         │
+         ▼
+      app.py  ──────────────────────────────────────────┐
+         │                                              │
+         ▼                                              │
+     window.py                                          │
+      │  │  │                                           │
+      │  │  └── styles.py                               │
+      │  │                                              │
+      │  ├──→ camera.py ──→ config.py                   │
+      │  │                   geometry.py                │
+      │  │                                              │
+      │  └──→ tracking.py ──→ geometry.py               │
+      │           │                                     │
+      │           │ (updates)                           │
+      │           ▼                                     │
+      └────→ widgets/                                   │
+              ├── video.py          (no dependencies)   │
+              ├── windshield_2d.py  (no dependencies)   │
+              ├── scene_3d.py       (pyqtgraph.opengl)  │
+              ├── readout.py        (no dependencies)   │
+              └── controls.py       (no dependencies)   │
+
+  ✓ No circular dependencies
+  ✓ Clean top-down import flow
+</div>
+
+<h3>4.3 Class Diagram</h3>
+<table>
+  <tr><th>Class</th><th>Parent</th><th>Module</th><th>Role</th></tr>
+  <tr><td><code>TrackingConfig</code></td><td>dataclass</td><td>config.py</td><td>Immutable config snapshot</td></tr>
+  <tr><td><code>VideoCaptureThread</code></td><td>QThread</td><td>camera.py</td><td>Camera I/O + MediaPipe</td></tr>
+  <tr><td><code>TrackingController</code></td><td>object</td><td>tracking.py</td><td>All business logic</td></tr>
+  <tr><td><code>MainWindow</code></td><td>QMainWindow</td><td>window.py</td><td>Layout + signal wiring</td></tr>
+  <tr><td><code>VideoWidget</code></td><td>QLabel</td><td>widgets/video.py</td><td>Camera feed display</td></tr>
+  <tr><td><code>Windshield2DWidget</code></td><td>QWidget</td><td>widgets/windshield_2d.py</td><td>2D glare visualization</td></tr>
+  <tr><td><code>Scene3DWidget</code></td><td>QWidget</td><td>widgets/scene_3d.py</td><td>3D OpenGL scene</td></tr>
+  <tr><td><code>ReadoutPanel</code></td><td>QGroupBox</td><td>widgets/readout.py</td><td>Telemetry text</td></tr>
+  <tr><td><code>ControlsPanel</code></td><td>QGroupBox</td><td>widgets/controls.py</td><td>User inputs &amp; buttons</td></tr>
+</table>
+
+<!-- 5. MODULE BREAKDOWN -->
+<h2 id="modules" class="page-break">5. Module-by-Module Breakdown</h2>
+
+<h3 id="mod-config">5.1 config.py — Configuration</h3>
+<p class="section-label">~20 lines &bull; No dependencies</p>
+<p>Contains the <code>TrackingConfig</code> frozen dataclass. This is an <strong>immutable snapshot</strong> of tracking parameters that gets passed from the GUI thread to the camera thread. Being frozen (immutable) makes it inherently thread-safe.</p>
+<pre>
+<span class="keyword">@dataclass</span>(frozen=<span class="keyword">True</span>)
+<span class="keyword">class</span> <span class="class">TrackingConfig</span>:
+    screen_w_cm: <span class="class">float</span> = 34.5    <span class="comment"># windshield width</span>
+    screen_h_cm: <span class="class">float</span> = 19.5    <span class="comment"># windshield height</span>
+    eye_dist_cm: <span class="class">float</span> = 50.0    <span class="comment"># driver distance from screen</span>
+    camera_x_cm: <span class="class">float</span> = 0.0     <span class="comment"># camera X offset</span>
+    camera_y_cm: <span class="class">float</span> = 0.0     <span class="comment"># camera Y offset</span>
+    camera_z_cm: <span class="class">float</span> = 30.0    <span class="comment"># camera height</span>
+</pre>
+
+<h3 id="mod-geometry">5.2 geometry.py — Intersection Math</h3>
+<p class="section-label">~50 lines &bull; Pure Python + math &bull; No Qt dependencies</p>
+<p>Two pure functions with <strong>no UI dependencies</strong> — easy to unit test independently:</p>
+
+<h4>compute_intersection(eye_cm, light_cm)</h4>
+<p>Computes where the ray from the driver's eye toward the light source crosses the windshield plane at Y = 0 using <strong>parametric line-plane intersection</strong>:</p>
+<pre>
+<span class="comment"># Parametric form: P(t) = eye + t × (light - eye)</span>
+<span class="comment"># Windshield plane: Y = 0</span>
+<span class="comment"># Solve: eye.y + t × (light.y - eye.y) = 0</span>
+<span class="comment"># Therefore: t = -eye.y / (light.y - eye.y)</span>
+
+t = -y1 / dy
+<span class="keyword">if not</span> 0.0 &lt;= t &lt;= 1.0:   <span class="comment"># intersection must be between eye and light</span>
+    <span class="keyword">return None</span>
+<span class="keyword">return</span> (x1 + t * (x2 - x1), 0.0, z1 + t * (z2 - z1))
+</pre>
+<p>The <code>t</code> parameter is clamped to [0, 1] so only intersections <em>between</em> the eye and light are reported — not behind the driver or beyond the light.</p>
+
+<h4>pixel_to_cm(eye_x_px, eye_y_px, ...)</h4>
+<p>Converts the pixel-space iris midpoint (from MediaPipe) to approximate real-world centimetre coordinates, mapping the camera frame dimensions to the physical screen dimensions.</p>
+
+<h3 id="mod-camera" class="page-break">5.3 camera.py — Webcam Capture Thread</h3>
+<p class="section-label">~120 lines &bull; QThread + OpenCV + MediaPipe</p>
+<p>Runs in a <strong>background QThread</strong> so the GUI never freezes during camera I/O (~33ms per frame).</p>
+
+<h4>Key Design Decisions</h4>
+<table>
+  <tr><th>Decision</th><th>Rationale</th></tr>
+  <tr><td>Uses <code>cv2.CAP_DSHOW</code></td><td>DirectShow backend gives instant camera startup on Windows (default MSMF can freeze 3-8 seconds)</td></tr>
+  <tr><td><code>QImage.copy()</code></td><td>Qt must own the buffer — without copy, the numpy array could be garbage-collected causing crashes</td></tr>
+  <tr><td>BGR→RGB in worker thread</td><td>Offloads CPU work from the GUI thread</td></tr>
+  <tr><td>Iris landmarks 468 &amp; 473</td><td>MediaPipe's true iris centre landmarks (not 474/469 which are ring points)</td></tr>
+  <tr><td><code>try/except/finally</code></td><td>Ensures camera and MediaPipe are always released, even on crash</td></tr>
+</table>
+
+<h4>Signals Emitted</h4>
+<table>
+  <tr><th>Signal</th><th>Data</th><th>When</th></tr>
+  <tr><td><code>frame_ready(QImage)</code></td><td>RGB camera frame with iris overlay</td><td>Every frame (~30/sec)</td></tr>
+  <tr><td><code>eye_detected(x, y, z)</code></td><td>Eye position in cm</td><td>When a face is found</td></tr>
+  <tr><td><code>eye_lost()</code></td><td>None</td><td>When no face is detected</td></tr>
+</table>
+
+<h3 id="mod-tracking">5.4 tracking.py — Tracking Controller</h3>
+<p class="section-label">~200 lines &bull; Core business logic</p>
+<p>This is the <strong>most important architectural extraction</strong>. Previously all this logic lived inside <code>MainWindow</code> (violating Single Responsibility). Now <code>TrackingController</code> is a plain Python class that:</p>
+
+<ul>
+  <li><strong>Receives</strong> raw eye coordinates from the camera thread</li>
+  <li><strong>Applies</strong> calibration offsets</li>
+  <li><strong>Computes</strong> intersections for all light sources</li>
+  <li><strong>Updates</strong> all UI panels (3D, 2D, readout)</li>
+  <li><strong>Manages</strong> light movement simulation</li>
+  <li><strong>Counts</strong> FPS</li>
+</ul>
+
+<h4>Responsibilities</h4>
+<table>
+  <tr><th>Method</th><th>What it does</th></tr>
+  <tr><td><code>on_eye_detected(x, y, z)</code></td><td>Applies calibration, triggers <code>process_tracking()</code></td></tr>
+  <tr><td><code>on_eye_lost()</code></td><td>Clears all visual indicators</td></tr>
+  <tr><td><code>process_tracking(eye_cm)</code></td><td>Computes intersections for all lights, updates 3D/2D/readout</td></tr>
+  <tr><td><code>calibrate()</code></td><td>Sets current eye position as centre reference</td></tr>
+  <tr><td><code>start_movement()</code></td><td>Begins light animation</td></tr>
+  <tr><td><code>advance_movement()</code></td><td>Moves lights one tick (called by QTimer every 50ms)</td></tr>
+  <tr><td><code>on_params_changed()</code></td><td>Reacts to control panel changes</td></tr>
+  <tr><td><code>update_fps()</code></td><td>Calculates frame rate from timestamps</td></tr>
+</table>
+
+<h4>Calibration System</h4>
+<p>On first face detection, the system auto-captures a <strong>baseline</strong> — the driver's current position becomes (0, 0, windshield_centre). This offset is subtracted from all future readings. The "Calibrate" button lets the user re-set this baseline manually.</p>
+
+<h3 id="mod-window" class="page-break">5.5 window.py — Main Window</h3>
+<p class="section-label">~180 lines &bull; Layout + signal wiring only</p>
+<p>After the refactor, <code>MainWindow</code> is a <strong>thin shell</strong> that only handles:</p>
+<ol>
+  <li><strong>Widget creation</strong> — instantiates all 5 panels</li>
+  <li><strong>Layout</strong> — arranges them in nested <code>QSplitter</code>s</li>
+  <li><strong>Signal wiring</strong> — connects camera signals → controller, buttons → actions</li>
+  <li><strong>Stream toggle</strong> — starts/stops the camera thread</li>
+  <li><strong>Responsive resize</strong> — switches to vertical layout on narrow windows</li>
+</ol>
+<p>Zero tracking logic, zero geometry, zero calibration math.</p>
+
+<h4>Layout Structure</h4>
+<div class="diagram">
+┌──────────────────────────────────────────────┬──────────────────┐
+│              MAIN VIEWPORT AREA              │    SIDEBAR       │
+│  ┌────────────────────┬────────────────────┐ │ (QScrollArea)    │
+│  │  📹 VideoWidget    │ 🔲 Windshield2D   │ │                  │
+│  │                    │    Widget          │ │ ┌──────────────┐ │
+│  │  (camera feed)     │ (2D front view)   │ │ │ ReadoutPanel │ │
+│  └────────────────────┴────────────────────┘ │ │ (telemetry)  │ │
+│  ┌───────────────────────────────────────────┐│ ├──────────────┤ │
+│  │  🧊 Scene3DWidget                       ││ │ ControlsPanel│ │
+│  │  (OpenGL 3D visualization)              ││ │ (inputs)     │ │
+│  │  • Cyan windshield mesh at Y=0          ││ └──────────────┘ │
+│  │  • Blue eye point (behind windshield)   ││                  │
+│  │  • Orange light sources (in front)      ││                  │
+│  │  • Red ray lines (eye → light)          ││                  │
+│  │  • Yellow intersection markers          ││                  │
+│  └───────────────────────────────────────────┘│                  │
+└──────────────────────────────────────────────┴──────────────────┘
+   ◄─── QSplitter (draggable borders) ───►
+</div>
+
+<h3 id="mod-widgets">5.6 widgets/ — UI Components</h3>
+
+<h4>VideoWidget (video.py, ~35 lines)</h4>
+<p>A <code>QLabel</code> that receives <code>QImage</code> frames and displays them with aspect-ratio preservation. Shows placeholder text when the stream is stopped.</p>
+
+<h4>Windshield2DWidget (windshield_2d.py, ~140 lines)</h4>
+<p>Custom-painted widget using <code>QPainter</code>. Draws:</p>
+<ul>
+  <li>Rounded windshield outline with aspect-ratio preservation</li>
+  <li>Dashed crosshair grid lines (centre reference)</li>
+  <li>Edge labels: TOP, BOTTOM, LEFT, RIGHT</li>
+  <li><strong>Glowing radial gradient</strong> for in-bounds glare spots (yellow/orange)</li>
+  <li><strong>Red dashed circle</strong> for out-of-bounds indicators</li>
+  <li>Windshield border turns red when any glare is out of range</li>
+</ul>
+
+<h4>Scene3DWidget (scene_3d.py, ~340 lines)</h4>
+<p>Wraps PyQtGraph's <code>GLViewWidget</code> (OpenGL). The largest widget because it manages many 3D objects:</p>
+<table>
+  <tr><th>Object</th><th>Type</th><th>Colour</th><th>Description</th></tr>
+  <tr><td>Windshield</td><td>GLMeshItem</td><td>Cyan (semi-transparent)</td><td>Vertical quad at Y=0</td></tr>
+  <tr><td>Grid floor</td><td>GLGridItem</td><td>White (faint)</td><td>Spatial reference</td></tr>
+  <tr><td>Axes</td><td>GLLinePlotItem × 3</td><td>RGB</td><td>X/Y/Z direction indicators</td></tr>
+  <tr><td>Eye point</td><td>GLScatterPlotItem</td><td>Blue</td><td>Driver iris position</td></tr>
+  <tr><td>Light sources</td><td>GLScatterPlotItem × 4</td><td>Orange</td><td>Up to 4 headlights</td></tr>
+  <tr><td>Intersections</td><td>GLScatterPlotItem × 4</td><td>Yellow</td><td>Glare points on windshield</td></tr>
+  <tr><td>Rays</td><td>GLLinePlotItem × 4</td><td>Red</td><td>Eye-to-light lines</td></tr>
+  <tr><td>Camera marker</td><td>GLScatterPlotItem</td><td>Grey</td><td>Webcam position</td></tr>
+  <tr><td>Labels</td><td>GLTextItem × many</td><td>Various</td><td>Axis names, object labels</td></tr>
+</table>
+<p><strong>Performance strategy:</strong> All items are created once during <code>__init__</code> and updated in-place via <code>setData()</code>. Hidden items are moved to (9999, 9999, 9999) rather than removed/re-added, achieving <strong>60+ FPS</strong>.</p>
+<p>Includes a floating <strong>⚙ settings overlay</strong> for changing colours, label sizes, and toggling eye/light visibility.</p>
+
+<h4>ReadoutPanel (readout.py, ~90 lines)</h4>
+<p>Monospace (<code>Consolas</code>) text readout with colour-coded status. Features a <strong>dynamic intersection list</strong> that grows/shrinks based on the number of active light sources.</p>
+
+<h4>ControlsPanel (controls.py, ~140 lines)</h4>
+<p>All user inputs organised in collapsible groups:</p>
+<ul>
+  <li>Windshield Width/Height (cm)</li>
+  <li>Camera Position X/Y/Z</li>
+  <li>Driver Distance</li>
+  <li>Vehicle Category (Motorcycle / Car / Extreme — determines headlight count)</li>
+  <li>Light Source X/Y/Z</li>
+  <li>Movement pattern selector + Play/Stop</li>
+  <li>Start/Stop Stream, Calibrate, Reset 3D View buttons</li>
+</ul>
+<p>The <code>get_light_positions()</code> method applies vehicle-specific headlight offsets to the base position.</p>
+
+<h3 id="mod-styles">5.7 styles.py — Dark Theme</h3>
+<p class="section-label">~60 lines</p>
+<p>A single <code>DARK_STYLESHEET</code> string constant applied to the entire application. Uses a GitHub-dark inspired colour palette with styled <code>QGroupBox</code>, <code>QDoubleSpinBox</code>, <code>QPushButton</code>, and <code>QSplitter</code> handles.</p>
+
+<h3 id="mod-app">5.8 app.py — Entry Point</h3>
+<p class="section-label">~15 lines</p>
+<p>Creates <code>QApplication</code>, sets the Fusion style, loads the window icon, creates <code>MainWindow</code>, and runs the Qt event loop.</p>
+
+<!-- 6. DATA FLOW -->
+<h2 id="data-flow" class="page-break">6. Data Flow &amp; Signal Architecture</h2>
+
+<h3>6.1 Eye Tracking Pipeline</h3>
+<div class="diagram">
+ Camera sensor          VideoCaptureThread           TrackingController
+ ┌─────────┐           ┌──────────────────┐         ┌──────────────────┐
+ │ Webcam   │ ─frame─► │ 1. cv2.read()    │         │                  │
+ │ (30 FPS) │           │ 2. MediaPipe     │         │ 5. Apply calib   │
+ └─────────┘           │    FaceMesh      │         │ 6. Compute       │
+                        │ 3. Detect iris   │ ─(x,y,z)─► intersection  │
+                        │ 4. pixel_to_cm() │         │ 7. Update panels │
+                        │                  │ ─QImage─►               │
+                        └──────────────────┘         └──────────────────┘
+                               │                            │
+                               ▼                            ▼
+                        ┌──────────┐    ┌────────┐  ┌──────┐  ┌────────┐
+                        │VideoWidget│    │Scene3D │  │WS 2D │  │Readout │
+                        │(feed)    │    │(3D)    │  │(glare)│  │(text)  │
+                        └──────────┘    └────────┘  └──────┘  └────────┘
+</div>
+
+<h3>6.2 Parameter Change Flow</h3>
+<div class="diagram">
+  User adjusts spinbox/combo
+         │
+         ▼
+  ControlsPanel (emits valueChanged)
+         │
+         ▼
+  MainWindow._on_params_changed()
+    ├── pushes TrackingConfig to camera thread
+    └── calls tracker.on_params_changed()
+              ├── updates 3D windshield dimensions
+              ├── updates 3D light positions
+              ├── updates 2D aspect ratio
+              └── re-runs process_tracking() with last eye position
+</div>
+
+<h3>6.3 Qt Signals Used</h3>
+<table>
+  <tr><th>Signal</th><th>From</th><th>To</th><th>Data</th></tr>
+  <tr><td><code>frame_ready</code></td><td>VideoCaptureThread</td><td>VideoWidget.update_frame</td><td>QImage</td></tr>
+  <tr><td><code>eye_detected</code></td><td>VideoCaptureThread</td><td>TrackingController.on_eye_detected</td><td>float × 3</td></tr>
+  <tr><td><code>eye_lost</code></td><td>VideoCaptureThread</td><td>TrackingController.on_eye_lost</td><td>None</td></tr>
+  <tr><td><code>valueChanged</code></td><td>QDoubleSpinBox (×9)</td><td>MainWindow._on_params_changed</td><td>float</td></tr>
+  <tr><td><code>currentIndexChanged</code></td><td>combo_vehicle</td><td>MainWindow._on_params_changed</td><td>int</td></tr>
+  <tr><td><code>clicked</code></td><td>btn_stream</td><td>MainWindow._toggle_stream</td><td>bool</td></tr>
+  <tr><td><code>clicked</code></td><td>btn_calibrate</td><td>TrackingController.calibrate</td><td>None</td></tr>
+  <tr><td><code>timeout</code></td><td>QTimer (1s)</td><td>TrackingController.update_fps</td><td>None</td></tr>
+  <tr><td><code>timeout</code></td><td>QTimer (50ms)</td><td>TrackingController.advance_movement</td><td>None</td></tr>
+</table>
+
+<!-- 7. THREADING -->
+<h2 id="threading">7. Threading Model</h2>
+<div class="diagram">
+ ┌─────────────────────────────────────┐    ┌─────────────────────────┐
+ │         GUI THREAD (main)           │    │   WORKER THREAD         │
+ │                                     │    │   (VideoCaptureThread)  │
+ │  MainWindow                         │    │                         │
+ │  TrackingController                 │    │  cv2.VideoCapture       │
+ │  All Widgets                        │    │  MediaPipe FaceMesh     │
+ │  QTimers                            │    │  BGR → RGB conversion   │
+ │                                     │    │  QImage construction    │
+ │  ◄── signals (thread-safe) ────────│◄───│                         │
+ └─────────────────────────────────────┘    └─────────────────────────┘
+</div>
+<div class="note">
+<strong>Thread safety:</strong> Qt signals across threads are automatically queued (delivered via the event loop). The <code>TrackingConfig</code> dataclass is frozen/immutable, so it can be safely read from the worker thread after being set from the GUI thread.
+</div>
+
+<!-- 8. FEATURES -->
+<h2 id="features" class="page-break">8. Feature Details</h2>
+
+<h3>8.1 Vehicle Light Modes</h3>
+<table>
+  <tr><th>Category</th><th>Lights</th><th>Offsets from base position</th></tr>
+  <tr><td>Motorcycle</td><td>1</td><td>(0, 0, 0)</td></tr>
+  <tr><td>Four-Wheeler/Car</td><td>2</td><td>(-8, 0, 0) and (+8, 0, 0)</td></tr>
+  <tr><td>Extreme Vehicle</td><td>4</td><td>(±10, 0, -4) and (±10, 0, +4)</td></tr>
+</table>
+
+<h3>8.2 Light Movement Simulation</h3>
+<p>Three animated patterns move the entire headlight cluster as a rigid body:</p>
+<table>
+  <tr><th>Pattern</th><th>Description</th></tr>
+  <tr><td><strong>Coming straight</strong></td><td>Light approaches from far (Y+240) to near, with slight lateral sine wave</td></tr>
+  <tr><td><strong>Coming at opposite side</strong></td><td>Light sweeps laterally across 180cm (X axis)</td></tr>
+  <tr><td><strong>Long distance</strong></td><td>Light approaches from very far (Y+700) to near</td></tr>
+</table>
+<p>Animation runs at 50ms intervals (20 ticks/second). Phase advances by 0.0125 per tick, completing one full cycle every 80 ticks (4 seconds).</p>
+
+<h3>8.3 3D Scene Settings Overlay</h3>
+<p>A floating panel anchored to the top-right of the 3D view allows:</p>
+<ul>
+  <li>Colour customization for windshield, eye, and light objects (via <code>QColorDialog</code>)</li>
+  <li>Label font size adjustment (slider, range 8–32)</li>
+  <li>Toggle visibility of eye points and light source points</li>
+</ul>
+
+<h3>8.4 Responsive Layout</h3>
+<p>When the window width drops below 1050px, the main splitter switches from horizontal to vertical orientation, stacking the sidebar below the viewport panels.</p>
+
+<!-- 9. BUILD & DISTRIBUTION -->
+<h2 id="build">9. Build &amp; Distribution</h2>
+
+<h3>9.1 Running from Source</h3>
+<pre>
+pip install -r requirements.txt
+python run.py                  <span class="comment"># or: python -m glare_tracker</span>
+                               <span class="comment"># or: double-click GlareTracker.pyw</span>
+</pre>
+
+<h3>9.2 Building Standalone Executable</h3>
+<pre>
+./scripts/build_exe.ps1
+</pre>
+<p>Uses <strong>PyInstaller</strong> to bundle Python, all dependencies, MediaPipe models, and the app icon into a single <code>dist/GlareTracker.exe</code> (~270 MB). The spec file uses <code>collect_all</code> for mediapipe and pyqtgraph to ensure all data files are included.</p>
+
+<h3>9.3 Version Naming Convention</h3>
+<table>
+  <tr><th>File</th><th>Description</th></tr>
+  <tr><td><code>dist/GlareTracker-v1.exe</code></td><td>First standalone build</td></tr>
+  <tr><td><code>dist/GlareTracker-v2.exe</code></td><td>After next major update, rename the new build</td></tr>
+</table>
+
+<h3>9.4 Dependencies</h3>
+<table>
+  <tr><th>Package</th><th>Purpose</th></tr>
+  <tr><td>PyQt5 ≥ 5.15</td><td>GUI framework</td></tr>
+  <tr><td>opencv-python ≥ 4.8</td><td>Webcam capture &amp; image processing</td></tr>
+  <tr><td>mediapipe ≥ 0.10</td><td>Face mesh &amp; iris detection (468+ landmarks)</td></tr>
+  <tr><td>numpy ≥ 1.24</td><td>Array operations</td></tr>
+  <tr><td>pyqtgraph ≥ 0.13</td><td>GPU-accelerated 3D visualization</td></tr>
+  <tr><td>PyOpenGL ≥ 3.1</td><td>OpenGL bindings for pyqtgraph</td></tr>
+</table>
+
+<!-- 10. GLOSSARY -->
+<h2 id="glossary">10. Glossary</h2>
+<table>
+  <tr><th>Term</th><th>Definition</th></tr>
+  <tr><td><strong>Intersection</strong></td><td>The point where the eye-to-light ray crosses the windshield plane (Y=0)</td></tr>
+  <tr><td><strong>In-bounds</strong></td><td>An intersection that falls within the windshield rectangle dimensions</td></tr>
+  <tr><td><strong>Calibration offset</strong></td><td>The difference between the driver's actual position and the windshield centre, used to zero the coordinate system</td></tr>
+  <tr><td><strong>Baseline</strong></td><td>The first captured eye position, auto-set on first face detection</td></tr>
+  <tr><td><strong>Movement phase</strong></td><td>A 0.0–1.0 value representing progress through one animation cycle</td></tr>
+  <tr><td><strong>GLTextItem</strong></td><td>PyQtGraph's 3D text label rendered as a billboard (always faces camera)</td></tr>
+  <tr><td><strong>Frozen dataclass</strong></td><td>A Python dataclass with <code>frozen=True</code> — instances cannot be modified after creation, ensuring thread safety</td></tr>
+  <tr><td><strong>DirectShow (DSHOW)</strong></td><td>Windows camera API that provides faster startup than the default Media Foundation</td></tr>
+</table>
+
+<hr>
+<p style="text-align: center; color: #888; font-size: 13px; margin-top: 32px;">
+  GlareTracker v1.0.0 &mdash; Technical Documentation &mdash; Generated September 2026
+</p>
+
+</body>
+</html>

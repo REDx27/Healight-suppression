@@ -7,17 +7,21 @@ import os
 import sys
 
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QIcon
+from PyQt5.QtGui import QIcon, QPixmap
 from PyQt5.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QSplitter, QScrollArea,
+    QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QSplitter, QScrollArea,
+    QLabel, QGroupBox,
 )
 
 from glare_tracker.camera import VideoCaptureThread
+from glare_tracker.headlight_detector import (
+    HeadlightDetectorThread, MonocularHeadlightDetectorThread,
+)
 from glare_tracker.config import TrackingConfig
 from glare_tracker.styles import DARK_STYLESHEET
 from glare_tracker.tracking import TrackingController
 from glare_tracker.widgets import (
-    VideoWidget, Windshield2DWidget, Scene3DWidget, ReadoutPanel, ControlsPanel,
+    Windshield2DWidget, Scene3DWidget, ReadoutPanel, ControlsPanel,
 )
 
 
@@ -32,19 +36,23 @@ class MainWindow(QMainWindow):
         self.setStyleSheet(DARK_STYLESHEET)
 
         # ── widgets ──
-        self.video_widget = VideoWidget()
         self.windshield_2d = Windshield2DWidget()
         self.scene_3d = Scene3DWidget()
         self.readout = ReadoutPanel()
         self.controls = ControlsPanel()
+
+        self.camera_feeds = self._build_camera_feeds()
 
         # ── tracking controller ──
         self.tracker = TrackingController(
             self.scene_3d, self.windshield_2d, self.readout, self.controls,
         )
 
-        # ── camera thread ──
-        self.cap_thread = VideoCaptureThread()
+        # ── threads ──
+        self.cap_thread = VideoCaptureThread(
+            camera_index=self.controls.spin_driver_camera.value())
+        self.headlight_thread = None
+        self._headlight_camera_available = False
 
         # ── layout ──
         self._build_layout()
@@ -67,27 +75,20 @@ class MainWindow(QMainWindow):
     # ── layout ──────────────────────────────────────────────────────
 
     def _build_layout(self):
-        # Top row: Camera | 2D Windshield
-        self.top_splitter = QSplitter(Qt.Horizontal)
-        self.top_splitter.addWidget(self.video_widget)
-        self.top_splitter.addWidget(self.windshield_2d)
-        self.top_splitter.setSizes([550, 400])
-        self.top_splitter.setStretchFactor(0, 1)
-        self.top_splitter.setStretchFactor(1, 1)
-
-        # Left: top row + 3D below
-        self.left_splitter = QSplitter(Qt.Vertical)
-        self.left_splitter.addWidget(self.top_splitter)
-        self.left_splitter.addWidget(self.scene_3d)
-        self.left_splitter.setSizes([320, 480])
-        self.left_splitter.setStretchFactor(0, 1)
-        self.left_splitter.setStretchFactor(1, 1)
+        # Full-size 3D workspace with a compact intersection view overlaid.
+        self.windshield_2d.setParent(self.scene_3d)
+        self.windshield_2d.setFixedSize(390, 235)
+        self.windshield_2d.move(14, 14)
+        self.windshield_2d.setToolTip("Live windshield intersection view")
+        self.windshield_2d.show()
+        self.windshield_2d.raise_()
 
         # Scrollable sidebar
         sidebar_content = QWidget()
         sidebar_layout = QVBoxLayout(sidebar_content)
         sidebar_layout.setContentsMargins(4, 4, 4, 4)
         sidebar_layout.addWidget(self.readout)
+        sidebar_layout.addWidget(self.camera_feeds)
         sidebar_layout.addWidget(self.controls)
         sidebar_layout.addStretch()
 
@@ -100,7 +101,7 @@ class MainWindow(QMainWindow):
 
         # Main: viewport | sidebar
         self.main_splitter = QSplitter(Qt.Horizontal)
-        self.main_splitter.addWidget(self.left_splitter)
+        self.main_splitter.addWidget(self.scene_3d)
         self.main_splitter.addWidget(sidebar)
         self.main_splitter.setSizes([1050, 350])
         self.main_splitter.setStretchFactor(0, 1)
@@ -113,13 +114,58 @@ class MainWindow(QMainWindow):
         central_layout.addWidget(self.main_splitter)
         self.setCentralWidget(central)
 
+    def _build_camera_feeds(self):
+        group = QGroupBox("Camera Feeds")
+        layout = QHBoxLayout(group)
+        self.driver_preview, self.driver_camera_status = self._make_camera_preview(
+            "Driver camera")
+        self.headlight_preview, self.headlight_camera_status = self._make_camera_preview(
+            "Headlight camera")
+        for title, preview, status in (
+            ("Driver / Eyes", self.driver_preview, self.driver_camera_status),
+            ("Outdoor / Light", self.headlight_preview, self.headlight_camera_status),
+        ):
+            column = QVBoxLayout()
+            heading = QLabel(title)
+            heading.setAlignment(Qt.AlignCenter)
+            column.addWidget(heading)
+            column.addWidget(preview)
+            column.addWidget(status)
+            layout.addLayout(column)
+        group.hide()
+        return group
+
+    @staticmethod
+    def _make_camera_preview(initial_text):
+        preview = QLabel(initial_text)
+        preview.setAlignment(Qt.AlignCenter)
+        preview.setMinimumSize(150, 100)
+        preview.setStyleSheet("background:#000; color:#8b949e; border:1px solid #30363d;")
+        status = QLabel("Stopped")
+        status.setAlignment(Qt.AlignCenter)
+        status.setWordWrap(True)
+        status.setStyleSheet("color:#8b949e;")
+        return preview, status
+
     # ── signal wiring ───────────────────────────────────────────────
 
     def _connect_signals(self):
         # Camera → display + tracker
-        self.cap_thread.frame_ready.connect(self.video_widget.update_frame)
+        self.cap_thread.frame_ready.connect(self._update_driver_frame)
         self.cap_thread.eye_detected.connect(self.tracker.on_eye_detected)
         self.cap_thread.eye_lost.connect(self.tracker.on_eye_lost)
+        self.cap_thread.camera_status.connect(self._on_driver_camera_status)
+
+        # Manual/auto source and camera setup
+        self.controls.combo_light_mode.currentTextChanged.connect(self._light_mode_changed)
+        self.controls.combo_detection_setup.currentTextChanged.connect(self._auto_setup_changed)
+        self.controls.spin_headlight_camera.valueChanged.connect(self._auto_setup_changed)
+        self.controls.spin_headlight_camera_2.valueChanged.connect(self._auto_setup_changed)
+        self.controls.spin_driver_camera.valueChanged.connect(self._driver_camera_changed)
+        self.controls.spin_single_depth.valueChanged.connect(self._update_single_projection)
+        self.controls.spin_camera_hfov.valueChanged.connect(self._update_single_projection)
+        self.controls.spin_brightness_threshold.valueChanged.connect(
+            self._update_detection_settings)
 
         # Buttons
         self.controls.btn_stream.clicked.connect(self._toggle_stream)
@@ -141,6 +187,150 @@ class MainWindow(QMainWindow):
 
     # ── slots ───────────────────────────────────────────────────────
 
+    def _update_driver_frame(self, q_img):
+        self._set_preview_image(self.driver_preview, q_img)
+
+    def _update_headlight_frame(self, q_img):
+        self._set_preview_image(self.headlight_preview, q_img)
+
+    @staticmethod
+    def _set_preview_image(label, image):
+        pixmap = QPixmap.fromImage(image)
+        label.setPixmap(pixmap.scaled(
+            label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+    def _on_driver_camera_status(self, message, available):
+        self._set_camera_status(self.driver_camera_status, message, available)
+        if not available:
+            self.driver_preview.clear()
+            self.driver_preview.setText("Camera not detected")
+
+    def _on_headlight_camera_status(self, message, available):
+        self._headlight_camera_available = available
+        self._set_camera_status(self.headlight_camera_status, message, available)
+        if not available:
+            self.headlight_preview.clear()
+            self.headlight_preview.setText("Camera not detected")
+
+    @staticmethod
+    def _set_camera_status(label, message, available):
+        label.setText(message)
+        label.setStyleSheet(f"color:{'#4caf50' if available else '#f44336'};")
+
+    def _on_auto_headlight(self, x, y, z):
+        if self.controls.is_auto_light():
+            self._headlight_camera_available = True
+            self.headlight_camera_status.setText("Tracking bright light")
+            self.headlight_camera_status.setStyleSheet("color:#4caf50;")
+            # Update sliders without triggering a signal loop
+            self.controls.spin_light_x.blockSignals(True)
+            self.controls.spin_light_y.blockSignals(True)
+            self.controls.spin_light_z.blockSignals(True)
+
+            self.controls.spin_light_x.setValue(x)
+            self.controls.spin_light_y.setValue(y)
+            self.controls.spin_light_z.setValue(z)
+
+            self.controls.spin_light_x.blockSignals(False)
+            self.controls.spin_light_y.blockSignals(False)
+            self.controls.spin_light_z.blockSignals(False)
+
+            self._on_params_changed()
+
+    def _light_mode_changed(self):
+        auto = self.controls.is_auto_light()
+        self.camera_feeds.setVisible(auto)
+        self.controls.btn_play_movement.setEnabled(not auto)
+        if auto:
+            if self._movement_timer.isActive():
+                self._movement_timer.stop()
+                self.tracker.stop_movement()
+                self.controls.btn_play_movement.setChecked(False)
+                self.controls.btn_play_movement.setText("▶  Play Light Movement")
+            self._start_headlight_detection()
+        else:
+            self._stop_headlight_detection()
+            self.headlight_preview.clear()
+            self.headlight_preview.setText("Manual coordinates")
+            self.headlight_camera_status.setText("Manual mode")
+            self.headlight_camera_status.setStyleSheet("color:#8b949e;")
+
+    def _auto_setup_changed(self):
+        if self.controls.is_auto_light():
+            self._start_headlight_detection()
+
+    def _driver_camera_changed(self):
+        was_running = self.cap_thread.isRunning()
+        if was_running:
+            self.cap_thread.stop()
+        self.cap_thread.deleteLater()
+        self.cap_thread = VideoCaptureThread(
+            camera_index=self.controls.spin_driver_camera.value())
+        self.cap_thread.frame_ready.connect(self._update_driver_frame)
+        self.cap_thread.eye_detected.connect(self.tracker.on_eye_detected)
+        self.cap_thread.eye_lost.connect(self.tracker.on_eye_lost)
+        self.cap_thread.camera_status.connect(self._on_driver_camera_status)
+        if was_running:
+            self._push_config()
+            self.driver_camera_status.setText("Opening camera...")
+            self.driver_camera_status.setStyleSheet("color:#ff9800;")
+            self.cap_thread.start()
+
+    def _start_headlight_detection(self):
+        self._stop_headlight_detection()
+        cam1 = self.controls.spin_headlight_camera.value()
+        ws_h = self.controls.spin_ws_h.value()
+        if self.controls.is_stereo_detection():
+            self.headlight_thread = HeadlightDetectorThread(
+                cam1_idx=cam1,
+                cam2_idx=self.controls.spin_headlight_camera_2.value(),
+                camera_height_cm=ws_h,
+                brightness_threshold=self.controls.spin_brightness_threshold.value(),
+            )
+        else:
+            self.headlight_thread = MonocularHeadlightDetectorThread(
+                camera_index=cam1,
+                depth_cm=self.controls.spin_single_depth.value(),
+                windshield_h_cm=ws_h,
+                hfov_deg=self.controls.spin_camera_hfov.value(),
+                brightness_threshold=self.controls.spin_brightness_threshold.value(),
+            )
+        self.headlight_thread.frame_ready.connect(self._update_headlight_frame)
+        self.headlight_thread.headlight_detected.connect(self._on_auto_headlight)
+        self.headlight_thread.headlight_lost.connect(self._on_headlight_lost)
+        self.headlight_thread.camera_status.connect(self._on_headlight_camera_status)
+        self.headlight_camera_status.setText("Opening camera...")
+        self.headlight_camera_status.setStyleSheet("color:#ff9800;")
+        self.headlight_thread.start()
+
+    def _stop_headlight_detection(self):
+        if self.headlight_thread is not None:
+            self.headlight_thread.stop()
+            self.headlight_thread.deleteLater()
+            self.headlight_thread = None
+        self._headlight_camera_available = False
+
+    def _on_headlight_lost(self):
+        if (self.controls.is_auto_light() and self.headlight_thread is not None
+                and self._headlight_camera_available):
+            self.headlight_camera_status.setText("Camera connected - no bright light detected")
+            self.headlight_camera_status.setStyleSheet("color:#ff9800;")
+
+    def _update_single_projection(self):
+        if isinstance(self.headlight_thread, MonocularHeadlightDetectorThread):
+            self.headlight_thread.update_projection(
+                self.controls.spin_single_depth.value(),
+                self.controls.spin_ws_h.value(),
+                self.controls.spin_camera_hfov.value(),
+                self.controls.spin_brightness_threshold.value(),
+            )
+
+    def _update_detection_settings(self):
+        self._update_single_projection()
+        if isinstance(self.headlight_thread, HeadlightDetectorThread):
+            self.headlight_thread.update_detection_threshold(
+                self.controls.spin_brightness_threshold.value())
+
     def _toggle_stream(self, checked):
         if checked:
             if self.cap_thread.isRunning():
@@ -152,11 +342,14 @@ class MainWindow(QMainWindow):
         else:
             self.controls.btn_stream.setText("▶  Start Stream")
             self.cap_thread.stop()
-            self.video_widget.clear_feed()
+            self.driver_preview.clear()
+            self.driver_preview.setText("Driver camera stopped")
             self.scene_3d.hide_tracking()
             self.windshield_2d.clear_glare()
             self.tracker.reset_on_stream_stop()
             self.readout.set_value("status", "STOPPED ○", "#666")
+            self.driver_camera_status.setText("Stopped")
+            self.driver_camera_status.setStyleSheet("color:#8b949e;")
 
     def _push_config(self):
         self.cap_thread.update_config(TrackingConfig(
@@ -170,6 +363,7 @@ class MainWindow(QMainWindow):
         if self.cap_thread.isRunning():
             self._push_config()
         self.tracker.on_params_changed()
+        self._update_single_projection()
 
     def _toggle_movement(self, playing):
         if playing:
@@ -204,6 +398,7 @@ class MainWindow(QMainWindow):
     def closeEvent(self, event):
         self._movement_timer.stop()
         self.cap_thread.stop()
+        self._stop_headlight_detection()
         if self.cap_thread.isRunning():
             event.ignore()
             return

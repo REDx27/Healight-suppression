@@ -2,6 +2,11 @@
 
 GlareTracker is a Windows desktop application that tracks driver eye position from a webcam and visualizes glare intersections on a virtual windshield.
 
+Headlight coordinates can be supplied manually or detected from cameras. Auto mode
+supports an initial single-camera setup (with a user-supplied depth estimate) and a
+calibrated or fallback stereo-camera setup. The driver and outdoor camera feeds are
+shown in the sidebar, together with connection and detection status.
+
 ## Run from source
 
 ```bash
@@ -59,3 +64,6 @@ The executable is created at `dist/GlareTracker.exe`. If Inno Setup (`iscc`) is 
 ```
 
 The application needs a working webcam and Windows graphics support for the 3D view.
+Default camera indices are 0 for the driver, 1 for the first outdoor camera, and 2
+for the optional second stereo camera. Camera origins are modelled at the top-centre
+of the windshield by default.

@@ -1,0 +1,313 @@
+"""Camera calibration utilities — single camera and stereo pair.
+
+Provides interactive calibration using a checkerboard pattern, and
+functions to load/save calibration data.  Calibration results are
+stored as NumPy ``.npz`` files in the ``calibration/`` directory.
+"""
+
+from __future__ import annotations
+
+import os
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+import cv2
+import numpy as np
+
+
+# ── Default checkerboard parameters ─────────────────────────────────
+
+DEFAULT_PATTERN_SIZE = (9, 6)  # inner corners (cols, rows)
+DEFAULT_SQUARE_SIZE_CM = 2.5   # physical size of each square
+
+
+@dataclass
+class CalibrationResult:
+    """Holds intrinsic calibration data for a single camera."""
+
+    camera_matrix: np.ndarray          # 3×3 intrinsic matrix K
+    dist_coeffs: np.ndarray            # distortion coefficients
+    image_size: tuple[int, int]        # (width, height)
+    rms_error: float = 0.0             # reprojection RMS error (pixels)
+    focal_length_px: float = 0.0       # fx (horizontal focal length in pixels)
+    principal_point: tuple[float, float] = (0.0, 0.0)  # (cx, cy)
+
+    def __post_init__(self):
+        self.focal_length_px = float(self.camera_matrix[0, 0])
+        self.principal_point = (
+            float(self.camera_matrix[0, 2]),
+            float(self.camera_matrix[1, 2]),
+        )
+
+
+@dataclass
+class StereoCalibrationResult:
+    """Holds stereo calibration data for a camera pair."""
+
+    cam1: CalibrationResult
+    cam2: CalibrationResult
+    R: np.ndarray                      # rotation between cameras
+    T: np.ndarray                      # translation between cameras (cm)
+    E: np.ndarray                      # essential matrix
+    F: np.ndarray                      # fundamental matrix
+    R1: np.ndarray                     # rectification rotation cam1
+    R2: np.ndarray                     # rectification rotation cam2
+    P1: np.ndarray                     # rectified projection cam1
+    P2: np.ndarray                     # rectified projection cam2
+    Q: np.ndarray                      # disparity-to-depth mapping
+    baseline_cm: float = 0.0           # physical baseline distance
+    rms_error: float = 0.0
+
+    def __post_init__(self):
+        f = float(self.P1[0, 0])
+        if f > 0:
+            self.baseline_cm = abs(float(self.P2[0, 3])) / f
+
+
+# ── Calibration file I/O ────────────────────────────────────────────
+
+def _calibration_dir() -> Path:
+    """Return the calibration data directory (project_root/calibration/)."""
+    project_root = Path(__file__).resolve().parent.parent
+    cal_dir = project_root / "calibration"
+    cal_dir.mkdir(exist_ok=True)
+    return cal_dir
+
+
+def save_single_calibration(result: CalibrationResult, name: str = "driver_cam"):
+    """Save single-camera calibration to a .npz file."""
+    path = _calibration_dir() / f"{name}_calib.npz"
+    np.savez(
+        str(path),
+        camera_matrix=result.camera_matrix,
+        dist_coeffs=result.dist_coeffs,
+        image_size=np.array(result.image_size),
+        rms_error=np.array([result.rms_error]),
+    )
+    return path
+
+
+def load_single_calibration(name: str = "driver_cam") -> Optional[CalibrationResult]:
+    """Load single-camera calibration from a .npz file, or None if missing."""
+    path = _calibration_dir() / f"{name}_calib.npz"
+    if not path.exists():
+        return None
+    data = np.load(str(path))
+    return CalibrationResult(
+        camera_matrix=data["camera_matrix"],
+        dist_coeffs=data["dist_coeffs"],
+        image_size=tuple(data["image_size"].tolist()),
+        rms_error=float(data["rms_error"][0]),
+    )
+
+
+def save_stereo_calibration(result: StereoCalibrationResult, name: str = "stereo"):
+    """Save stereo calibration to a .npz file."""
+    path = _calibration_dir() / f"{name}_calib.npz"
+    np.savez(
+        str(path),
+        mtx1=result.cam1.camera_matrix, dist1=result.cam1.dist_coeffs,
+        mtx2=result.cam2.camera_matrix, dist2=result.cam2.dist_coeffs,
+        image_size=np.array(result.cam1.image_size),
+        R=result.R, T=result.T, E=result.E, F=result.F,
+        R1=result.R1, R2=result.R2, P1=result.P1, P2=result.P2, Q=result.Q,
+        rms_error=np.array([result.rms_error]),
+    )
+    return path
+
+
+def load_stereo_calibration(name: str = "stereo") -> Optional[StereoCalibrationResult]:
+    """Load stereo calibration from a .npz file, or None if missing."""
+    path = _calibration_dir() / f"{name}_calib.npz"
+    if not path.exists():
+        return None
+    d = np.load(str(path))
+    cam1 = CalibrationResult(d["mtx1"], d["dist1"], tuple(d["image_size"].tolist()))
+    cam2 = CalibrationResult(d["mtx2"], d["dist2"], tuple(d["image_size"].tolist()))
+    return StereoCalibrationResult(
+        cam1=cam1, cam2=cam2,
+        R=d["R"], T=d["T"], E=d["E"], F=d["F"],
+        R1=d["R1"], R2=d["R2"], P1=d["P1"], P2=d["P2"], Q=d["Q"],
+        rms_error=float(d["rms_error"][0]),
+    )
+
+
+# ── Checkerboard detection helpers ──────────────────────────────────
+
+def _build_object_points(
+    pattern_size: tuple[int, int] = DEFAULT_PATTERN_SIZE,
+    square_size_cm: float = DEFAULT_SQUARE_SIZE_CM,
+) -> np.ndarray:
+    """Build the 3D object points for a planar checkerboard (Z=0)."""
+    objp = np.zeros((pattern_size[0] * pattern_size[1], 3), np.float32)
+    objp[:, :2] = np.mgrid[0:pattern_size[0], 0:pattern_size[1]].T.reshape(-1, 2)
+    objp *= square_size_cm
+    return objp
+
+
+_SUBPIX_CRITERIA = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+
+
+def detect_checkerboard(
+    frame: np.ndarray,
+    pattern_size: tuple[int, int] = DEFAULT_PATTERN_SIZE,
+) -> Optional[np.ndarray]:
+    """Detect checkerboard corners with sub-pixel refinement.
+
+    Returns refined corner array (N, 1, 2) or None.
+    """
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
+    found, corners = cv2.findChessboardCorners(
+        gray, pattern_size,
+        cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_NORMALIZE_IMAGE + cv2.CALIB_CB_FAST_CHECK,
+    )
+    if not found:
+        return None
+    return cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), _SUBPIX_CRITERIA)
+
+
+def draw_checkerboard(
+    frame: np.ndarray,
+    corners: np.ndarray,
+    pattern_size: tuple[int, int] = DEFAULT_PATTERN_SIZE,
+) -> np.ndarray:
+    """Draw detected checkerboard corners on a frame (in-place)."""
+    cv2.drawChessboardCorners(frame, pattern_size, corners, True)
+    return frame
+
+
+# ── Single camera calibration ──────────────────────────────────────
+
+def calibrate_single(
+    frames: list[np.ndarray],
+    pattern_size: tuple[int, int] = DEFAULT_PATTERN_SIZE,
+    square_size_cm: float = DEFAULT_SQUARE_SIZE_CM,
+) -> Optional[CalibrationResult]:
+    """Run single-camera calibration from a list of frames.
+
+    Each frame should contain a visible checkerboard.
+    Returns CalibrationResult or None if insufficient detections.
+    """
+    objp = _build_object_points(pattern_size, square_size_cm)
+    obj_points: list[np.ndarray] = []
+    img_points: list[np.ndarray] = []
+    img_size: Optional[tuple[int, int]] = None
+
+    for frame in frames:
+        h, w = frame.shape[:2]
+        img_size = (w, h)
+        corners = detect_checkerboard(frame, pattern_size)
+        if corners is not None:
+            obj_points.append(objp)
+            img_points.append(corners)
+
+    if len(obj_points) < 8:
+        return None  # need at least 8 good detections
+
+    rms, mtx, dist, _, _ = cv2.calibrateCamera(
+        obj_points, img_points, img_size, None, None,
+    )
+    return CalibrationResult(
+        camera_matrix=mtx,
+        dist_coeffs=dist,
+        image_size=img_size,
+        rms_error=rms,
+    )
+
+
+# ── Stereo calibration ─────────────────────────────────────────────
+
+def calibrate_stereo(
+    frames_cam1: list[np.ndarray],
+    frames_cam2: list[np.ndarray],
+    pattern_size: tuple[int, int] = DEFAULT_PATTERN_SIZE,
+    square_size_cm: float = DEFAULT_SQUARE_SIZE_CM,
+) -> Optional[StereoCalibrationResult]:
+    """Run stereo calibration from synchronized frame pairs.
+
+    Returns StereoCalibrationResult or None if insufficient detections.
+    """
+    objp = _build_object_points(pattern_size, square_size_cm)
+    obj_points: list[np.ndarray] = []
+    img_points1: list[np.ndarray] = []
+    img_points2: list[np.ndarray] = []
+    img_size: Optional[tuple[int, int]] = None
+
+    for f1, f2 in zip(frames_cam1, frames_cam2):
+        h, w = f1.shape[:2]
+        img_size = (w, h)
+        c1 = detect_checkerboard(f1, pattern_size)
+        c2 = detect_checkerboard(f2, pattern_size)
+        if c1 is not None and c2 is not None:
+            obj_points.append(objp)
+            img_points1.append(c1)
+            img_points2.append(c2)
+
+    if len(obj_points) < 8:
+        return None
+
+    # Individual calibrations first
+    rms1, mtx1, dist1, _, _ = cv2.calibrateCamera(
+        obj_points, img_points1, img_size, None, None,
+    )
+    rms2, mtx2, dist2, _, _ = cv2.calibrateCamera(
+        obj_points, img_points2, img_size, None, None,
+    )
+
+    # Stereo calibration — fix intrinsics to avoid divergence
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 1e-6)
+    rms_s, mtx1, dist1, mtx2, dist2, R, T, E, F = cv2.stereoCalibrate(
+        obj_points, img_points1, img_points2,
+        mtx1, dist1, mtx2, dist2,
+        img_size, criteria=criteria, flags=cv2.CALIB_FIX_INTRINSIC,
+    )
+
+    # Rectification
+    R1, R2, P1, P2, Q, _, _ = cv2.stereoRectify(
+        mtx1, dist1, mtx2, dist2, img_size, R, T,
+        flags=cv2.CALIB_ZERO_DISPARITY, alpha=0,
+    )
+
+    cam1 = CalibrationResult(mtx1, dist1, img_size, rms1)
+    cam2 = CalibrationResult(mtx2, dist2, img_size, rms2)
+
+    return StereoCalibrationResult(
+        cam1=cam1, cam2=cam2,
+        R=R, T=T, E=E, F=F,
+        R1=R1, R2=R2, P1=P1, P2=P2, Q=Q,
+        rms_error=rms_s,
+    )
+
+
+# ── Coordinate helpers ──────────────────────────────────────────────
+
+def undistort_point(
+    u: float, v: float, calib: CalibrationResult,
+) -> tuple[float, float]:
+    """Undistort a single pixel coordinate, returning corrected (u, v)."""
+    pt = np.array([[[u, v]]], dtype=np.float32)
+    norm = cv2.undistortPoints(pt, calib.camera_matrix, calib.dist_coeffs, P=calib.camera_matrix)
+    return float(norm[0, 0, 0]), float(norm[0, 0, 1])
+
+
+def pixel_to_3d(
+    u: float, v: float, depth_cm: float, calib: CalibrationResult,
+) -> tuple[float, float, float]:
+    """Unproject a pixel + depth into 3D camera-space coordinates (cm).
+
+    Uses calibrated intrinsics with lens distortion correction.
+    """
+    pt = np.array([[[u, v]]], dtype=np.float32)
+    norm = cv2.undistortPoints(pt, calib.camera_matrix, calib.dist_coeffs)
+    x_norm = float(norm[0, 0, 0])
+    y_norm = float(norm[0, 0, 1])
+    return (x_norm * depth_cm, y_norm * depth_cm, depth_cm)
+
+
+def estimate_focal_length_from_fov(
+    image_width_px: int, hfov_degrees: float,
+) -> float:
+    """Estimate focal length (pixels) from known horizontal FOV."""
+    return (image_width_px / 2.0) / np.tan(np.deg2rad(hfov_degrees / 2.0))
