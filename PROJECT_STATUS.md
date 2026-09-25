@@ -393,7 +393,7 @@ dist/GlareTracker-v1.exe
 | Ribbon session controls | ✅ | Start/stop, centre calibration, and 3D reset are always available in the top application ribbon |
 | Responsive sidebar navigation | ✅ | Operations and Configuration tabs expand equally, elide safely, and receive additional working width |
 | Neutral layered application chrome | ✅ | Graphite canvas, raised surfaces, and stronger neutral borders visually separate the workspace, sidebar, cards, and inputs without a blue wash |
-| Semantic action hierarchy | ✅ | Green session, violet calibration, amber reset, and category-specific section accents make controls and panels easier to identify |
+| Cohesive interaction hierarchy | ✅ | A single violet accent family identifies navigation and focus, blue identifies primary actions, and semantic colors are reserved for live state and spatial data |
 | Efficient preview rendering | ✅ | Camera cards cache frames and cap preview scaling to 20 FPS |
 | Responsive camera layout | ✅ | Camera cards switch between horizontal and vertical layouts based on sidebar width |
 | Collapsible operations panel | ✅ | Header PANEL control releases additional space for the 3D workspace |

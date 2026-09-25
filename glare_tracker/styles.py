@@ -1,7 +1,7 @@
 """Centralized visual design system for the GlareTracker desktop UI.
 
-Provides a cohesive neutral dark theme with restrained semantic accents,
-layered surfaces, and clear visual hierarchy.
+Provides a cohesive simulation-studio theme with elevated charcoal surfaces,
+violet interaction accents, and restrained semantic state colors.
 """
 
 from dataclasses import dataclass
@@ -12,26 +12,26 @@ class ThemePalette:
     """Immutable color tokens shared by widgets and the application stylesheet."""
 
     # ── Backgrounds ──
-    canvas: str = "#090a0d"          # deepest neutral background
-    surface: str = "#111318"         # card / panel background
-    surface_raised: str = "#181b22"  # inputs, elevated cards
-    surface_hover: str = "#222630"   # hover state
-    surface_glow: str = "#201a2e"    # restrained violet interaction layer
+    canvas: str = "#0b0b0f"          # deepest neutral background
+    surface: str = "#15151b"         # card / panel background
+    surface_raised: str = "#21212a"  # inputs, elevated cards
+    surface_hover: str = "#2a2a35"   # hover state
+    surface_glow: str = "#241a31"    # restrained violet interaction layer
 
     # ── Borders ──
-    border: str = "#282d36"          # default border
-    border_strong: str = "#414957"   # focused / prominent border
-    border_glow: str = "#7657c8"     # prominent accent border
+    border: str = "#2b2b35"          # default border
+    border_strong: str = "#484554"   # focused / prominent border
+    border_glow: str = "#7c3aed"     # prominent accent border
 
     # ── Text ──
-    text: str = "#f0f2f5"            # primary text
-    text_muted: str = "#9aa3b0"      # secondary text
-    text_dim: str = "#626b78"        # disabled / hint text
+    text: str = "#f4f4f5"            # primary text
+    text_muted: str = "#a1a1aa"      # secondary text
+    text_dim: str = "#666672"        # disabled / hint text
 
     # ── Accent spectrum ──
     accent: str = "#8b5cf6"          # primary violet interaction accent
-    accent_bright: str = "#c4b5fd"   # bright variant
-    accent_dim: str = "#6d4ccf"      # dimmed variant
+    accent_bright: str = "#d8b4fe"   # bright variant
+    accent_dim: str = "#62409a"      # dimmed variant
 
     # ── Semantic ──
     success: str = "#34d399"         # green
@@ -75,9 +75,10 @@ class ThemeManager:
         /* ── Header ── */
         QFrame#appHeader {{
             background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 #14161b, stop:0.55 #171520, stop:1 #111318);
+                stop:0 #17171d, stop:0.55 #191720, stop:1 #141419);
             border: 1px solid {p.border};
-            border-bottom: 2px solid #4f3b78;
+            border-top: 1px solid #5b367c;
+            border-bottom: 1px solid #5b367c;
             border-radius: 10px;
         }}
         QLabel#appTitle {{
@@ -94,8 +95,9 @@ class ThemeManager:
 
         /* ── Camera Cards ── */
         QFrame#cameraCard {{
-            background: #14171d;
+            background: #18181f;
             border: 1px solid {p.border};
+            border-left: 2px solid #5b367c;
             border-radius: 8px;
         }}
         QFrame#cameraCard:hover {{
@@ -107,17 +109,8 @@ class ThemeManager:
             color: {p.text_muted};
             letter-spacing: 0.8px;
         }}
-        QFrame#cameraCard[feed="driver"] {{
-            border-left: 3px solid #8b5cf6;
-        }}
-        QFrame#cameraCard[feed="driver"] QLabel#cameraTitle {{
+        QFrame#cameraCard QLabel#cameraTitle {{
             color: #c4b5fd;
-        }}
-        QFrame#cameraCard[feed="road"] {{
-            border-left: 3px solid #f59e0b;
-        }}
-        QFrame#cameraCard[feed="road"] QLabel#cameraTitle {{
-            color: #fcd34d;
         }}
         QLabel#cameraViewport {{
             background: #07080b;
@@ -156,45 +149,30 @@ class ThemeManager:
 
         /* ── Group Boxes ── */
         QGroupBox {{
-            background: #13161b;
+            background: #17171d;
             border: 1px solid {p.border};
+            border-left: 2px solid #553675;
             border-radius: 8px;
             margin-top: 16px;
             padding: 16px 12px 12px 12px;
             font-weight: 700;
             font-size: 9pt;
-            color: {p.text_muted};
+            color: #c4b5d5;
         }}
         QGroupBox::title {{
             subcontrol-origin: margin;
             left: 14px;
             padding: 0 8px;
-            background: #13161b;
+            background: #17171d;
         }}
-        QGroupBox[section="geometry"] {{ border-left: 3px solid #22d3ee; }}
-        QGroupBox[section="geometry"]::title {{ color: #67e8f9; }}
-        QGroupBox[section="camera"] {{ border-left: 3px solid #8b5cf6; }}
-        QGroupBox[section="camera"]::title {{ color: #c4b5fd; }}
-        QGroupBox[section="driver"] {{ border-left: 3px solid #10b981; }}
-        QGroupBox[section="driver"]::title {{ color: #6ee7b7; }}
-        QGroupBox[section="vehicle"] {{ border-left: 3px solid #eab308; }}
-        QGroupBox[section="vehicle"]::title {{ color: #fde047; }}
-        QGroupBox[section="light"] {{ border-left: 3px solid #f97316; }}
-        QGroupBox[section="light"]::title {{ color: #fdba74; }}
-        QGroupBox[section="vision"] {{ border-left: 3px solid #3b82f6; }}
-        QGroupBox[section="vision"]::title {{ color: #93c5fd; }}
-        QGroupBox[section="simulation"] {{ border-left: 3px solid #ec4899; }}
-        QGroupBox[section="simulation"]::title {{ color: #f9a8d4; }}
-        QGroupBox[section="telemetry"] {{ border-left: 3px solid #10b981; }}
-        QGroupBox[section="telemetry"]::title {{ color: #6ee7b7; }}
         QGroupBox[section="results"] {{
-            background: #0f1116;
-            border-color: #303640;
-            border-left: 3px solid #f97316;
+            background: #141419;
+            border-color: #30303a;
+            border-left: 2px solid #553675;
         }}
         QGroupBox[section="results"]::title {{
-            background: #0f1116;
-            color: #fdba74;
+            background: #141419;
+            color: #c4b5d5;
         }}
 
         /* ── Inputs ── */
@@ -252,16 +230,16 @@ class ThemeManager:
         /* Primary action */
         QPushButton#primaryAction {{
             background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 #047857, stop:1 #059669);
-            border: 1px solid #10b981;
+                stop:0 #1d4ed8, stop:1 #2563eb);
+            border: 1px solid #3b82f6;
             color: white;
             font-weight: 700;
             font-size: 10pt;
         }}
         QPushButton#primaryAction:hover {{
             background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 #059669, stop:1 #10b981);
-            border-color: #6ee7b7;
+                stop:0 #2563eb, stop:1 #3b82f6);
+            border-color: #93c5fd;
         }}
         QPushButton#primaryAction:checked {{
             background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
@@ -271,14 +249,14 @@ class ThemeManager:
         QPushButton#sessionAction {{
             min-height: 30px;
             background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 #047857, stop:1 #059669);
-            border: 1px solid #10b981;
+                stop:0 #1d4ed8, stop:1 #2563eb);
+            border: 1px solid #3b82f6;
             color: white;
             font-weight: 700;
         }}
         QPushButton#sessionAction:hover {{
-            border-color: #6ee7b7;
-            background: #0d9f75;
+            border-color: #93c5fd;
+            background: #3171ed;
         }}
         QPushButton#sessionAction:checked {{
             background: {p.danger_bg};
@@ -294,34 +272,34 @@ class ThemeManager:
             background: {p.surface_hover};
         }}
         QPushButton#headerAction[role="calibrate"] {{
-            color: #c4b5fd;
-            border-color: #4f3b78;
-            background: #1b1724;
+            color: #c8c7d0;
+            border-color: #393741;
+            background: #1b1b22;
         }}
         QPushButton#headerAction[role="calibrate"]:hover {{
             color: #ede9fe;
-            border-color: #8b5cf6;
+            border-color: #7650a1;
             background: #261d39;
         }}
         QPushButton#headerAction[role="reset"] {{
-            color: #fcd34d;
-            border-color: #51451d;
-            background: #1d1a12;
+            color: #c8c7d0;
+            border-color: #393741;
+            background: #1b1b22;
         }}
         QPushButton#headerAction[role="reset"]:hover {{
-            color: #fef3c7;
-            border-color: #d6a820;
-            background: #292310;
+            color: #ede9fe;
+            border-color: #7650a1;
+            background: #261d39;
         }}
         QPushButton#simulationAction {{
-            color: #f9a8d4;
-            border-color: #63304e;
-            background: #21151c;
+            color: white;
+            border-color: #3b82f6;
+            background: #2563eb;
         }}
         QPushButton#simulationAction:hover {{
-            color: #fce7f3;
-            border-color: #ec4899;
-            background: #321827;
+            color: white;
+            border-color: #93c5fd;
+            background: #3171ed;
         }}
         QPushButton#simulationAction:checked {{
             color: #fecdd3;
@@ -366,9 +344,9 @@ class ThemeManager:
             border-bottom-right-radius: 8px;
         }}
         QTabBar::tab:selected {{
-            background: #231b33;
+            background: #22192d;
             color: {p.accent_bright};
-            border-color: #5d458c;
+            border-color: #60417f;
             border-bottom: 2px solid {p.accent};
         }}
         QTabBar::tab:hover:!selected {{
