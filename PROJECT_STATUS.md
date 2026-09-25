@@ -370,6 +370,10 @@ dist/GlareTracker-v1.exe
 | Full-size 3D workspace | ✅ | 3D scene is the primary view with a responsive intersection overlay |
 | Live system-state header | ✅ | Displays application version, Manual/Auto mode, and tracking state |
 | Efficient preview rendering | ✅ | Camera cards cache frames and cap preview scaling to 20 FPS |
+| Responsive camera layout | ✅ | Camera cards switch between horizontal and vertical layouts based on sidebar width |
+| Collapsible operations panel | ✅ | Header PANEL control releases additional space for the 3D workspace |
+| Allocation-free telemetry updates | ✅ | Intersection labels are pooled and updated instead of recreated every frame |
+| Cached windshield rendering | ✅ | Static gradients, grid, labels, and outline are repainted only when geometry/state changes |
 | High-DPI support | ✅ | Qt high-DPI scaling and pixmaps enabled before application startup |
 
 **Key files:** `styles.py`, `widgets/dashboard.py`, `window.py`, `app.py`

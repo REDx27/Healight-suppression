@@ -10,7 +10,9 @@ shown in the sidebar, together with connection and detection status.
 Version 1.1 introduces an operator-focused dashboard with a full-size 3D workspace,
 responsive windshield-intersection overlay, live system-state header, reusable camera
 cards, and separate Operations and Configuration tabs. UI colors and component states
-are driven by a centralized theme system.
+are driven by a centralized theme system. Camera cards reflow for narrow layouts, the
+operations sidebar can be collapsed from the header, and static overlay graphics plus
+telemetry widgets are cached/reused to reduce work during real-time tracking.
 
 ## Run from source
 

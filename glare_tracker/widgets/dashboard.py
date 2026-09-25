@@ -5,8 +5,8 @@ from __future__ import annotations
 from PyQt5.QtCore import QElapsedTimer, Qt
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import (
-    QFrame, QHBoxLayout, QLabel, QScrollArea, QSizePolicy, QTabWidget,
-    QVBoxLayout, QWidget,
+    QBoxLayout, QFrame, QHBoxLayout, QLabel, QScrollArea, QSizePolicy, QTabWidget,
+    QToolButton, QVBoxLayout, QWidget,
 )
 
 
@@ -36,13 +36,14 @@ class CameraPreviewCard(QFrame):
     def __init__(self, title: str, placeholder: str, parent=None):
         super().__init__(parent)
         self.setObjectName("cameraCard")
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        # Let the card expand vertically when the sidebar is tall
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self._last_image: QImage | None = None
         self._render_clock = QElapsedTimer()
         self._render_clock.start()
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(6)
 
         title_row = QHBoxLayout()
@@ -56,15 +57,16 @@ class CameraPreviewCard(QFrame):
         self.viewport = QLabel(placeholder)
         self.viewport.setObjectName("cameraViewport")
         self.viewport.setAlignment(Qt.AlignCenter)
-        self.viewport.setMinimumSize(120, 92)
-        self.viewport.setMaximumHeight(130)
+        self.viewport.setMinimumSize(120, 80)
+        # No fixed max height — viewport stretches with the card
+        self.viewport.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         self.detail = QLabel("Waiting for camera")
         self.detail.setObjectName("mutedText")
         self.detail.setWordWrap(True)
 
         layout.addLayout(title_row)
-        layout.addWidget(self.viewport)
+        layout.addWidget(self.viewport, 1)  # stretch factor 1
         layout.addWidget(self.detail)
 
     def set_frame(self, image: QImage):
@@ -105,25 +107,33 @@ class ApplicationHeader(QFrame):
     def __init__(self, version: str, parent=None):
         super().__init__(parent)
         self.setObjectName("appHeader")
-        self.setFixedHeight(76)
+        self.setFixedHeight(72)
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(16, 10, 16, 10)
+        layout.setContentsMargins(18, 8, 18, 8)
 
         title_stack = QVBoxLayout()
-        title_stack.setSpacing(0)
+        title_stack.setSpacing(2)
         title = QLabel("GlareTracker")
         title.setObjectName("appTitle")
-        subtitle = QLabel(f"ACTIVE GLARE SUPPRESSION RESEARCH PLATFORM  /  v{version}")
+        subtitle = QLabel(f"ACTIVE GLARE SUPPRESSION  //  v{version}")
         subtitle.setObjectName("appSubtitle")
         title_stack.addWidget(title)
         title_stack.addWidget(subtitle)
 
         self.mode_badge = StatusBadge("MANUAL", "info")
         self.tracking_badge = StatusBadge("SYSTEM IDLE", "idle")
+        self.panel_toggle = QToolButton()
+        self.panel_toggle.setObjectName("panelToggle")
+        self.panel_toggle.setText("PANEL")
+        self.panel_toggle.setToolTip("Show or hide the operations sidebar")
+        self.panel_toggle.setCheckable(True)
+        self.panel_toggle.setChecked(True)
         layout.addLayout(title_stack)
         layout.addStretch()
+        layout.addWidget(self.panel_toggle)
+        layout.addSpacing(8)
         layout.addWidget(self.mode_badge)
-        layout.addSpacing(6)
+        layout.addSpacing(8)
         layout.addWidget(self.tracking_badge)
 
     def set_mode(self, automatic: bool):
@@ -139,19 +149,29 @@ class CameraFeedPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(6)
         heading = QLabel("VISION INPUTS")
         heading.setObjectName("appSubtitle")
-        cards = QHBoxLayout()
-        cards.setSpacing(8)
+        self._cards = QBoxLayout(QBoxLayout.LeftToRight)
+        self._cards.setSpacing(8)
         self.driver = CameraPreviewCard("DRIVER / EYES", "Driver camera")
         self.headlight = CameraPreviewCard("ROAD / LIGHT", "Manual coordinates")
-        cards.addWidget(self.driver)
-        cards.addWidget(self.headlight)
+        self._cards.addWidget(self.driver)
+        self._cards.addWidget(self.headlight)
         layout.addWidget(heading)
-        layout.addLayout(cards)
+        layout.addLayout(self._cards)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        direction = (
+            QBoxLayout.TopToBottom if self.width() < 390
+            else QBoxLayout.LeftToRight
+        )
+        if self._cards.direction() != direction:
+            self._cards.setDirection(direction)
 
 
 class SceneWorkspace(QFrame):
@@ -172,8 +192,11 @@ class SceneWorkspace(QFrame):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        width = min(390, max(285, int(self.width() * 0.36)))
-        self.overlay.setGeometry(15, 15, width, int(width * 0.60))
+        # Scale the overlay proportionally but with sensible bounds
+        width = min(420, max(240, int(self.width() * 0.32)))
+        height = int(width * 0.58)
+        margin = 12
+        self.overlay.setGeometry(margin, margin, width, height)
         self.overlay.raise_()
 
 
@@ -190,7 +213,7 @@ class OperationsSidebar(QTabWidget):
     def _scroll_page(widgets: list[QWidget]) -> QScrollArea:
         content = QWidget()
         layout = QVBoxLayout(content)
-        layout.setContentsMargins(4, 8, 4, 8)
+        layout.setContentsMargins(6, 10, 6, 10)
         layout.setSpacing(10)
         for widget in widgets:
             layout.addWidget(widget)

@@ -1,22 +1,29 @@
 """User-configurable controls panel (windshield, camera, light, vehicle)."""
 
 from PyQt5.QtWidgets import (
-    QGroupBox, QVBoxLayout, QFormLayout, QLabel,
-    QPushButton, QDoubleSpinBox, QComboBox, QSpinBox,
+    QWidget, QGroupBox, QVBoxLayout, QFormLayout, QLabel,
+    QPushButton, QDoubleSpinBox, QComboBox, QSpinBox, QSizePolicy,
 )
 
 
-class ControlsPanel(QGroupBox):
-    """Sidebar panel with all user-configurable tracking parameters."""
+class ControlsPanel(QWidget):
+    """Sidebar panel with all user-configurable tracking parameters.
+
+    Uses a flat QWidget (not nested QGroupBox) for cleaner rendering
+    inside the OperationsSidebar tab.
+    """
 
     def __init__(self, parent=None):
-        super().__init__("⚙ Controls", parent)
+        super().__init__(parent)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(8)
 
         # ── Windshield ──
-        ws_group = QGroupBox("Windshield (cm)")
+        ws_group = QGroupBox("Windshield")
         ws_layout = QFormLayout(ws_group)
+        ws_layout.setSpacing(6)
         self.spin_ws_w = self._make_spin(1.0, 500.0, 34.5, " cm")
         self.spin_ws_h = self._make_spin(1.0, 500.0, 19.5, " cm")
         ws_layout.addRow("Width:", self.spin_ws_w)
@@ -24,8 +31,9 @@ class ControlsPanel(QGroupBox):
         layout.addWidget(ws_group)
 
         # ── Camera position ──
-        camera_group = QGroupBox("Camera Position (cm)")
+        camera_group = QGroupBox("Camera Position")
         camera_layout = QFormLayout(camera_group)
+        camera_layout.setSpacing(6)
         self.spin_camera_x = self._make_spin(-1000, 1000, 0.0, " cm")
         self.spin_camera_y = self._make_spin(-1000, 1000, 0.0, " cm")
         self.spin_camera_z = self._make_spin(-1000, 1000, 19.5, " cm")
@@ -35,26 +43,29 @@ class ControlsPanel(QGroupBox):
         layout.addWidget(camera_group)
 
         # ── Driver distance ──
-        dist_group = QGroupBox("Driver Distance (cm)")
+        dist_group = QGroupBox("Driver Distance")
         dist_layout = QFormLayout(dist_group)
+        dist_layout.setSpacing(6)
         self.spin_eye_dist = self._make_spin(5.0, 500.0, 50.0, " cm")
-        self.distance_note = QLabel("Manual/reference measurement")
-        self.distance_note.setStyleSheet("color: #8b949e;")
+        self.distance_note = QLabel("Manual / reference measurement")
+        self.distance_note.setObjectName("mutedText")
         dist_layout.addRow("Distance:", self.spin_eye_dist)
         dist_layout.addRow(self.distance_note)
         layout.addWidget(dist_group)
 
         # ── Vehicle / light mode ──
-        vehicle_group = QGroupBox("Vehicle / Light Mode")
+        vehicle_group = QGroupBox("Vehicle Type")
         vehicle_layout = QFormLayout(vehicle_group)
+        vehicle_layout.setSpacing(6)
         self.combo_vehicle = QComboBox()
         self.combo_vehicle.addItems(["Motorcycle", "Four-Wheeler/Car", "Extreme Vehicle"])
         vehicle_layout.addRow("Category:", self.combo_vehicle)
         layout.addWidget(vehicle_group)
 
         # ── Headlight source ──
-        light_group = QGroupBox("Light Source (cm)")
+        light_group = QGroupBox("Light Source")
         light_layout = QFormLayout(light_group)
+        light_layout.setSpacing(6)
         self.combo_light_mode = QComboBox()
         self.combo_light_mode.addItems(["Manual", "Auto"])
         self.spin_light_x = self._make_spin(-1000, 1000, 0.0, " cm")
@@ -69,6 +80,7 @@ class ControlsPanel(QGroupBox):
         # ── Camera setup (shown only in Auto mode) ──
         self.auto_camera_group = QGroupBox("Auto Camera Setup")
         auto_layout = QFormLayout(self.auto_camera_group)
+        auto_layout.setSpacing(6)
         self.combo_detection_setup = QComboBox()
         self.combo_detection_setup.addItems(["Single Camera", "Stereo Cameras"])
         self.spin_driver_camera = self._make_index_spin(0)
@@ -79,12 +91,12 @@ class ControlsPanel(QGroupBox):
         self.spin_brightness_threshold = QSpinBox()
         self.spin_brightness_threshold.setRange(0, 255)
         self.spin_brightness_threshold.setValue(240)
-        self.spin_brightness_threshold.setMinimumHeight(28)
+        self.spin_brightness_threshold.setMinimumHeight(30)
         self.auto_note = QLabel(
             "Single-camera depth is assumed. Cameras default to the "
             "windshield top-centre.")
         self.auto_note.setWordWrap(True)
-        self.auto_note.setStyleSheet("color: #8b949e;")
+        self.auto_note.setObjectName("mutedText")
         auto_layout.addRow("Setup:", self.combo_detection_setup)
         auto_layout.addRow("Driver camera:", self.spin_driver_camera)
         auto_layout.addRow("Headlight camera:", self.spin_headlight_camera)
@@ -100,34 +112,43 @@ class ControlsPanel(QGroupBox):
         self.combo_detection_setup.currentTextChanged.connect(self._update_auto_controls)
 
         # ── Light movement ──
+        movement_group = QGroupBox("Simulation")
+        movement_layout = QVBoxLayout(movement_group)
+        movement_layout.setSpacing(6)
         self.combo_movement = QComboBox()
         self.combo_movement.addItems([
             "Coming straight",
             "Coming at the opposite side",
             "Long distance",
         ])
-        self.btn_play_movement = QPushButton("▶  Play Light Movement")
+        self.btn_play_movement = QPushButton("Play Light Movement")
         self.btn_play_movement.setCheckable(True)
-        self.btn_play_movement.setMinimumHeight(32)
-        layout.addWidget(self.combo_movement)
-        layout.addWidget(self.btn_play_movement)
+        self.btn_play_movement.setMinimumHeight(34)
+        movement_layout.addWidget(self.combo_movement)
+        movement_layout.addWidget(self.btn_play_movement)
+        layout.addWidget(movement_group)
 
         # ── Action buttons ──
-        self.btn_stream = QPushButton("▶  Start Stream")
+        actions_group = QGroupBox("Actions")
+        actions_layout = QVBoxLayout(actions_group)
+        actions_layout.setSpacing(6)
+
+        self.btn_stream = QPushButton("Start Stream")
         self.btn_stream.setObjectName("primaryAction")
         self.btn_stream.setCheckable(True)
-        self.btn_stream.setMinimumHeight(36)
+        self.btn_stream.setMinimumHeight(40)
 
-        self.btn_calibrate = QPushButton("🎯  Calibrate Center")
-        self.btn_calibrate.setMinimumHeight(32)
+        self.btn_calibrate = QPushButton("Calibrate Center")
+        self.btn_calibrate.setMinimumHeight(34)
 
-        self.btn_reset_view = QPushButton("🔄  Reset 3D View")
-        self.btn_reset_view.setMinimumHeight(32)
+        self.btn_reset_view = QPushButton("Reset 3D View")
+        self.btn_reset_view.setMinimumHeight(34)
 
-        layout.addSpacing(8)
-        layout.addWidget(self.btn_stream)
-        layout.addWidget(self.btn_calibrate)
-        layout.addWidget(self.btn_reset_view)
+        actions_layout.addWidget(self.btn_stream)
+        actions_layout.addWidget(self.btn_calibrate)
+        actions_layout.addWidget(self.btn_reset_view)
+        layout.addWidget(actions_group)
+
         layout.addStretch()
 
     # ── helpers ──────────────────────────────────────────────────────
@@ -140,7 +161,7 @@ class ControlsPanel(QGroupBox):
         spin.setSuffix(suffix)
         spin.setDecimals(1)
         spin.setSingleStep(0.5)
-        spin.setMinimumHeight(28)
+        spin.setMinimumHeight(30)
         return spin
 
     @staticmethod
@@ -148,7 +169,7 @@ class ControlsPanel(QGroupBox):
         spin = QSpinBox()
         spin.setRange(0, 20)
         spin.setValue(default)
-        spin.setMinimumHeight(28)
+        spin.setMinimumHeight(30)
         return spin
 
     def _update_auto_controls(self):
@@ -177,7 +198,7 @@ class ControlsPanel(QGroupBox):
                 self.spin_light_z.value())
 
     def get_light_positions(self):
-        """All light positions based on vehicle category (1–4 sources)."""
+        """All light positions based on vehicle category (1-4 sources)."""
         bx, by, bz = self.get_light_pos()
         category = self.combo_vehicle.currentText()
         if category == "Four-Wheeler/Car":

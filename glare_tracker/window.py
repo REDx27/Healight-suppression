@@ -77,14 +77,15 @@ class MainWindow(QMainWindow):
     # ── layout ──────────────────────────────────────────────────────
 
     def _build_layout(self):
-        sidebar = OperationsSidebar([self.readout, self.camera_feeds], self.controls)
-        sidebar.setMinimumWidth(300)
-        sidebar.setMaximumWidth(460)
+        self.sidebar = OperationsSidebar(
+            [self.readout, self.camera_feeds], self.controls)
+        self.sidebar.setMinimumWidth(300)
+        self.sidebar.setMaximumWidth(460)
 
         # Main: viewport | sidebar
         self.main_splitter = QSplitter(Qt.Horizontal)
         self.main_splitter.addWidget(self.workspace)
-        self.main_splitter.addWidget(sidebar)
+        self.main_splitter.addWidget(self.sidebar)
         self.main_splitter.setSizes([1050, 350])
         self.main_splitter.setStretchFactor(0, 1)
         self.main_splitter.setStretchFactor(1, 0)
@@ -122,6 +123,7 @@ class MainWindow(QMainWindow):
         self.controls.btn_calibrate.clicked.connect(self.tracker.calibrate)
         self.controls.btn_reset_view.clicked.connect(self._reset_3d_view)
         self.controls.btn_play_movement.clicked.connect(self._toggle_movement)
+        self.header.panel_toggle.toggled.connect(self.sidebar.setVisible)
 
         # Parameter spin-boxes / combos → tracker
         for widget in (
@@ -329,13 +331,12 @@ class MainWindow(QMainWindow):
         super().resizeEvent(event)
         narrow = self.width() < 1050
         self.main_splitter.setOrientation(Qt.Vertical if narrow else Qt.Horizontal)
-        sidebar = self.main_splitter.widget(1)
         if narrow:
-            sidebar.setMinimumWidth(0)
-            sidebar.setMaximumWidth(16777215)
+            self.sidebar.setMinimumWidth(0)
+            self.sidebar.setMaximumWidth(16777215)
         else:
-            sidebar.setMinimumWidth(280)
-            sidebar.setMaximumWidth(420)
+            self.sidebar.setMinimumWidth(300)
+            self.sidebar.setMaximumWidth(460)
 
     # ── clean shutdown ──────────────────────────────────────────────
 
