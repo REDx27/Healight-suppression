@@ -9,6 +9,7 @@ from glare_tracker.widgets.dashboard import (
     ApplicationHeader, CameraFeedPanel, CameraPreviewCard, OperationsSidebar,
     SceneWorkspace, StatusBadge,
 )
+from glare_tracker.widgets.icons import ICON_SIZE, IconFactory
 
 __all__ = [
     "VideoWidget",
@@ -22,4 +23,6 @@ __all__ = [
     "OperationsSidebar",
     "SceneWorkspace",
     "StatusBadge",
+    "IconFactory",
+    "ICON_SIZE",
 ]

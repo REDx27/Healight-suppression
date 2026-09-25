@@ -14,6 +14,10 @@ are driven by a centralized theme system. Camera cards reflow for narrow layouts
 operations sidebar can be collapsed from the header, and static overlay graphics plus
 telemetry widgets are cached/reused to reduce work during real-time tracking.
 
+Version 1.2 adds a dependency-free vector icon system and a redesigned spatial view:
+translucent framed windshield glass, layered navigation grids, road/lane context,
+glowing eye/light/intersection markers, refined ray traces, and an in-scene legend.
+
 ## Run from source
 
 ```bash
@@ -61,6 +65,7 @@ The executable is created at `dist/GlareTracker.exe`. If Inno Setup (`iscc`) is 
 │       ├── windshield_2d.py    #     2D windshield front view
 │       ├── scene_3d.py         #     3D OpenGL visualization
 │       ├── dashboard.py        #     Reusable dashboard and camera components
+│       ├── icons.py            #     Dependency-free vector icon factory
 │       ├── readout.py          #     Telemetry readout panel
 │       └── controls.py        #     User controls & inputs
 ├── requirements.txt            # Python dependencies

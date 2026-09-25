@@ -9,6 +9,8 @@ from PyQt5.QtWidgets import (
     QToolButton, QVBoxLayout, QWidget,
 )
 
+from glare_tracker.widgets.icons import ICON_SIZE, IconFactory
+
 
 class StatusBadge(QLabel):
     """Compact semantic status indicator styled through a Qt property."""
@@ -33,7 +35,7 @@ class StatusBadge(QLabel):
 class CameraPreviewCard(QFrame):
     """Self-contained camera viewport with throttled rendering and status."""
 
-    def __init__(self, title: str, placeholder: str, parent=None):
+    def __init__(self, title: str, placeholder: str, icon_name: str = "camera", parent=None):
         super().__init__(parent)
         self.setObjectName("cameraCard")
         # Let the card expand vertically when the sidebar is tall
@@ -47,9 +49,12 @@ class CameraPreviewCard(QFrame):
         layout.setSpacing(6)
 
         title_row = QHBoxLayout()
+        title_icon = QLabel()
+        title_icon.setPixmap(IconFactory.pixmap(icon_name, "#5ce0f0", 16))
         title_label = QLabel(title)
         title_label.setObjectName("cameraTitle")
         self.status_badge = StatusBadge("STOPPED")
+        title_row.addWidget(title_icon)
         title_row.addWidget(title_label)
         title_row.addStretch()
         title_row.addWidget(self.status_badge)
@@ -125,6 +130,8 @@ class ApplicationHeader(QFrame):
         self.panel_toggle = QToolButton()
         self.panel_toggle.setObjectName("panelToggle")
         self.panel_toggle.setText("PANEL")
+        self.panel_toggle.setIcon(IconFactory.icon("panel"))
+        self.panel_toggle.setIconSize(ICON_SIZE)
         self.panel_toggle.setToolTip("Show or hide the operations sidebar")
         self.panel_toggle.setCheckable(True)
         self.panel_toggle.setChecked(True)
@@ -157,8 +164,8 @@ class CameraFeedPanel(QWidget):
         heading.setObjectName("appSubtitle")
         self._cards = QBoxLayout(QBoxLayout.LeftToRight)
         self._cards.setSpacing(8)
-        self.driver = CameraPreviewCard("DRIVER / EYES", "Driver camera")
-        self.headlight = CameraPreviewCard("ROAD / LIGHT", "Manual coordinates")
+        self.driver = CameraPreviewCard("DRIVER / EYES", "Driver camera", "eye")
+        self.headlight = CameraPreviewCard("ROAD / LIGHT", "Manual coordinates", "road")
         self._cards.addWidget(self.driver)
         self._cards.addWidget(self.headlight)
         layout.addWidget(heading)
@@ -206,8 +213,10 @@ class OperationsSidebar(QTabWidget):
     def __init__(self, overview_widgets: list[QWidget], controls: QWidget, parent=None):
         super().__init__(parent)
         self.setDocumentMode(True)
-        self.addTab(self._scroll_page(overview_widgets), "OPERATIONS")
-        self.addTab(self._scroll_page([controls]), "CONFIGURATION")
+        self.addTab(
+            self._scroll_page(overview_widgets), IconFactory.icon("operations"), "OPERATIONS")
+        self.addTab(
+            self._scroll_page([controls]), IconFactory.icon("controls"), "CONFIGURATION")
 
     @staticmethod
     def _scroll_page(widgets: list[QWidget]) -> QScrollArea:

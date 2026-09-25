@@ -65,6 +65,7 @@ Glare suppression system_test2/
 │       ├── windshield_2d.py    # Windshield2DWidget — 2D glare spot overlay
 │       ├── scene_3d.py         # Scene3DWidget — OpenGL 3D visualization
 │       ├── dashboard.py        # Header, camera cards, workspace, tabbed sidebar
+│       ├── icons.py            # Consistent dependency-free vector icon set
 │       ├── readout.py          # ReadoutPanel — text telemetry display
 │       └── controls.py         # ControlsPanel — parameter inputs, buttons
 │
@@ -380,6 +381,24 @@ dist/GlareTracker-v1.exe
 
 ---
 
+### REQ-17: Vector Icon System & Modern 3D Graphics
+**Status: ✅ DONE**
+
+| Sub-requirement | Status | Implementation |
+|---|---|---|
+| Consistent vector icons | ✅ | `icons.py` renders scalable Qt-native line icons without third-party packages |
+| Action and mode iconography | ✅ | Stream, simulation, calibration, reset, panel, tabs, cameras, and scene controls use shared icons |
+| Modern spatial palette | ✅ | Deep navy environment with cyan grid, semantic blue/amber/orange markers, and refined axes |
+| Translucent windshield glass | ✅ | Low-alpha OpenGL mesh with a separate high-contrast cyan frame |
+| Spatial driving context | ✅ | Layered minor/major grids plus road-edge and centre reference lines |
+| Layered tracked markers | ✅ | Eye, headlight, camera, and intersection points use separate glow and core layers |
+| In-scene legend | ✅ | Compact overlay identifies driver, light, intersection, and windshield colors |
+| Modern scene controls | ✅ | Restyled appearance panel uses the shared icon language and theme colors |
+
+**Key files:** `widgets/icons.py`, `widgets/scene_3d.py`, `widgets/controls.py`, `widgets/dashboard.py`
+
+---
+
 ## 6. Architecture Overview
 
 ### 6.1 Threading Model
@@ -441,6 +460,7 @@ Stereo cams (cam 1+2) → HeadlightDetectorThread → headlight_detected signal
 | `CameraPreviewCard` | `widgets/dashboard.py` | Throttled camera rendering and semantic device status |
 | `OperationsSidebar` | `widgets/dashboard.py` | Separates live operations from configuration controls |
 | `ThemeManager` | `styles.py` | Generates the stylesheet from centralized design tokens |
+| `IconFactory` | `widgets/icons.py` | Renders the shared vector icon set with Qt painting primitives |
 | `CalibrationResult` | `calibration.py` | Holds camera_matrix, dist_coeffs, focal_length, etc. |
 | `StereoCalibrationResult` | `calibration.py` | Holds stereo R, T, E, F, rectification matrices |
 

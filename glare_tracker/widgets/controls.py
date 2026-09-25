@@ -5,6 +5,8 @@ from PyQt5.QtWidgets import (
     QPushButton, QDoubleSpinBox, QComboBox, QSpinBox, QSizePolicy,
 )
 
+from glare_tracker.widgets.icons import ICON_SIZE, IconFactory
+
 
 class ControlsPanel(QWidget):
     """Sidebar panel with all user-configurable tracking parameters.
@@ -122,6 +124,8 @@ class ControlsPanel(QWidget):
             "Long distance",
         ])
         self.btn_play_movement = QPushButton("Play Light Movement")
+        self.btn_play_movement.setIcon(IconFactory.icon("play"))
+        self.btn_play_movement.setIconSize(ICON_SIZE)
         self.btn_play_movement.setCheckable(True)
         self.btn_play_movement.setMinimumHeight(34)
         movement_layout.addWidget(self.combo_movement)
@@ -135,13 +139,19 @@ class ControlsPanel(QWidget):
 
         self.btn_stream = QPushButton("Start Stream")
         self.btn_stream.setObjectName("primaryAction")
+        self.btn_stream.setIcon(IconFactory.icon("play", "#dffaff"))
+        self.btn_stream.setIconSize(ICON_SIZE)
         self.btn_stream.setCheckable(True)
         self.btn_stream.setMinimumHeight(40)
 
         self.btn_calibrate = QPushButton("Calibrate Center")
+        self.btn_calibrate.setIcon(IconFactory.icon("target"))
+        self.btn_calibrate.setIconSize(ICON_SIZE)
         self.btn_calibrate.setMinimumHeight(34)
 
         self.btn_reset_view = QPushButton("Reset 3D View")
+        self.btn_reset_view.setIcon(IconFactory.icon("reset"))
+        self.btn_reset_view.setIconSize(ICON_SIZE)
         self.btn_reset_view.setMinimumHeight(34)
 
         actions_layout.addWidget(self.btn_stream)

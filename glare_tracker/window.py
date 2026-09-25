@@ -23,6 +23,7 @@ from glare_tracker.tracking import TrackingController
 from glare_tracker.widgets import (
     ApplicationHeader, CameraFeedPanel, ControlsPanel, OperationsSidebar,
     ReadoutPanel, Scene3DWidget, SceneWorkspace, Windshield2DWidget,
+    IconFactory,
 )
 
 
@@ -195,7 +196,8 @@ class MainWindow(QMainWindow):
                 self._movement_timer.stop()
                 self.tracker.stop_movement()
                 self.controls.btn_play_movement.setChecked(False)
-                self.controls.btn_play_movement.setText("▶  Play Light Movement")
+                self.controls.btn_play_movement.setText("Play Light Movement")
+                self.controls.btn_play_movement.setIcon(IconFactory.icon("play"))
             self._start_headlight_detection()
         else:
             self._stop_headlight_detection()
@@ -280,14 +282,16 @@ class MainWindow(QMainWindow):
         if checked:
             if self.cap_thread.isRunning():
                 return
-            self.controls.btn_stream.setText("⏹  Stop Stream")
+            self.controls.btn_stream.setText("Stop Stream")
+            self.controls.btn_stream.setIcon(IconFactory.icon("stop", "#fff1f2"))
             self._push_config()
             self.cap_thread.start()
             self.readout.set_value("status", "ACTIVE ●", "#4caf50")
             self.header.set_tracking("STARTING", "warning")
             self.camera_feeds.driver.set_status("Opening camera...", "warning")
         else:
-            self.controls.btn_stream.setText("▶  Start Stream")
+            self.controls.btn_stream.setText("Start Stream")
+            self.controls.btn_stream.setIcon(IconFactory.icon("play", "#dffaff"))
             self.cap_thread.stop()
             self.camera_feeds.driver.set_placeholder("Driver camera stopped")
             self.scene_3d.hide_tracking()
@@ -313,17 +317,19 @@ class MainWindow(QMainWindow):
 
     def _toggle_movement(self, playing):
         if playing:
-            self.controls.btn_play_movement.setText("⏹  Stop Light Movement")
+            self.controls.btn_play_movement.setText("Stop Light Movement")
+            self.controls.btn_play_movement.setIcon(IconFactory.icon("stop"))
             self.tracker.start_movement()
             self._movement_timer.start()
         else:
             self._movement_timer.stop()
             self.tracker.stop_movement()
-            self.controls.btn_play_movement.setText("▶  Play Light Movement")
+            self.controls.btn_play_movement.setText("Play Light Movement")
+            self.controls.btn_play_movement.setIcon(IconFactory.icon("play"))
             self.tracker.on_params_changed()
 
     def _reset_3d_view(self):
-        self.scene_3d.gl_view.setCameraPosition(distance=140, elevation=20, azimuth=-45)
+        self.scene_3d.gl_view.setCameraPosition(distance=145, elevation=22, azimuth=-45)
 
     # ── responsive layout ───────────────────────────────────────────
 
