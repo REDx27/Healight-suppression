@@ -80,14 +80,14 @@ class MainWindow(QMainWindow):
     def _build_layout(self):
         self.sidebar = OperationsSidebar(
             [self.readout, self.camera_feeds], self.controls)
-        self.sidebar.setMinimumWidth(300)
-        self.sidebar.setMaximumWidth(460)
+        self.sidebar.setMinimumWidth(360)
+        self.sidebar.setMaximumWidth(520)
 
         # Main: viewport | sidebar
         self.main_splitter = QSplitter(Qt.Horizontal)
         self.main_splitter.addWidget(self.workspace)
         self.main_splitter.addWidget(self.sidebar)
-        self.main_splitter.setSizes([1050, 350])
+        self.main_splitter.setSizes([1100, 440])
         self.main_splitter.setStretchFactor(0, 1)
         self.main_splitter.setStretchFactor(1, 0)
 
@@ -120,9 +120,9 @@ class MainWindow(QMainWindow):
             self._update_detection_settings)
 
         # Buttons
-        self.controls.btn_stream.clicked.connect(self._toggle_stream)
-        self.controls.btn_calibrate.clicked.connect(self.tracker.calibrate)
-        self.controls.btn_reset_view.clicked.connect(self._reset_3d_view)
+        self.header.btn_stream.clicked.connect(self._toggle_stream)
+        self.header.btn_calibrate.clicked.connect(self.tracker.calibrate)
+        self.header.btn_reset_view.clicked.connect(self._reset_3d_view)
         self.controls.btn_play_movement.clicked.connect(self._toggle_movement)
         self.header.panel_toggle.toggled.connect(self.sidebar.setVisible)
 
@@ -282,16 +282,16 @@ class MainWindow(QMainWindow):
         if checked:
             if self.cap_thread.isRunning():
                 return
-            self.controls.btn_stream.setText("Stop Stream")
-            self.controls.btn_stream.setIcon(IconFactory.icon("stop", "#fff1f2"))
+            self.header.btn_stream.setText("Stop Session")
+            self.header.btn_stream.setIcon(IconFactory.icon("stop", "#fff1f2"))
             self._push_config()
             self.cap_thread.start()
             self.readout.set_value("status", "ACTIVE ●", "#4caf50")
             self.header.set_tracking("STARTING", "warning")
             self.camera_feeds.driver.set_status("Opening camera...", "warning")
         else:
-            self.controls.btn_stream.setText("Start Stream")
-            self.controls.btn_stream.setIcon(IconFactory.icon("play", "#dffaff"))
+            self.header.btn_stream.setText("Start Session")
+            self.header.btn_stream.setIcon(IconFactory.icon("play", "#dffaff"))
             self.cap_thread.stop()
             self.camera_feeds.driver.set_placeholder("Driver camera stopped")
             self.scene_3d.hide_tracking()
@@ -335,14 +335,14 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        narrow = self.width() < 1050
+        narrow = self.width() < 1180
         self.main_splitter.setOrientation(Qt.Vertical if narrow else Qt.Horizontal)
         if narrow:
             self.sidebar.setMinimumWidth(0)
             self.sidebar.setMaximumWidth(16777215)
         else:
-            self.sidebar.setMinimumWidth(300)
-            self.sidebar.setMaximumWidth(460)
+            self.sidebar.setMinimumWidth(360)
+            self.sidebar.setMaximumWidth(520)
 
     # ── clean shutdown ──────────────────────────────────────────────
 

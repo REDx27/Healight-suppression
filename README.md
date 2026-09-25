@@ -17,6 +17,25 @@ telemetry widgets are cached/reused to reduce work during real-time tracking.
 Version 1.2 adds a dependency-free vector icon system and a redesigned spatial view:
 translucent framed windshield glass, layered navigation grids, road/lane context,
 glowing eye/light/intersection markers, refined ray traces, and an in-scene legend.
+Session, calibration, and 3D-reset actions now live in the top ribbon, while the
+Operations and Configuration tabs use equal-width responsive navigation.
+
+## Positioning accuracy
+
+The current uncalibrated driver-camera mode is a visualization fallback: it maps the
+iris position across the configured windshield size and uses a fixed driver distance.
+The optional intrinsic-calibration path corrects lens distortion and estimates depth
+from interpupillary distance, but a complete physical installation must also calibrate
+the rigid camera-to-windshield transform (rotation and translation). Until that
+extrinsic calibration is added, reported centimetre coordinates must not be treated as
+measurement-grade windshield coordinates.
+
+A single calibrated driver camera is suitable for prototype tracking when each driver
+is calibrated (especially IPD) and the result is validated over the expected seating
+range. Stereo or an RGB-D camera is recommended when robust absolute depth is required.
+For the outdoor light camera, a single image supplies direction but not independently
+measured range; single-camera mode therefore requires the configured distance. Use the
+stereo setup for measured 3D headlight position.
 
 ## Run from source
 

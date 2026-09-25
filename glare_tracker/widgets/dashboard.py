@@ -5,8 +5,8 @@ from __future__ import annotations
 from PyQt5.QtCore import QElapsedTimer, Qt
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import (
-    QBoxLayout, QFrame, QHBoxLayout, QLabel, QScrollArea, QSizePolicy, QTabWidget,
-    QToolButton, QVBoxLayout, QWidget,
+    QBoxLayout, QFrame, QHBoxLayout, QLabel, QLayout, QScrollArea, QSizePolicy, QTabWidget,
+    QPushButton, QTabBar, QToolButton, QVBoxLayout, QWidget,
 )
 
 from glare_tracker.widgets.icons import ICON_SIZE, IconFactory
@@ -114,19 +114,40 @@ class ApplicationHeader(QFrame):
         self.setObjectName("appHeader")
         self.setFixedHeight(72)
         layout = QHBoxLayout(self)
+        layout.setSizeConstraint(QLayout.SetNoConstraint)
         layout.setContentsMargins(18, 8, 18, 8)
 
         title_stack = QVBoxLayout()
         title_stack.setSpacing(2)
         title = QLabel("GlareTracker")
         title.setObjectName("appTitle")
-        subtitle = QLabel(f"ACTIVE GLARE SUPPRESSION  //  v{version}")
-        subtitle.setObjectName("appSubtitle")
+        self.subtitle = QLabel(f"ACTIVE GLARE SUPPRESSION  //  v{version}")
+        self.subtitle.setObjectName("appSubtitle")
         title_stack.addWidget(title)
-        title_stack.addWidget(subtitle)
+        title_stack.addWidget(self.subtitle)
 
         self.mode_badge = StatusBadge("MANUAL", "info")
         self.tracking_badge = StatusBadge("SYSTEM IDLE", "idle")
+
+        self.btn_stream = QPushButton("Start Session")
+        self.btn_stream.setObjectName("sessionAction")
+        self.btn_stream.setIcon(IconFactory.icon("play", "#dffaff"))
+        self.btn_stream.setIconSize(ICON_SIZE)
+        self.btn_stream.setCheckable(True)
+        self.btn_stream.setToolTip("Start or stop the driver tracking session")
+
+        self.btn_calibrate = QPushButton("Calibrate Center")
+        self.btn_calibrate.setObjectName("headerAction")
+        self.btn_calibrate.setIcon(IconFactory.icon("target"))
+        self.btn_calibrate.setIconSize(ICON_SIZE)
+        self.btn_calibrate.setToolTip("Use the current eye position as the center reference")
+
+        self.btn_reset_view = QPushButton("Reset View")
+        self.btn_reset_view.setObjectName("headerAction")
+        self.btn_reset_view.setIcon(IconFactory.icon("reset"))
+        self.btn_reset_view.setIconSize(ICON_SIZE)
+        self.btn_reset_view.setToolTip("Restore the default 3D camera angle")
+
         self.panel_toggle = QToolButton()
         self.panel_toggle.setObjectName("panelToggle")
         self.panel_toggle.setText("PANEL")
@@ -137,6 +158,11 @@ class ApplicationHeader(QFrame):
         self.panel_toggle.setChecked(True)
         layout.addLayout(title_stack)
         layout.addStretch()
+        layout.addWidget(self.btn_stream)
+        layout.addSpacing(4)
+        layout.addWidget(self.btn_calibrate)
+        layout.addWidget(self.btn_reset_view)
+        layout.addSpacing(10)
         layout.addWidget(self.panel_toggle)
         layout.addSpacing(8)
         layout.addWidget(self.mode_badge)
@@ -149,6 +175,15 @@ class ApplicationHeader(QFrame):
 
     def set_tracking(self, text: str, state: str):
         self.tracking_badge.set_status(text, state)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        compact = self.width() < 1120
+        very_compact = self.width() < 820
+        self.btn_calibrate.setText("" if compact else "Calibrate Center")
+        self.btn_reset_view.setText("" if compact else "Reset View")
+        self.panel_toggle.setText("" if compact else "PANEL")
+        self.subtitle.setVisible(not very_compact)
 
 
 class CameraFeedPanel(QWidget):
@@ -207,12 +242,32 @@ class SceneWorkspace(QFrame):
         self.overlay.raise_()
 
 
+class EqualWidthTabBar(QTabBar):
+    """Tab bar that allocates the available width evenly to every tab."""
+
+    def tabSizeHint(self, index):
+        size = super().tabSizeHint(index)
+        if self.count() and self.width() > 0:
+            size.setWidth(max(1, self.width() // self.count()))
+        return size
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self.updateGeometry()
+
+
 class OperationsSidebar(QTabWidget):
     """Tabbed sidebar separating live operations from configuration."""
 
     def __init__(self, overview_widgets: list[QWidget], controls: QWidget, parent=None):
         super().__init__(parent)
+        self.setTabBar(EqualWidthTabBar(self))
         self.setDocumentMode(True)
+        self.setUsesScrollButtons(False)
+        self.setElideMode(Qt.ElideRight)
+        self.setIconSize(ICON_SIZE)
+        self.tabBar().setExpanding(True)
+        self.tabBar().setDrawBase(False)
         self.addTab(
             self._scroll_page(overview_widgets), IconFactory.icon("operations"), "OPERATIONS")
         self.addTab(

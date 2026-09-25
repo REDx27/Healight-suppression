@@ -132,33 +132,6 @@ class ControlsPanel(QWidget):
         movement_layout.addWidget(self.btn_play_movement)
         layout.addWidget(movement_group)
 
-        # ── Action buttons ──
-        actions_group = QGroupBox("Actions")
-        actions_layout = QVBoxLayout(actions_group)
-        actions_layout.setSpacing(6)
-
-        self.btn_stream = QPushButton("Start Stream")
-        self.btn_stream.setObjectName("primaryAction")
-        self.btn_stream.setIcon(IconFactory.icon("play", "#dffaff"))
-        self.btn_stream.setIconSize(ICON_SIZE)
-        self.btn_stream.setCheckable(True)
-        self.btn_stream.setMinimumHeight(40)
-
-        self.btn_calibrate = QPushButton("Calibrate Center")
-        self.btn_calibrate.setIcon(IconFactory.icon("target"))
-        self.btn_calibrate.setIconSize(ICON_SIZE)
-        self.btn_calibrate.setMinimumHeight(34)
-
-        self.btn_reset_view = QPushButton("Reset 3D View")
-        self.btn_reset_view.setIcon(IconFactory.icon("reset"))
-        self.btn_reset_view.setIconSize(ICON_SIZE)
-        self.btn_reset_view.setMinimumHeight(34)
-
-        actions_layout.addWidget(self.btn_stream)
-        actions_layout.addWidget(self.btn_calibrate)
-        actions_layout.addWidget(self.btn_reset_view)
-        layout.addWidget(actions_group)
-
         layout.addStretch()
 
     # ── helpers ──────────────────────────────────────────────────────

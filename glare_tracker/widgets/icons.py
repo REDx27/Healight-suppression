@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from PyQt5.QtCore import QPointF, QRectF, QSize, Qt
 from PyQt5.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
 
@@ -57,13 +59,17 @@ class IconFactory:
             p.drawLine(QPointF(15, 5), QPointF(15, 19))
             p.drawLine(QPointF(18, 9), QPointF(18, 15))
         elif name == "settings":
-            p.drawEllipse(QPointF(12, 12), 3.2, 3.2)
-            p.drawEllipse(QPointF(12, 12), 7.2, 7.2)
-            for a, b in [((12, 2), (12, 5)), ((12, 19), (12, 22)),
-                         ((2, 12), (5, 12)), ((19, 12), (22, 12)),
-                         ((5, 5), (7, 7)), ((17, 17), (19, 19)),
-                         ((19, 5), (17, 7)), ((7, 17), (5, 19))]:
-                p.drawLine(QPointF(*a), QPointF(*b))
+            points = []
+            for index in range(24):
+                angle = -math.pi / 2 + index * math.pi / 12
+                radius = 9.2 if index % 3 == 0 else 7.2
+                points.append(QPointF(
+                    12 + math.cos(angle) * radius,
+                    12 + math.sin(angle) * radius,
+                ))
+            p.drawPolygon(QPolygonF(points))
+            p.setBrush(color)
+            p.drawEllipse(QPointF(12, 12), 2.7, 2.7)
         elif name == "eye":
             path = QPainterPath(QPointF(3, 12))
             path.cubicTo(7, 5.5, 17, 5.5, 21, 12)

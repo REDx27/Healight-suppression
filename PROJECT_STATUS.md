@@ -34,6 +34,26 @@
 - **Y axis:** Depth (front/back), centimetres. Y=0 is the windshield plane. Driver is at negative Y, lights are at positive Y.
 - **Z axis:** Vertical height, centimetres
 
+### 1.3 Camera-to-Windshield Measurement Model
+
+For physical positioning, every observation must be expressed in the windshield frame.
+After intrinsic calibration and lens correction, pixel `(u, v)` defines a camera ray
+`r = K^-1 [u, v, 1]^T`. A depth source supplies the scale `d`, giving camera-space
+position `p_camera = d * r`. The installed camera pose must then be applied with the
+measured rigid transform `p_windshield = R_wc * p_camera + t_wc`.
+
+- **Driver camera:** one calibrated RGB camera can estimate approximate metric depth
+  using a known/per-driver IPD or a canonical face model. It is suitable for prototype
+  testing, but universal absolute depth remains scale-sensitive. Stereo or RGB-D is
+  preferred for measurement-grade depth.
+- **Outdoor camera:** one camera provides a bearing only. Current single-camera mode
+  projects that bearing onto a user-supplied distance; calibrated stereo is required
+  to measure headlight range from a simultaneous frame pair.
+- **Current implementation limitation:** intrinsic unprojection exists, but the driver
+  camera-to-windshield rotation/translation is not yet applied, and calibrated mode is
+  not selectable from the UI. The default uncalibrated mapping is therefore an
+  approximation for visualization, not a verified physical measurement.
+
 ---
 
 ## 2. Directory Structure
@@ -133,7 +153,7 @@ dist/GlareTracker-v1.exe
 | Capture webcam video at 30 FPS | ✅ | `camera.py` — `VideoCaptureThread(QThread)` using `cv2.VideoCapture` with `CAP_DSHOW` backend |
 | Run in background thread (non-blocking UI) | ✅ | `QThread` with `frame_ready`, `eye_detected`, `eye_lost` signals |
 | Detect iris position using MediaPipe Face Mesh | ✅ | Landmarks 468 (right iris) and 473 (left iris) with `refine_landmarks=True` |
-| Convert pixel coordinates to real-world cm | ✅ | `geometry.py` — `pixel_to_cm()` (uncalibrated) and `pixel_to_cm_calibrated()` (calibrated) |
+| Convert pixel coordinates to real-world cm | 🔧 | `geometry.py` provides fallback and intrinsic-unprojection paths; camera-to-windshield extrinsics are still required for verified physical coordinates |
 | Draw iris overlay on camera feed | ✅ | Red filled circle at midpoint, blue circles at each iris |
 | Mirror the video feed for natural interaction | ✅ | `cv2.flip(frame, 1)` |
 
@@ -148,7 +168,7 @@ dist/GlareTracker-v1.exe
 |---|---|---|
 | IPD-based depth estimation (Z = IPD_real * f / IPD_pixels) | ✅ | `geometry.py` — `estimate_ipd_depth()` with yaw correction |
 | Head pose estimation via solvePnP | ✅ | `camera.py` — `_estimate_head_pose()` using 6 anthropometric face model points |
-| Calibrated unprojection (cv2.undistortPoints) | ✅ | `geometry.py` — `pixel_to_cm_calibrated()` |
+| Calibrated unprojection (cv2.undistortPoints) | 🔧 | Intrinsic ray conversion exists in `geometry.py`; installed camera rotation/translation into the windshield frame is not yet applied |
 | Track both eyes individually | ✅ | `camera.py` — `eyes_detected` signal emits left + right 3D positions |
 | Depth + yaw displayed on camera feed | ✅ | Green overlay text: "D:XXcm Y:XXdeg" |
 | Kalman filter for jitter smoothing | ❌ | Not yet implemented |
@@ -370,6 +390,8 @@ dist/GlareTracker-v1.exe
 | Operations / configuration separation | ✅ | Tabbed sidebar keeps live telemetry distinct from setup controls |
 | Full-size 3D workspace | ✅ | 3D scene is the primary view with a responsive intersection overlay |
 | Live system-state header | ✅ | Displays application version, Manual/Auto mode, and tracking state |
+| Ribbon session controls | ✅ | Start/stop, centre calibration, and 3D reset are always available in the top application ribbon |
+| Responsive sidebar navigation | ✅ | Operations and Configuration tabs expand equally, elide safely, and receive additional working width |
 | Efficient preview rendering | ✅ | Camera cards cache frames and cap preview scaling to 20 FPS |
 | Responsive camera layout | ✅ | Camera cards switch between horizontal and vertical layouts based on sidebar width |
 | Collapsible operations panel | ✅ | Header PANEL control releases additional space for the 3D workspace |
@@ -393,7 +415,7 @@ dist/GlareTracker-v1.exe
 | Spatial driving context | ✅ | Layered minor/major grids plus road-edge and centre reference lines |
 | Layered tracked markers | ✅ | Eye, headlight, camera, and intersection points use separate glow and core layers |
 | In-scene legend | ✅ | Compact overlay identifies driver, light, intersection, and windshield colors |
-| Modern scene controls | ✅ | Restyled appearance panel uses the shared icon language and theme colors |
+| Modern scene controls | ✅ | Restyled appearance panel uses a dedicated gear icon from the shared icon language |
 
 **Key files:** `widgets/icons.py`, `widgets/scene_3d.py`, `widgets/controls.py`, `widgets/dashboard.py`
 
@@ -499,17 +521,18 @@ Stereo cams (cam 1+2) → HeadlightDetectorThread → headlight_detected signal
 
 ### High Priority
 1. **LCD Light Blocking** (`lcd_blocker.py`) — Render Gaussian-feathered black spots on a stripped TN LCD panel to physically block glare. Must handle binocular parallax (2 spots per headlight).
-2. **Calibration UI** — Add a dialog/wizard in the app to run the checkerboard calibration interactively instead of programmatically.
-3. **Kalman Filter** — Smooth out eye position jitter for stable intersection tracking.
+2. **Camera-to-Windshield Extrinsic Calibration** — Measure each camera's rotation and translation relative to the windshield frame, apply the rigid transform after unprojection, and validate error across the usable cabin volume.
+3. **Calibration UI** — Add a dialog/wizard in the app to run intrinsic, extrinsic, stereo, and per-driver IPD calibration interactively instead of programmatically.
+4. **Kalman Filter** — Smooth out eye position jitter for stable intersection tracking.
 
 ### Medium Priority
-4. **Data Logging** — CSV export of eye, light, and intersection data per frame for research analysis.
-5. **Both-Eyes Intersection** — Currently uses midpoint; should compute 2 separate intersection points per headlight for accurate LCD blocking.
-6. **Predictive Rendering** — Kalman filter on intersection positions to compensate for ~30-60ms system latency.
+5. **Data Logging** — CSV export of eye, light, and intersection data per frame for research analysis.
+6. **Both-Eyes Intersection** — Currently uses midpoint; should compute 2 separate intersection points per headlight for accurate LCD blocking.
+7. **Predictive Rendering** — Kalman filter on intersection positions to compensate for ~30-60ms system latency.
 
 ### Low Priority
-7. **Standalone v2** — Rebuild the PyInstaller executable with all new features.
-8. **Settings Persistence** — Save/load user preferences (windshield dimensions, camera positions) between sessions.
+8. **Standalone v2** — Rebuild the PyInstaller executable with all new features.
+9. **Settings Persistence** — Save/load user preferences (windshield dimensions, camera positions) between sessions.
 
 ---
 

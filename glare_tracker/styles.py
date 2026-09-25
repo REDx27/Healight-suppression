@@ -227,6 +227,32 @@ class ThemeManager:
                 stop:0 #7f1d1d, stop:1 #991b1b);
             border-color: {p.danger};
         }}
+        QPushButton#sessionAction {{
+            min-height: 30px;
+            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                stop:0 #0c5c74, stop:1 #0a7e99);
+            border: 1px solid {p.accent_dim};
+            color: white;
+            font-weight: 700;
+        }}
+        QPushButton#sessionAction:hover {{
+            border-color: {p.accent_bright};
+            background: #0e7490;
+        }}
+        QPushButton#sessionAction:checked {{
+            background: {p.danger_bg};
+            border-color: {p.danger};
+            color: #fecdd3;
+        }}
+        QPushButton#headerAction {{
+            min-height: 30px;
+            background: transparent;
+            color: {p.text_muted};
+        }}
+        QPushButton#headerAction:hover {{
+            color: {p.accent_bright};
+            background: {p.surface_hover};
+        }}
         QToolButton#panelToggle {{
             min-height: 24px;
             padding: 2px 10px;
@@ -249,8 +275,8 @@ class ThemeManager:
             background: {p.surface};
             color: {p.text_muted};
             border: 1px solid {p.border};
-            padding: 10px 18px;
-            min-width: 90px;
+            padding: 11px 12px;
+            min-width: 0;
             font-weight: 600;
             font-size: 8.5pt;
             letter-spacing: 0.8px;

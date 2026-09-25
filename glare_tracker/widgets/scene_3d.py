@@ -322,7 +322,7 @@ class Scene3DWidget(QWidget):
 
     def _build_settings_overlay(self):
         self.settings_button = QToolButton(self)
-        self.settings_button.setIcon(IconFactory.icon("controls", "#8fa8bf"))
+        self.settings_button.setIcon(IconFactory.icon("settings", "#b8d0e4"))
         self.settings_button.setIconSize(ICON_SIZE)
         self.settings_button.setToolTip("3D view settings")
         self.settings_button.setFixedSize(36, 36)
