@@ -6,8 +6,8 @@ from PyQt5.QtWidgets import QGroupBox, QFormLayout, QVBoxLayout, QLabel, QSizePo
 
 
 _READOUT_STYLE = (
-    "color: {color}; background-color: #080e16; "
-    "padding: 6px 10px; border-radius: 5px; border: 1px solid #152030;"
+    "color: {color}; background-color: #0b0d11; "
+    "padding: 6px 10px; border-radius: 5px; border: 1px solid #2a2f38;"
     "font-family: 'Consolas', 'Cascadia Code', monospace;"
 )
 _DEFAULT_COLOR = "#34d399"
@@ -18,6 +18,7 @@ class ReadoutPanel(QGroupBox):
 
     def __init__(self, parent=None):
         super().__init__("Telemetry", parent)
+        self.setProperty("section", "telemetry")
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         layout = QFormLayout(self)
         layout.setSpacing(6)
@@ -45,6 +46,7 @@ class ReadoutPanel(QGroupBox):
 
         # Dynamic intersection list
         self._intersection_box = QGroupBox("Intersections")
+        self._intersection_box.setProperty("section", "results")
         self._intersection_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self._intersection_layout = QVBoxLayout(self._intersection_box)
         self._intersection_layout.setContentsMargins(8, 12, 8, 8)

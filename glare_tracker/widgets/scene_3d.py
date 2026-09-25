@@ -322,7 +322,7 @@ class Scene3DWidget(QWidget):
 
     def _build_settings_overlay(self):
         self.settings_button = QToolButton(self)
-        self.settings_button.setIcon(IconFactory.icon("settings", "#b8d0e4"))
+        self.settings_button.setIcon(IconFactory.icon("settings", "#c4b5fd"))
         self.settings_button.setIconSize(ICON_SIZE)
         self.settings_button.setToolTip("3D view settings")
         self.settings_button.setFixedSize(36, 36)
@@ -331,13 +331,13 @@ class Scene3DWidget(QWidget):
         self.settings_panel = QFrame(self)
         self.settings_panel.setObjectName("sceneSettingsPanel")
         self.settings_panel.setStyleSheet(
-            "QFrame#sceneSettingsPanel { background: rgba(8, 14, 22, 242); "
-            "border: 1px solid #2a4460; border-radius: 8px; }"
-            "QLabel { color: #a8bacb; background: transparent; }"
-            "QToolButton { color: #a8bacb; background: #111a24; border: 1px solid #26364a; "
+            "QFrame#sceneSettingsPanel { background: rgba(17, 18, 23, 245); "
+            "border: 1px solid #5d458c; border-radius: 8px; }"
+            "QLabel { color: #b5bac4; background: transparent; }"
+            "QToolButton { color: #b5bac4; background: #1a1c23; border: 1px solid #343943; "
             "border-radius: 5px; padding: 4px; }"
-            "QToolButton:checked { background: #0d2a3d; border-color: #22b8cf; color: #5ce0f0; }"
-            "QPushButton { border: 1px solid #2a4460; border-radius: 4px; min-width: 34px; "
+            "QToolButton:checked { background: #251d35; border-color: #8b5cf6; color: #c4b5fd; }"
+            "QPushButton { border: 1px solid #414957; border-radius: 4px; min-width: 34px; "
             "min-height: 22px; }"
         )
         panel = QGridLayout(self.settings_panel)
@@ -376,9 +376,9 @@ class Scene3DWidget(QWidget):
         self.legend_panel = QFrame(self)
         self.legend_panel.setObjectName("sceneLegend")
         self.legend_panel.setStyleSheet(
-            "QFrame#sceneLegend { background: rgba(5, 8, 16, 210); "
-            "border: 1px solid #1a2736; border-radius: 7px; }"
-            "QLabel { color: #7890a7; background: transparent; font-size: 8pt; }"
+            "QFrame#sceneLegend { background: rgba(12, 13, 17, 220); "
+            "border: 1px solid #30353e; border-radius: 7px; }"
+            "QLabel { color: #929aa7; background: transparent; font-size: 8pt; }"
         )
         row = QGridLayout(self.legend_panel)
         row.setContentsMargins(9, 6, 9, 6)

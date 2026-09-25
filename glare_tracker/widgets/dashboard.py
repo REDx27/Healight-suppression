@@ -38,6 +38,8 @@ class CameraPreviewCard(QFrame):
     def __init__(self, title: str, placeholder: str, icon_name: str = "camera", parent=None):
         super().__init__(parent)
         self.setObjectName("cameraCard")
+        feed = "road" if icon_name == "road" else "driver"
+        self.setProperty("feed", feed)
         # Let the card expand vertically when the sidebar is tall
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self._last_image: QImage | None = None
@@ -50,7 +52,8 @@ class CameraPreviewCard(QFrame):
 
         title_row = QHBoxLayout()
         title_icon = QLabel()
-        title_icon.setPixmap(IconFactory.pixmap(icon_name, "#5ce0f0", 16))
+        icon_color = "#fbbf24" if feed == "road" else "#a78bfa"
+        title_icon.setPixmap(IconFactory.pixmap(icon_name, icon_color, 16))
         title_label = QLabel(title)
         title_label.setObjectName("cameraTitle")
         self.status_badge = StatusBadge("STOPPED")
@@ -138,13 +141,15 @@ class ApplicationHeader(QFrame):
 
         self.btn_calibrate = QPushButton("Calibrate Center")
         self.btn_calibrate.setObjectName("headerAction")
-        self.btn_calibrate.setIcon(IconFactory.icon("target"))
+        self.btn_calibrate.setProperty("role", "calibrate")
+        self.btn_calibrate.setIcon(IconFactory.icon("target", "#c4b5fd"))
         self.btn_calibrate.setIconSize(ICON_SIZE)
         self.btn_calibrate.setToolTip("Use the current eye position as the center reference")
 
         self.btn_reset_view = QPushButton("Reset View")
         self.btn_reset_view.setObjectName("headerAction")
-        self.btn_reset_view.setIcon(IconFactory.icon("reset"))
+        self.btn_reset_view.setProperty("role", "reset")
+        self.btn_reset_view.setIcon(IconFactory.icon("reset", "#fcd34d"))
         self.btn_reset_view.setIconSize(ICON_SIZE)
         self.btn_reset_view.setToolTip("Restore the default 3D camera angle")
 

@@ -19,6 +19,9 @@ translucent framed windshield glass, layered navigation grids, road/lane context
 glowing eye/light/intersection markers, refined ray traces, and an in-scene legend.
 Session, calibration, and 3D-reset actions now live in the top ribbon, while the
 Operations and Configuration tabs use equal-width responsive navigation.
+The surrounding application chrome uses layered graphite surfaces and restrained
+semantic accents: green for run state, violet for calibration and camera controls,
+amber/orange for reset and light data, and cyan primarily for spatial visualization.
 
 ## Positioning accuracy
 

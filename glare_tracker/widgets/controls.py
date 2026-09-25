@@ -24,6 +24,7 @@ class ControlsPanel(QWidget):
 
         # ── Windshield ──
         ws_group = QGroupBox("Windshield")
+        ws_group.setProperty("section", "geometry")
         ws_layout = QFormLayout(ws_group)
         ws_layout.setSpacing(6)
         self.spin_ws_w = self._make_spin(1.0, 500.0, 34.5, " cm")
@@ -34,6 +35,7 @@ class ControlsPanel(QWidget):
 
         # ── Camera position ──
         camera_group = QGroupBox("Camera Position")
+        camera_group.setProperty("section", "camera")
         camera_layout = QFormLayout(camera_group)
         camera_layout.setSpacing(6)
         self.spin_camera_x = self._make_spin(-1000, 1000, 0.0, " cm")
@@ -46,6 +48,7 @@ class ControlsPanel(QWidget):
 
         # ── Driver distance ──
         dist_group = QGroupBox("Driver Distance")
+        dist_group.setProperty("section", "driver")
         dist_layout = QFormLayout(dist_group)
         dist_layout.setSpacing(6)
         self.spin_eye_dist = self._make_spin(5.0, 500.0, 50.0, " cm")
@@ -57,6 +60,7 @@ class ControlsPanel(QWidget):
 
         # ── Vehicle / light mode ──
         vehicle_group = QGroupBox("Vehicle Type")
+        vehicle_group.setProperty("section", "vehicle")
         vehicle_layout = QFormLayout(vehicle_group)
         vehicle_layout.setSpacing(6)
         self.combo_vehicle = QComboBox()
@@ -66,6 +70,7 @@ class ControlsPanel(QWidget):
 
         # ── Headlight source ──
         light_group = QGroupBox("Light Source")
+        light_group.setProperty("section", "light")
         light_layout = QFormLayout(light_group)
         light_layout.setSpacing(6)
         self.combo_light_mode = QComboBox()
@@ -81,6 +86,7 @@ class ControlsPanel(QWidget):
 
         # ── Camera setup (shown only in Auto mode) ──
         self.auto_camera_group = QGroupBox("Auto Camera Setup")
+        self.auto_camera_group.setProperty("section", "vision")
         auto_layout = QFormLayout(self.auto_camera_group)
         auto_layout.setSpacing(6)
         self.combo_detection_setup = QComboBox()
@@ -115,6 +121,7 @@ class ControlsPanel(QWidget):
 
         # ── Light movement ──
         movement_group = QGroupBox("Simulation")
+        movement_group.setProperty("section", "simulation")
         movement_layout = QVBoxLayout(movement_group)
         movement_layout.setSpacing(6)
         self.combo_movement = QComboBox()
@@ -124,6 +131,7 @@ class ControlsPanel(QWidget):
             "Long distance",
         ])
         self.btn_play_movement = QPushButton("Play Light Movement")
+        self.btn_play_movement.setObjectName("simulationAction")
         self.btn_play_movement.setIcon(IconFactory.icon("play"))
         self.btn_play_movement.setIconSize(ICON_SIZE)
         self.btn_play_movement.setCheckable(True)
