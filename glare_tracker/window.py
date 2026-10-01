@@ -9,7 +9,7 @@ import sys
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (
-    QMainWindow, QWidget, QVBoxLayout, QSplitter,
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QSplitter,
 )
 
 from glare_tracker import __version__
@@ -34,7 +34,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Windshield Glare Tracking System")
         self.setWindowIcon(self._application_icon())
-        self.resize(1400, 850)
+        self.setMinimumSize(960, 640)
+        self._set_initial_geometry()
         self.setStyleSheet(DARK_STYLESHEET)
 
         # ── widgets ──
@@ -80,14 +81,14 @@ class MainWindow(QMainWindow):
     def _build_layout(self):
         self.sidebar = OperationsSidebar(
             [self.readout, self.camera_feeds], self.controls)
-        self.sidebar.setMinimumWidth(360)
-        self.sidebar.setMaximumWidth(520)
+        self.sidebar.setMinimumWidth(380)
+        self.sidebar.setMaximumWidth(500)
 
         # Main: viewport | sidebar
         self.main_splitter = QSplitter(Qt.Horizontal)
         self.main_splitter.addWidget(self.workspace)
         self.main_splitter.addWidget(self.sidebar)
-        self.main_splitter.setSizes([1100, 440])
+        self.main_splitter.setSizes([1080, 460])
         self.main_splitter.setStretchFactor(0, 1)
         self.main_splitter.setStretchFactor(1, 0)
 
@@ -125,6 +126,7 @@ class MainWindow(QMainWindow):
         self.header.btn_reset_view.clicked.connect(self._reset_3d_view)
         self.controls.btn_play_movement.clicked.connect(self._toggle_movement)
         self.header.panel_toggle.toggled.connect(self.sidebar.setVisible)
+        self.scene_3d.scene_theme_changed.connect(self.windshield_2d.set_light_theme)
 
         # Parameter spin-boxes / combos → tracker
         for widget in (
@@ -227,11 +229,25 @@ class MainWindow(QMainWindow):
     def _start_headlight_detection(self):
         self._stop_headlight_detection()
         cam1 = self.controls.spin_headlight_camera.value()
+        driver_cam = self.controls.spin_driver_camera.value()
+        if self.cap_thread.isRunning() and cam1 == driver_cam:
+            self.camera_feeds.headlight.set_status(
+                "Road and driver cameras must use different indices", "error")
+            self.camera_feeds.headlight.set_placeholder(
+                f"Camera {cam1} is already used for eye tracking")
+            return
         ws_h = self.controls.spin_ws_h.value()
         if self.controls.is_stereo_detection():
+            cam2 = self.controls.spin_headlight_camera_2.value()
+            if self.cap_thread.isRunning() and cam2 == driver_cam:
+                self.camera_feeds.headlight.set_status(
+                    "Stereo cameras must differ from the driver camera", "error")
+                self.camera_feeds.headlight.set_placeholder(
+                    f"Camera {cam2} is already used for eye tracking")
+                return
             self.headlight_thread = HeadlightDetectorThread(
                 cam1_idx=cam1,
-                cam2_idx=self.controls.spin_headlight_camera_2.value(),
+                cam2_idx=cam2,
                 camera_height_cm=ws_h,
                 brightness_threshold=self.controls.spin_brightness_threshold.value(),
             )
@@ -280,6 +296,20 @@ class MainWindow(QMainWindow):
 
     def _toggle_stream(self, checked):
         if checked:
+            if self.controls.is_auto_light():
+                driver_cam = self.controls.spin_driver_camera.value()
+                road_cameras = [self.controls.spin_headlight_camera.value()]
+                if self.controls.is_stereo_detection():
+                    road_cameras.append(
+                        self.controls.spin_headlight_camera_2.value())
+                if driver_cam in road_cameras:
+                    self.header.btn_stream.blockSignals(True)
+                    self.header.btn_stream.setChecked(False)
+                    self.header.btn_stream.blockSignals(False)
+                    self.header.set_tracking("CAMERA CONFLICT", "error")
+                    self.camera_feeds.driver.set_status(
+                        f"Camera {driver_cam} is assigned to road tracking", "error")
+                    return
             if self.cap_thread.isRunning():
                 return
             self.header.btn_stream.setText("Stop Session")
@@ -341,8 +371,8 @@ class MainWindow(QMainWindow):
             self.sidebar.setMinimumWidth(0)
             self.sidebar.setMaximumWidth(16777215)
         else:
-            self.sidebar.setMinimumWidth(360)
-            self.sidebar.setMaximumWidth(520)
+            self.sidebar.setMinimumWidth(380)
+            self.sidebar.setMaximumWidth(500)
 
     # ── clean shutdown ──────────────────────────────────────────────
 
@@ -356,6 +386,26 @@ class MainWindow(QMainWindow):
         event.accept()
 
     # ── helpers ──────────────────────────────────────────────────────
+
+    def _set_initial_geometry(self):
+        """Open centered at a useful size without covering the full desktop."""
+        screen = QApplication.primaryScreen()
+        if screen is None:
+            self.resize(1400, 850)
+            return
+        available = screen.availableGeometry()
+        minimum_width = min(960, available.width())
+        minimum_height = min(640, available.height())
+        self.setMinimumSize(minimum_width, minimum_height)
+        width = min(1600, max(minimum_width, int(available.width() * 0.88)))
+        height = min(960, max(minimum_height, int(available.height() * 0.88)))
+        width = min(width, available.width())
+        height = min(height, available.height())
+        self.resize(width, height)
+        self.move(
+            available.x() + (available.width() - width) // 2,
+            available.y() + (available.height() - height) // 2,
+        )
 
     @staticmethod
     def _application_icon():

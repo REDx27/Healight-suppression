@@ -52,7 +52,7 @@ class CameraPreviewCard(QFrame):
 
         title_row = QHBoxLayout()
         title_icon = QLabel()
-        title_icon.setPixmap(IconFactory.pixmap(icon_name, "#b79ad4", 16))
+        title_icon.setPixmap(IconFactory.pixmap(icon_name, "#64a8ef", 16))
         title_label = QLabel(title)
         title_label.setObjectName("cameraTitle")
         self.status_badge = StatusBadge("STOPPED")
@@ -70,6 +70,7 @@ class CameraPreviewCard(QFrame):
 
         self.detail = QLabel("Waiting for camera")
         self.detail.setObjectName("mutedText")
+        self.detail.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.detail.setWordWrap(True)
 
         layout.addLayout(title_row)
@@ -141,14 +142,14 @@ class ApplicationHeader(QFrame):
         self.btn_calibrate = QPushButton("Calibrate Center")
         self.btn_calibrate.setObjectName("headerAction")
         self.btn_calibrate.setProperty("role", "calibrate")
-        self.btn_calibrate.setIcon(IconFactory.icon("target", "#aaa8b3"))
+        self.btn_calibrate.setIcon(IconFactory.icon("target", "#75b7f5"))
         self.btn_calibrate.setIconSize(ICON_SIZE)
         self.btn_calibrate.setToolTip("Use the current eye position as the center reference")
 
         self.btn_reset_view = QPushButton("Reset View")
         self.btn_reset_view.setObjectName("headerAction")
         self.btn_reset_view.setProperty("role", "reset")
-        self.btn_reset_view.setIcon(IconFactory.icon("reset", "#aaa8b3"))
+        self.btn_reset_view.setIcon(IconFactory.icon("reset", "#a8b6c1"))
         self.btn_reset_view.setIconSize(ICON_SIZE)
         self.btn_reset_view.setToolTip("Restore the default 3D camera angle")
 
@@ -213,7 +214,7 @@ class CameraFeedPanel(QWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         direction = (
-            QBoxLayout.TopToBottom if self.width() < 390
+            QBoxLayout.TopToBottom if self.width() < 500
             else QBoxLayout.LeftToRight
         )
         if self._cards.direction() != direction:

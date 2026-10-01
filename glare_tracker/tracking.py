@@ -127,8 +127,8 @@ class TrackingController:
         # Update readout
         self._readout.set_value(
             "eye_pos",
-            f"X:{eye_cm[0]:7.1f}  Y:{eye_cm[1]:7.1f}  Z:{eye_cm[2]:7.1f}",
-            "#58a6ff",
+            f"X:{eye_cm[0]:.1f}  Y:{eye_cm[1]:.1f}  Z:{eye_cm[2]:.1f}",
+            "#60a5fa",
         )
         self._readout.set_value("status", "TRACKING ●", "#4caf50")
         self._readout.set_intersections(intersections)

@@ -20,8 +20,33 @@ glowing eye/light/intersection markers, refined ray traces, and an in-scene lege
 Session, calibration, and 3D-reset actions now live in the top ribbon, while the
 Operations and Configuration tabs use equal-width responsive navigation.
 The surrounding application chrome follows a cohesive simulation-studio style:
-layered charcoal surfaces, violet navigation/focus accents, blue primary actions,
-and semantic colors reserved for live state and spatial data.
+layered blue-gray surfaces, blue navigation/focus accents, and green active/success
+states. The 3D workspace includes a dark/light-gray canvas toggle, coordinated windshield
+overlay, the restored layered navigation grid and marker palette from the start-of-day
+scene, and responsive scene controls.
+
+## Current development status
+
+As of 2026-10-01, the source is version 1.2.0. The tracking, headlight-input,
+intersection, simulation, and visualization paths are implemented in source. Camera
+capture now includes Windows backend fallback, a low-bandwidth 640x480 MJPEG profile,
+adaptive bright-source detection, temporal light tracking, dropout tolerance, and
+MediaPipe Tasks compatibility for Python 3.13. A functional test plan records verified
+and pending checks for the two-camera demonstration.
+
+The current demonstration uses camera 0 for the driver and camera 1 for the road view.
+Single-camera road tracking measures a light bearing and projects it at an operator-
+supplied distance; it does not independently recover absolute range. The next planned
+feature is a detailed guided calibration workflow for driver depth and reference-based
+monocular road-distance estimation. Remaining physical-system work includes camera-to-
+windshield extrinsics, separate left/right-eye intersections, secondary-display LCD
+blocking, prediction, and research-data logging.
+
+The local `dist/GlareTracker-v1.exe` artifact predates the v1.2 source changes. Run the
+build script and launch-test the resulting `dist/GlareTracker.exe` before treating the
+latest source as a distributable release. See [PROJECT_STATUS.md](PROJECT_STATUS.md) for
+the reviewed implementation matrix, limitations, verification state, and ordered
+roadmap.
 
 ## Positioning accuracy
 
@@ -55,7 +80,9 @@ python -m glare_tracker
 
 ## Run the standalone executable
 
-Double-click `dist/GlareTracker.exe` — no Python needed.
+For a build made with the current script, double-click `dist/GlareTracker.exe` — no
+Python is needed. The older local artifact is named `dist/GlareTracker-v1.exe` and does
+not include the latest v1.2 changes.
 
 ## Build the executable
 
@@ -77,8 +104,9 @@ The executable is created at `dist/GlareTracker.exe`. If Inno Setup (`iscc`) is 
 │   ├── app.py                  #   QApplication setup, main()
 │   ├── config.py               #   TrackingConfig dataclass
 │   ├── geometry.py             #   Intersection & coordinate math
-│   ├── styles.py               #   Dark theme stylesheet
+│   ├── styles.py               #   Centralized application theme stylesheet
 │   ├── camera.py               #   Webcam capture thread (OpenCV + MediaPipe)
+│   ├── capture.py              #   Compatible backend/profile camera setup
 │   ├── tracking.py             #   TrackingController (business logic)
 │   ├── window.py               #   MainWindow (layout + signal wiring)
 │   └── widgets/                #   UI components

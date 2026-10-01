@@ -7,7 +7,9 @@ eye tracking modes.
 
 from __future__ import annotations
 
+import os
 import sys
+import time
 from typing import Optional
 
 import cv2
@@ -17,6 +19,7 @@ from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtGui import QImage
 
 from glare_tracker.calibration import CalibrationResult, load_single_calibration
+from glare_tracker.capture import configure_video_capture, open_video_capture
 from glare_tracker.config import TrackingConfig
 from glare_tracker.geometry import (
     estimate_ipd_depth,
@@ -102,6 +105,43 @@ class VideoCaptureThread(QThread):
         except Exception:
             self._calibration = None
 
+    @staticmethod
+    def _face_landmarker_model_path() -> str:
+        """Return the bundled Tasks API face-landmarker model path."""
+        if getattr(sys, "frozen", False):
+            base = getattr(sys, "_MEIPASS", os.path.dirname(sys.executable))
+        else:
+            base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        return os.path.join(base, "assets", "face_landmarker.task")
+
+    @classmethod
+    def _create_face_tracker(cls):
+        """Create a face tracker compatible with legacy and current MediaPipe."""
+        if hasattr(mp, "solutions"):
+            tracker = mp.solutions.face_mesh.FaceMesh(
+                max_num_faces=1,
+                refine_landmarks=True,
+                min_detection_confidence=0.5,
+                min_tracking_confidence=0.5,
+            )
+            return tracker, False
+
+        model_path = cls._face_landmarker_model_path()
+        if not os.path.isfile(model_path):
+            raise FileNotFoundError(
+                f"MediaPipe face-landmarker model not found: {model_path}"
+            )
+        options = mp.tasks.vision.FaceLandmarkerOptions(
+            base_options=mp.tasks.BaseOptions(model_asset_path=model_path),
+            running_mode=mp.tasks.vision.RunningMode.VIDEO,
+            num_faces=1,
+            min_face_detection_confidence=0.5,
+            min_face_presence_confidence=0.5,
+            min_tracking_confidence=0.5,
+        )
+        tracker = mp.tasks.vision.FaceLandmarker.create_from_options(options)
+        return tracker, True
+
     def _estimate_head_pose(
         self, landmarks, img_w: int, img_h: int, camera_matrix: np.ndarray,
         dist_coeffs: np.ndarray,
@@ -138,28 +178,19 @@ class VideoCaptureThread(QThread):
         face_mesh = None
 
         try:
-            # CAP_DSHOW gives instant camera startup on Windows
-            cap = cv2.VideoCapture(self.camera_index, cv2.CAP_DSHOW)
-            if not cap.isOpened():
+            cap, backend_name = open_video_capture(self.camera_index)
+            if cap is None:
                 self.camera_status.emit(
                     f"Camera {self.camera_index} not detected", False)
                 self.eye_lost.emit()
                 return
 
-
+            width, height, _ = configure_video_capture(cap)
             self.camera_status.emit(
-                f"Camera {self.camera_index} connected", True)
+                f"Camera {self.camera_index} connected via {backend_name} "
+                f"({width}x{height})", True)
 
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-            cap.set(cv2.CAP_PROP_FPS, 30)
-
-            face_mesh = mp.solutions.face_mesh.FaceMesh(
-                max_num_faces=1,
-                refine_landmarks=True,
-                min_detection_confidence=0.5,
-                min_tracking_confidence=0.5,
-            )
+            face_mesh, uses_tasks_api = self._create_face_tracker()
 
             while self._running:
                 ret, frame = cap.read()
@@ -170,10 +201,20 @@ class VideoCaptureThread(QThread):
                 frame = cv2.flip(frame, 1)  # mirror for natural feel
                 h, w, _ = frame.shape
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                results = face_mesh.process(rgb)
+                if uses_tasks_api:
+                    mp_image = mp.Image(
+                        image_format=mp.ImageFormat.SRGB,
+                        data=np.ascontiguousarray(rgb),
+                    )
+                    timestamp_ms = int(time.monotonic() * 1000)
+                    results = face_mesh.detect_for_video(mp_image, timestamp_ms)
+                    faces = results.face_landmarks
+                else:
+                    results = face_mesh.process(rgb)
+                    faces = [face.landmark for face in results.multi_face_landmarks or []]
 
-                if results.multi_face_landmarks:
-                    lm = results.multi_face_landmarks[0].landmark
+                if faces:
+                    lm = faces[0]
                     config = self._config
                     calib = self._calibration if config.use_calibration else None
 

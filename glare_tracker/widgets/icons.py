@@ -11,7 +11,7 @@ from PyQt5.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap, QP
 class IconFactory:
     """Render a small, consistent line-icon set with Qt primitives."""
 
-    DEFAULT_COLOR = "#8fa8bf"
+    DEFAULT_COLOR = "#86a9c4"
 
     @classmethod
     def icon(cls, name: str, color: str | QColor | None = None, size: int = 20) -> QIcon:
@@ -59,17 +59,34 @@ class IconFactory:
             p.drawLine(QPointF(15, 5), QPointF(15, 19))
             p.drawLine(QPointF(18, 9), QPointF(18, 15))
         elif name == "settings":
-            points = []
-            for index in range(24):
-                angle = -math.pi / 2 + index * math.pi / 12
-                radius = 9.2 if index % 3 == 0 else 7.2
-                points.append(QPointF(
-                    12 + math.cos(angle) * radius,
-                    12 + math.sin(angle) * radius,
-                ))
-            p.drawPolygon(QPolygonF(points))
+            p.drawEllipse(QPointF(12, 12), 7.2, 7.2)
+            p.drawEllipse(QPointF(12, 12), 2.5, 2.5)
+            for index in range(8):
+                angle = index * math.pi / 4
+                p.drawLine(
+                    QPointF(12 + math.cos(angle) * 7.2,
+                            12 + math.sin(angle) * 7.2),
+                    QPointF(12 + math.cos(angle) * 10.2,
+                            12 + math.sin(angle) * 10.2),
+                )
+        elif name == "sun":
+            p.drawEllipse(QPointF(12, 12), 4.2, 4.2)
+            for index in range(8):
+                angle = index * math.pi / 4
+                p.drawLine(
+                    QPointF(12 + math.cos(angle) * 7.0,
+                            12 + math.sin(angle) * 7.0),
+                    QPointF(12 + math.cos(angle) * 10.0,
+                            12 + math.sin(angle) * 10.0),
+                )
+        elif name == "moon":
+            moon = QPainterPath()
+            moon.addEllipse(QPointF(11, 12), 8, 8)
+            cutout = QPainterPath()
+            cutout.addEllipse(QPointF(15, 9), 7, 7)
+            p.setPen(Qt.NoPen)
             p.setBrush(color)
-            p.drawEllipse(QPointF(12, 12), 2.7, 2.7)
+            p.drawPath(moon.subtracted(cutout))
         elif name == "eye":
             path = QPainterPath(QPointF(3, 12))
             path.cubicTo(7, 5.5, 17, 5.5, 21, 12)

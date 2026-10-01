@@ -1,5 +1,7 @@
 """User-configurable controls panel (windshield, camera, light, vehicle)."""
 
+from PyQt5.QtCore import Qt
+
 from PyQt5.QtWidgets import (
     QWidget, QGroupBox, QVBoxLayout, QFormLayout, QLabel,
     QPushButton, QDoubleSpinBox, QComboBox, QSpinBox, QSizePolicy,
@@ -27,6 +29,7 @@ class ControlsPanel(QWidget):
         ws_group.setProperty("section", "geometry")
         ws_layout = QFormLayout(ws_group)
         ws_layout.setSpacing(6)
+        self._configure_form(ws_layout)
         self.spin_ws_w = self._make_spin(1.0, 500.0, 34.5, " cm")
         self.spin_ws_h = self._make_spin(1.0, 500.0, 19.5, " cm")
         ws_layout.addRow("Width:", self.spin_ws_w)
@@ -38,6 +41,7 @@ class ControlsPanel(QWidget):
         camera_group.setProperty("section", "camera")
         camera_layout = QFormLayout(camera_group)
         camera_layout.setSpacing(6)
+        self._configure_form(camera_layout)
         self.spin_camera_x = self._make_spin(-1000, 1000, 0.0, " cm")
         self.spin_camera_y = self._make_spin(-1000, 1000, 0.0, " cm")
         self.spin_camera_z = self._make_spin(-1000, 1000, 19.5, " cm")
@@ -51,6 +55,7 @@ class ControlsPanel(QWidget):
         dist_group.setProperty("section", "driver")
         dist_layout = QFormLayout(dist_group)
         dist_layout.setSpacing(6)
+        self._configure_form(dist_layout)
         self.spin_eye_dist = self._make_spin(5.0, 500.0, 50.0, " cm")
         self.distance_note = QLabel("Manual / reference measurement")
         self.distance_note.setObjectName("mutedText")
@@ -63,6 +68,7 @@ class ControlsPanel(QWidget):
         vehicle_group.setProperty("section", "vehicle")
         vehicle_layout = QFormLayout(vehicle_group)
         vehicle_layout.setSpacing(6)
+        self._configure_form(vehicle_layout)
         self.combo_vehicle = QComboBox()
         self.combo_vehicle.addItems(["Motorcycle", "Four-Wheeler/Car", "Extreme Vehicle"])
         vehicle_layout.addRow("Category:", self.combo_vehicle)
@@ -73,6 +79,7 @@ class ControlsPanel(QWidget):
         light_group.setProperty("section", "light")
         light_layout = QFormLayout(light_group)
         light_layout.setSpacing(6)
+        self._configure_form(light_layout)
         self.combo_light_mode = QComboBox()
         self.combo_light_mode.addItems(["Manual", "Auto"])
         self.spin_light_x = self._make_spin(-1000, 1000, 0.0, " cm")
@@ -89,6 +96,7 @@ class ControlsPanel(QWidget):
         self.auto_camera_group.setProperty("section", "vision")
         auto_layout = QFormLayout(self.auto_camera_group)
         auto_layout.setSpacing(6)
+        self._configure_form(auto_layout)
         self.combo_detection_setup = QComboBox()
         self.combo_detection_setup.addItems(["Single Camera", "Stereo Cameras"])
         self.spin_driver_camera = self._make_index_spin(0)
@@ -98,7 +106,7 @@ class ControlsPanel(QWidget):
         self.spin_camera_hfov = self._make_spin(10.0, 170.0, 70.0, " deg")
         self.spin_brightness_threshold = QSpinBox()
         self.spin_brightness_threshold.setRange(0, 255)
-        self.spin_brightness_threshold.setValue(240)
+        self.spin_brightness_threshold.setValue(210)
         self.spin_brightness_threshold.setMinimumHeight(30)
         self.auto_note = QLabel(
             "Single-camera depth is assumed. Cameras default to the "
@@ -143,6 +151,12 @@ class ControlsPanel(QWidget):
         layout.addStretch()
 
     # ── helpers ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _configure_form(layout: QFormLayout):
+        layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        layout.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+        layout.setRowWrapPolicy(QFormLayout.WrapLongRows)
 
     @staticmethod
     def _make_spin(min_val, max_val, default, suffix=""):

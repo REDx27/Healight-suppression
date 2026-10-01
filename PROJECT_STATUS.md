@@ -1,10 +1,48 @@
 # GlareTracker — Project Status & Specification
 
-> **Last Updated:** 2026-09-25
-> **Python Version:** 3.11.9
+> **Last Updated:** 2026-10-01
+> **Python Version:** 3.13 (current test environment; 3.11 previously verified)
 > **Platform:** Windows 10/11
 > **UI Framework:** PyQt5
 > **3D Engine:** PyQtGraph GLViewWidget (OpenGL)
+> **Source Version:** 1.2.0
+> **Reviewed Baseline:** `bd0f101` (`master`, clean before this documentation update)
+
+---
+
+## 0. Current Status Snapshot
+
+GlareTracker is currently a **source-level visualization and tracking prototype**, not yet an end-to-end physical glare-suppression system. The source contains driver-eye tracking, manual/single-camera/stereo headlight input, ray-plane intersection, 2D/3D visualization, simulation controls, calibration backends, and the v1.2 operator UI. The physical blocking output and the calibration needed for measurement-grade windshield coordinates are still pending.
+
+### Recent changes (through 2026-10-01)
+
+| Area | Current result |
+|---|---|
+| Headlight input | Selectable manual, single-camera, and stereo-camera modes with configurable camera indices, threshold, range/HFOV, and live status previews |
+| Operator workflow | Full-size 3D workspace, Operations/Configuration sidebar, top-ribbon session controls, and collapsible/responsive panels |
+| Runtime/UI efficiency | Throttled camera-card rendering, pooled telemetry labels, and cached static windshield graphics |
+| Visual system | Standardized blue/green/gray palette, improved vector icons, and a redesigned 3D scene with road context, glass frame, marker glows, and legend |
+| Scene usability | Restored the start-of-day 3D scene exactly in dark mode, with an optional high-contrast light-gray canvas, synchronized windshield overlay, and floating controls |
+| Window/layout | Screen-aware centered startup size, earlier camera-card stacking, aligned form labels, and corrected windshield title/edge-label placement |
+| Camera compatibility | DirectShow/Media Foundation/automatic backend fallback, 640x480 MJPEG compatibility profile, small capture buffers, and camera-index conflict checks |
+| Road-light stability | Adaptive contrast thresholding, candidate persistence, exponential smoothing, dropout tolerance, reduced status flicker, and live FPS diagnostics |
+| MediaPipe compatibility | Bundled Face Landmarker model and compatibility path for current MediaPipe/Python 3.13 packages while retaining the legacy FaceMesh path |
+| Test workflow | Repeatable functional test checklist covering startup, eyes, calibration, geometry, simulation, road detection, end-to-end operation, and shutdown |
+
+### Current blockers to the physical prototype
+
+1. Camera-to-windshield extrinsic calibration is not implemented, so tracked centimetre coordinates are not yet physically trustworthy.
+2. Calibration algorithms exist only as backend code; there is no guided intrinsic/stereo/extrinsic or monocular reference-distance workflow in the UI.
+3. Tracking uses the eye midpoint for intersection calculations; binocular LCD blocking needs a separate ray and spot for each eye.
+4. No secondary-display LCD blocker has been implemented.
+5. There is no Kalman/predictive filtering, research-data logging, settings persistence, or automated test suite.
+
+### Packaging and verification snapshot
+
+- The source reports version **1.2.0**.
+- The only local packaged artifact is `dist/GlareTracker-v1.exe`, built on 2026-09-10; it predates the September 25 v1.2 work. The current build script instead produces `dist/GlareTracker.exe`, so a fresh package is required after the next stable milestone.
+- This review inspected the tracked source, repository history, dependency list, and available build artifact. The repository contained no uncommitted changes before this notes update.
+- Verification through 2026-10-01 passed dependency imports, package compilation before the latest compatibility refactor, off-screen and visible UI startup, two-camera discovery, driver capture (94 frames and 93 eye detections in 10 seconds), road-camera throughput (improved from 7 to 81 frames in 12 seconds), and synthetic bright-source/smoothing checks. Live regression of the final backend/adaptive-threshold refactor, measurement accuracy, automated coverage, and stripped-LCD hardware validation remain outstanding.
 
 ---
 
@@ -72,7 +110,7 @@ Glare suppression system_test2/
 │   ├── __main__.py             # Allows: python -m glare_tracker
 │   ├── app.py                  # QApplication bootstrap (main())
 │   ├── config.py               # TrackingConfig dataclass (frozen, thread-safe)
-│   ├── styles.py               # Dark theme stylesheet (DARK_STYLESHEET)
+│   ├── styles.py               # Centralized application stylesheet (DARK_STYLESHEET)
 │   ├── geometry.py             # Pure math: intersection, pixel_to_cm, IPD depth
 │   ├── calibration.py          # Camera calibration (single + stereo, save/load .npz)
 │   ├── camera.py               # VideoCaptureThread (QThread) — eye tracking
@@ -139,7 +177,7 @@ dist/GlareTracker-v1.exe
 ## 5. Requirements & Implementation Status
 
 ### Legend
-- ✅ **DONE** — Fully implemented and tested
+- ✅ **DONE** — Implementation is present and was previously marked complete; this review did not re-run software or hardware validation
 - 🔧 **PARTIAL** — Core logic exists but not fully integrated or polished
 - ❌ **NOT STARTED** — Planned but no code written yet
 
@@ -230,11 +268,11 @@ dist/GlareTracker-v1.exe
 | Render driver eye position (sphere/point) | ✅ | `GLScatterPlotItem` |
 | Render light source(s) (up to 4) | ✅ | `GLScatterPlotItem` with yellow color |
 | Render eye-to-light rays (lines) | ✅ | `GLLinePlotItem` |
-| Render intersection points on windshield | ✅ | `GLScatterPlotItem` with red color |
+| Render intersection points on windshield | ✅ | Layered amber/yellow `GLScatterPlotItem` markers |
 | Render camera position indicator | ✅ | `GLScatterPlotItem` |
 | Grid floor and axis labels | ✅ | `GLGridItem` |
 | Interactive rotation, zoom, pan | ✅ | Built-in pyqtgraph mouse controls |
-| Reset view button | ✅ | Resets to distance=140, elevation=20, azimuth=-45 |
+| Reset view button | ✅ | Resets to the original scene view: distance=145, elevation=22, azimuth=-45 |
 
 **Key files:** `widgets/scene_3d.py`
 
@@ -357,14 +395,14 @@ dist/GlareTracker-v1.exe
 ---
 
 ### REQ-14: Standalone Executable
-**Status: ✅ DONE**
+**Status: 🔧 PARTIAL** — build pipeline exists, but the v1.2 source has not been packaged
 
 | Sub-requirement | Status | Implementation |
 |---|---|---|
 | PyInstaller build script | ✅ | `scripts/build_exe.ps1` + `scripts/glare_tracker.spec` |
-| Single-file .exe with bundled assets | ✅ | `dist/GlareTracker-v1.exe` |
+| Single-file .exe with bundled assets | ✅ | Confirmed by the older local `dist/GlareTracker-v1.exe` build |
 | Custom application icon | ✅ | `assets/glaretracker-icon.ico` |
-| Version naming convention (v1, v2, ...) | ✅ | Standalone renamed to `GlareTracker-v1.exe` |
+| Package current v1.2 source | ❌ | Current build script targets `dist/GlareTracker.exe`; a fresh build and launch test are still required |
 
 **Key files:** `scripts/build_exe.ps1`, `scripts/glare_tracker.spec`
 
@@ -393,7 +431,7 @@ dist/GlareTracker-v1.exe
 | Ribbon session controls | ✅ | Start/stop, centre calibration, and 3D reset are always available in the top application ribbon |
 | Responsive sidebar navigation | ✅ | Operations and Configuration tabs expand equally, elide safely, and receive additional working width |
 | Neutral layered application chrome | ✅ | Graphite canvas, raised surfaces, and stronger neutral borders visually separate the workspace, sidebar, cards, and inputs without a blue wash |
-| Cohesive interaction hierarchy | ✅ | A single violet accent family identifies navigation and focus, blue identifies primary actions, and semantic colors are reserved for live state and spatial data |
+| Cohesive interaction hierarchy | ✅ | Blue identifies navigation, focus, and primary actions; green identifies active/success states; gray structures surfaces, borders, and secondary text |
 | Efficient preview rendering | ✅ | Camera cards cache frames and cap preview scaling to 20 FPS |
 | Responsive camera layout | ✅ | Camera cards switch between horizontal and vertical layouts based on sidebar width |
 | Collapsible operations panel | ✅ | Header PANEL control releases additional space for the 3D workspace |
@@ -412,12 +450,12 @@ dist/GlareTracker-v1.exe
 |---|---|---|
 | Consistent vector icons | ✅ | `icons.py` renders scalable Qt-native line icons without third-party packages |
 | Action and mode iconography | ✅ | Stream, simulation, calibration, reset, panel, tabs, cameras, and scene controls use shared icons |
-| Modern spatial palette | ✅ | Deep navy environment with cyan grid, semantic blue/amber/orange markers, and refined axes |
+| Recovered spatial palette | ✅ | Start-of-day deep navy scene with cyan windshield, amber lights, orange/yellow intersections, red rays, blue eye marker, and a coordinated light-gray canvas option |
 | Translucent windshield glass | ✅ | Low-alpha OpenGL mesh with a separate high-contrast cyan frame |
-| Spatial driving context | ✅ | Layered minor/major grids plus road-edge and centre reference lines |
+| Spatial driving context | ✅ | Restored the layered minor/major grids plus road-edge and centre reference lines from the start-of-day scene |
 | Layered tracked markers | ✅ | Eye, headlight, camera, and intersection points use separate glow and core layers |
 | In-scene legend | ✅ | Compact overlay identifies driver, light, intersection, and windshield colors |
-| Modern scene controls | ✅ | Restyled appearance panel uses a dedicated gear icon from the shared icon language |
+| Modern scene controls | ✅ | Dedicated gear settings control plus sun/moon dark/light-gray canvas toggle inside the 3D workspace |
 
 **Key files:** `widgets/icons.py`, `widgets/scene_3d.py`, `widgets/controls.py`, `widgets/dashboard.py`
 
@@ -521,20 +559,23 @@ Stereo cams (cam 1+2) → HeadlightDetectorThread → headlight_detected signal
 
 ## 8. Remaining Work (Roadmap)
 
+Recommended execution order follows the measurement chain: establish trustworthy coordinates first, expose calibration to the operator, add per-eye output geometry, and only then drive the physical LCD.
+
 ### High Priority
-1. **LCD Light Blocking** (`lcd_blocker.py`) — Render Gaussian-feathered black spots on a stripped TN LCD panel to physically block glare. Must handle binocular parallax (2 spots per headlight).
-2. **Camera-to-Windshield Extrinsic Calibration** — Measure each camera's rotation and translation relative to the windshield frame, apply the rigid transform after unprojection, and validate error across the usable cabin volume.
-3. **Calibration UI** — Add a dialog/wizard in the app to run intrinsic, extrinsic, stereo, and per-driver IPD calibration interactively instead of programmatically.
-4. **Kalman Filter** — Smooth out eye position jitter for stable intersection tracking.
+1. **Camera-to-Windshield Extrinsic Calibration** — Measure each camera's rotation and translation relative to the windshield frame, apply the rigid transform after unprojection, and validate error across the usable cabin volume.
+2. **Calibration UI** — Add a dialog/wizard in the app to run intrinsic, extrinsic, stereo, and per-driver IPD calibration interactively instead of programmatically.
+3. **Both-Eyes Intersection** — Compute separate left/right-eye rays and intersection spots for every headlight instead of using only the midpoint.
+4. **LCD Light Blocking** (`lcd_blocker.py`) — Render Gaussian-feathered black spots on a stripped TN LCD panel/secondary display, using the per-eye intersections.
+5. **Kalman Filter** — Smooth eye/intersection jitter and provide the state estimate needed by predictive rendering.
 
 ### Medium Priority
-5. **Data Logging** — CSV export of eye, light, and intersection data per frame for research analysis.
-6. **Both-Eyes Intersection** — Currently uses midpoint; should compute 2 separate intersection points per headlight for accurate LCD blocking.
-7. **Predictive Rendering** — Kalman filter on intersection positions to compensate for ~30-60ms system latency.
+6. **Data Logging** — CSV export of eye, light, and intersection data per frame for research analysis.
+7. **Predictive Rendering** — Predict intersection positions to compensate for approximately 30–60 ms system latency.
+8. **Automated Tests** — Add unit coverage for geometry/calibration transforms and smoke coverage for configuration and UI construction.
 
 ### Low Priority
-8. **Standalone v2** — Rebuild the PyInstaller executable with all new features.
-9. **Settings Persistence** — Save/load user preferences (windshield dimensions, camera positions) between sessions.
+9. **Standalone v1.2+** — Rebuild and launch-test the PyInstaller executable after the next stable feature milestone.
+10. **Settings Persistence** — Save/load user preferences (windshield dimensions, camera positions) between sessions.
 
 ---
 

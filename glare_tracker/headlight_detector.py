@@ -16,50 +16,129 @@ from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtGui import QImage
 
 from glare_tracker.calibration import StereoCalibrationResult, load_stereo_calibration
+from glare_tracker.capture import configure_video_capture, open_video_capture
+
+
+class TemporalPointFilter:
+    """Smooth a tracked point and bridge a few dropped detections.
+
+    Camera exposure changes and threshold noise can make an otherwise steady
+    light disappear for one or two frames.  Keeping the last position briefly
+    prevents that normal noise from flickering the UI and windshield marker.
+    """
+
+    def __init__(
+        self, alpha: float = 0.32, hold_frames: int = 5,
+        max_step: Optional[float] = None,
+    ):
+        self.alpha = float(np.clip(alpha, 0.01, 1.0))
+        self.hold_frames = max(0, int(hold_frames))
+        self.max_step = max_step
+        self._point: Optional[np.ndarray] = None
+        self._missing_frames = 0
+
+    @property
+    def point(self) -> Optional[tuple[float, ...]]:
+        if self._point is None:
+            return None
+        return tuple(float(value) for value in self._point)
+
+    def update(self, measurement) -> Optional[tuple[float, ...]]:
+        if measurement is None:
+            self._missing_frames += 1
+            if self._point is not None and self._missing_frames <= self.hold_frames:
+                return self.point
+            self._point = None
+            return None
+
+        measured = np.asarray(measurement, dtype=np.float64)
+        self._missing_frames = 0
+        if self._point is None or self._point.shape != measured.shape:
+            self._point = measured
+            return self.point
+
+        delta = measured - self._point
+        if self.max_step is not None:
+            distance = float(np.linalg.norm(delta))
+            if distance > self.max_step > 0:
+                delta *= self.max_step / distance
+        self._point = self._point + self.alpha * delta
+        return self.point
 
 
 def detect_bright_spot(
-    frame: np.ndarray, thresh_val: int = 240, min_area: float = 5.0, max_area: float = 10000.0,
+    frame: np.ndarray, thresh_val: int = 210, min_area: float = 5.0,
+    max_area: float = 10000.0,
+    previous_point: Optional[tuple[float, float]] = None,
 ) -> Optional[tuple[float, float]]:
-    """Detect the brightest light source in a frame using intensity-weighted centroid.
+    """Detect a compact light source using contrast and weighted centroid.
 
-    Returns (cx, cy) tuple or None.
+    The threshold is combined with the frame's background level so exposure
+    changes do not turn ordinary bright surfaces into headlights.  When more
+    than one candidate exists, proximity to the previous result discourages
+    the detector from jumping between sources.
     """
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    _, thresh = cv2.threshold(blurred, thresh_val, 255, cv2.THRESH_BINARY)
+
+    background = float(np.percentile(blurred, 90.0))
+    peak = float(np.max(blurred))
+    requested_threshold = float(np.clip(thresh_val, 0, 255))
+    # Treat the configured value as the preferred threshold, then relax it
+    # when a camera maps its brightness range below that value.  Contrast to
+    # the current frame background remains mandatory, preventing this from
+    # simply selecting the brightest ordinary object in the scene.
+    threshold = max(background + 18.0, min(requested_threshold, peak - 12.0))
+    if peak < 40.0 or peak - background < 24.0 or threshold >= 255.0:
+        return None
+
+    _, thresh = cv2.threshold(
+        blurred, min(254.0, threshold), 255, cv2.THRESH_BINARY)
 
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
     thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel)
 
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         return None
 
-    # Pick the largest contour (primary light core)
-    c = max(contours, key=cv2.contourArea)
-    area = cv2.contourArea(c)
-    if area < min_area or area > max_area:
+    candidates = []
+    for contour in contours:
+        area = float(cv2.contourArea(contour))
+        if area < min_area or area > max_area:
+            continue
+
+        x, y, w, h = cv2.boundingRect(contour)
+        if h == 0 or not 0.2 <= (w / h) <= 5.0:
+            continue
+        roi_gray = gray[y:y+h, x:x+w].astype(np.float64)
+        roi_mask = thresh[y:y+h, x:x+w] > 0
+        weights = roi_gray * roi_mask
+        total_weight = float(np.sum(weights))
+        if total_weight <= 0:
+            continue
+
+        y_grid, x_grid = np.indices(weights.shape)
+        cx = float(x + np.sum(x_grid * weights) / total_weight)
+        cy = float(y + np.sum(y_grid * weights) / total_weight)
+        mean_brightness = float(np.mean(roi_gray[roi_mask]))
+        local_peak = float(np.max(roi_gray))
+        perimeter = float(cv2.arcLength(contour, True))
+        compactness = (4.0 * np.pi * area / (perimeter * perimeter)
+                       if perimeter > 0 else 0.0)
+
+        score = local_peak + 0.35 * mean_brightness + 12.0 * compactness
+        score += min(18.0, 3.0 * np.log1p(area))
+        if previous_point is not None:
+            distance = float(np.hypot(cx - previous_point[0], cy - previous_point[1]))
+            score -= min(55.0, distance * 0.08)
+        candidates.append((score, cx, cy))
+
+    if not candidates:
         return None
-
-    # Intensity-weighted centroid for sub-pixel accuracy
-    x, y, w, h = cv2.boundingRect(c)
-    roi_gray = gray[y:y+h, x:x+w].astype(np.float64)
-    roi_thresh = thresh[y:y+h, x:x+w] > 0
-
-    weights = roi_gray * roi_thresh
-    total_weight = np.sum(weights)
-
-    if total_weight == 0:
-        M = cv2.moments(c)
-        if M["m00"] == 0: return None
-        return (float(M["m10"] / M["m00"]), float(M["m01"] / M["m00"]))
-
-    y_grid, x_grid = np.indices(weights.shape)
-    cx = x + (np.sum(x_grid * weights) / total_weight)
-    cy = y + (np.sum(y_grid * weights) / total_weight)
-
-    return (float(cx), float(cy))
+    _, cx, cy = max(candidates, key=lambda candidate: candidate[0])
+    return (cx, cy)
 
 
 class MonocularHeadlightDetectorThread(QThread):
@@ -78,7 +157,7 @@ class MonocularHeadlightDetectorThread(QThread):
     def __init__(
         self, camera_index: int = 1, depth_cm: float = 120.0,
         windshield_h_cm: float = 19.5, hfov_deg: float = 70.0,
-        brightness_threshold: int = 240, parent=None,
+        brightness_threshold: int = 210, parent=None,
     ):
         super().__init__(parent)
         self.camera_index = camera_index
@@ -87,6 +166,8 @@ class MonocularHeadlightDetectorThread(QThread):
         self.hfov_deg = hfov_deg
         self.brightness_threshold = brightness_threshold
         self._running = False
+        self._point_filter = TemporalPointFilter(
+            alpha=0.32, hold_frames=5, max_step=180.0)
 
     def update_projection(
         self, depth_cm: float, windshield_h_cm: float, hfov_deg: float,
@@ -106,21 +187,28 @@ class MonocularHeadlightDetectorThread(QThread):
         self._running = True
         cap = None
         try:
-            cap = cv2.VideoCapture(self.camera_index, cv2.CAP_DSHOW)
-            if not cap.isOpened():
+            cap, backend_name = open_video_capture(self.camera_index)
+            if cap is None:
                 self.camera_status.emit(
                     f"Camera {self.camera_index} not detected", False)
                 self.headlight_lost.emit()
                 return
 
-            cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-            cap.set(cv2.CAP_PROP_FPS, 30)
-            cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
-            cap.set(cv2.CAP_PROP_EXPOSURE, -8)
+            # Many inexpensive USB cameras fall back to a very slow raw-video
+            # mode at 720p.  MJPEG 640x480 is widely supported and keeps the
+            # monocular tracker responsive while retaining enough resolution
+            # for a bright-source centroid.
+            width, height, _ = configure_video_capture(cap)
             self.camera_status.emit(
-                f"Camera {self.camera_index} connected (single)", True)
+                f"Camera {self.camera_index} connected via {backend_name} "
+                f"({width}x{height}, single)", True)
 
+            lost_announced = False
+            frame_number = 0
+            brightness_90 = 0.0
+            measured_fps = 0.0
+            fps_frames = 0
+            fps_started = time.monotonic()
             while self._running:
                 ok, frame = cap.read()
                 if not ok:
@@ -129,11 +217,34 @@ class MonocularHeadlightDetectorThread(QThread):
                     self.msleep(30)
                     continue
 
-                point = detect_bright_spot(
-                    frame, thresh_val=int(self.brightness_threshold))
+                frame_number += 1
+                # Observe exposure without forcing vendor-specific controls.
+                # Most inexpensive webcams are more reliable in their default
+                # auto-exposure mode; detection adapts in software instead.
+                if frame_number % 8 == 0:
+                    sample = cv2.resize(frame, (160, 120))
+                    sample_gray = cv2.cvtColor(sample, cv2.COLOR_BGR2GRAY)
+                    brightness_90 = float(np.percentile(sample_gray, 90.0))
+
+                fps_frames += 1
+                fps_elapsed = time.monotonic() - fps_started
+                if fps_elapsed >= 1.0:
+                    measured_fps = fps_frames / fps_elapsed
+                    fps_frames = 0
+                    fps_started = time.monotonic()
+
+                raw_point = detect_bright_spot(
+                    frame,
+                    thresh_val=int(self.brightness_threshold),
+                    previous_point=self._point_filter.point,
+                )
+                point = self._point_filter.update(raw_point)
                 if point is None:
-                    self.headlight_lost.emit()
+                    if not lost_announced:
+                        self.headlight_lost.emit()
+                        lost_announced = True
                 else:
+                    lost_announced = False
                     u, v = point
                     h, w = frame.shape[:2]
                     depth = max(1.0, float(self.depth_cm))
@@ -152,6 +263,21 @@ class MonocularHeadlightDetectorThread(QThread):
                         (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.65,
                         (0, 255, 0), 2,
                     )
+
+                if brightness_90 > 245.0:
+                    cv2.putText(
+                        frame, "OVEREXPOSED - move light farther away",
+                        (10, frame.shape[0] - 18),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 80, 255), 2,
+                    )
+
+                cv2.putText(
+                    frame,
+                    f"{frame.shape[1]}x{frame.shape[0]}  {measured_fps:.1f} FPS  "
+                    f"T:{int(self.brightness_threshold)}",
+                    (10, frame.shape[0] - 42),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.48, (255, 220, 80), 1,
+                )
 
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 h, w = rgb.shape[:2]
@@ -187,7 +313,7 @@ class HeadlightDetectorThread(QThread):
 
     def __init__(
         self, cam1_idx: int = 1, cam2_idx: int = 2,
-        camera_height_cm: float = 19.5, brightness_threshold: int = 240,
+        camera_height_cm: float = 19.5, brightness_threshold: int = 210,
         parent=None,
     ):
         super().__init__(parent)
@@ -196,6 +322,12 @@ class HeadlightDetectorThread(QThread):
         self.camera_height_cm = camera_height_cm
         self.brightness_threshold = brightness_threshold
         self._running = False
+        self._point_filter_1 = TemporalPointFilter(
+            alpha=0.32, hold_frames=4, max_step=180.0)
+        self._point_filter_2 = TemporalPointFilter(
+            alpha=0.32, hold_frames=4, max_step=180.0)
+        self._position_filter = TemporalPointFilter(
+            alpha=0.24, hold_frames=4)
         self._calib: Optional[StereoCalibrationResult] = None
 
         try:
@@ -216,14 +348,14 @@ class HeadlightDetectorThread(QThread):
         cap1, cap2 = None, None
 
         try:
-            cap1 = cv2.VideoCapture(self.cam1_idx, cv2.CAP_DSHOW)
-            cap2 = cv2.VideoCapture(self.cam2_idx, cv2.CAP_DSHOW)
+            cap1, backend1 = open_video_capture(self.cam1_idx)
+            cap2, backend2 = open_video_capture(self.cam2_idx)
 
-            if not cap1.isOpened() or not cap2.isOpened():
+            if cap1 is None or cap2 is None:
                 missing = []
-                if not cap1.isOpened():
+                if cap1 is None:
                     missing.append(str(self.cam1_idx))
-                if not cap2.isOpened():
+                if cap2 is None:
                     missing.append(str(self.cam2_idx))
                 self.camera_status.emit(
                     f"Camera(s) {', '.join(missing)} not detected", False)
@@ -231,7 +363,8 @@ class HeadlightDetectorThread(QThread):
                 return
 
             self.camera_status.emit(
-                f"Cameras {self.cam1_idx} + {self.cam2_idx} connected (stereo)", True)
+                f"Cameras {self.cam1_idx} ({backend1}) + "
+                f"{self.cam2_idx} ({backend2}) connected (stereo)", True)
 
             for cap in (cap1, cap2):
                 cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*'MJPG'))
@@ -240,8 +373,9 @@ class HeadlightDetectorThread(QThread):
                 cap.set(cv2.CAP_PROP_FPS, 30)
                 # Lock exposure to dark mode to isolate the bright light
                 cap.set(cv2.CAP_PROP_AUTO_EXPOSURE, 0.25)
-                cap.set(cv2.CAP_PROP_EXPOSURE, -8)
+                cap.set(cv2.CAP_PROP_EXPOSURE, -6)
 
+            lost_announced = False
             while self._running:
                 # Hardware-level near-simultaneous grab
                 if not (cap1.grab() and cap2.grab()):
@@ -254,10 +388,16 @@ class HeadlightDetectorThread(QThread):
                     continue
 
                 threshold = int(self.brightness_threshold)
-                pt1 = detect_bright_spot(frame1, thresh_val=threshold)
-                pt2 = detect_bright_spot(frame2, thresh_val=threshold)
+                raw_pt1 = detect_bright_spot(
+                    frame1, thresh_val=threshold,
+                    previous_point=self._point_filter_1.point)
+                raw_pt2 = detect_bright_spot(
+                    frame2, thresh_val=threshold,
+                    previous_point=self._point_filter_2.point)
+                pt1 = self._point_filter_1.update(raw_pt1)
+                pt2 = self._point_filter_2.update(raw_pt2)
 
-                detected = False
+                position = None
 
                 if pt1 is not None and pt2 is not None:
                     # Draw detection overlays
@@ -300,8 +440,7 @@ class HeadlightDetectorThread(QThread):
                                 gt_y = Z_cm
                                 gt_z = -Y_cm + self.camera_height_cm
 
-                                self.headlight_detected.emit(gt_x, gt_y, gt_z)
-                                detected = True
+                                position = (gt_x, gt_y, gt_z)
                     else:
                         # ── UNCALIBRATED FALLBACK ──
                         # Hardcoded fallback assuming 25cm baseline, ~900px focal length at 720p
@@ -325,11 +464,16 @@ class HeadlightDetectorThread(QThread):
                             gt_y = Z_cm
                             gt_z = -Y_cm + self.camera_height_cm
                             
-                            self.headlight_detected.emit(gt_x, gt_y, gt_z)
-                            detected = True
+                            position = (gt_x, gt_y, gt_z)
 
-                if not detected:
-                    self.headlight_lost.emit()
+                stable_position = self._position_filter.update(position)
+                if stable_position is None:
+                    if not lost_announced:
+                        self.headlight_lost.emit()
+                        lost_announced = True
+                else:
+                    lost_announced = False
+                    self.headlight_detected.emit(*stable_position)
 
                 # Compose side-by-side view for UI
                 h1, w1 = frame1.shape[:2]

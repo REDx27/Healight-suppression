@@ -25,6 +25,7 @@ class Windshield2DWidget(QWidget):
 
         # Windshield aspect ratio (updated from controls)
         self._ws_aspect = 34.5 / 19.4
+        self._light_theme = False
         self._static_layer: QPixmap | None = None
         self._static_geometry = (0.0, 0.0, 1.0, 1.0)
 
@@ -37,6 +38,13 @@ class Windshield2DWidget(QWidget):
                 self._ws_aspect = aspect
                 self._invalidate_static_layer()
                 self.update()
+
+    def set_light_theme(self, enabled: bool):
+        """Keep the overlay legible when the adjacent 3D canvas changes theme."""
+        if self._light_theme != enabled:
+            self._light_theme = enabled
+            self._invalidate_static_layer()
+            self.update()
 
     def update_glare(self, norm_x: float, norm_y: float, in_bounds: bool):
         self.update_glares([(norm_x, norm_y, in_bounds)], not in_bounds)
@@ -82,16 +90,20 @@ class Windshield2DWidget(QWidget):
         p = QPainter(self._static_layer)
         p.setRenderHint(QPainter.Antialiasing)
 
-        # Deep dark background with subtle gradient
+        # Coordinated background for the selected scene theme.
         bg_grad = QLinearGradient(0, 0, 0, self.height())
-        bg_grad.setColorAt(0.0, QColor("#080e16"))
-        bg_grad.setColorAt(1.0, QColor("#060a10"))
+        if self._light_theme:
+            bg_grad.setColorAt(0.0, QColor("#dce1e4"))
+            bg_grad.setColorAt(1.0, QColor("#c3cbd1"))
+        else:
+            bg_grad.setColorAt(0.0, QColor("#0b151e"))
+            bg_grad.setColorAt(1.0, QColor("#071019"))
         p.fillRect(self.rect(), QBrush(bg_grad))
 
         # Compute windshield rectangle preserving aspect ratio
         margin = 16
-        title_space = 22
-        bottom_space = 18
+        title_space = 34
+        bottom_space = 22
         avail_w = max(1, self.width() - 2 * margin)
         avail_h = max(1, self.height() - 2 * margin - title_space - bottom_space)
         ws_w = min(avail_w, avail_h * self._ws_aspect)
@@ -109,7 +121,7 @@ class Windshield2DWidget(QWidget):
         is_alert = self._has_out_of_range
 
         # Outer glow
-        glow_color = QColor("#f87171") if is_alert else QColor("#0e7490")
+        glow_color = QColor("#f87171") if is_alert else QColor("#2f80ed")
         glow_color.setAlpha(30)
         glow_pen = QPen(glow_color, 6)
         p.setPen(glow_pen)
@@ -117,13 +129,15 @@ class Windshield2DWidget(QWidget):
         p.drawRoundedRect(QRectF(ws_x - 2, ws_y - 2, ws_w + 4, ws_h + 4), 9, 9)
 
         # Main border
-        border_color = QColor("#f87171") if is_alert else QColor("#22b8cf")
+        border_color = QColor("#f87171") if is_alert else QColor("#2f80ed")
         p.setPen(QPen(border_color, 2))
 
         # Fill gradient
         fill = QLinearGradient(ws_x, ws_y, ws_x, ws_y + ws_h)
-        fill.setColorAt(0.0, QColor(14, 116, 144, 20))
-        fill.setColorAt(1.0, QColor(14, 116, 144, 8))
+        alpha_top = 24 if self._light_theme else 20
+        alpha_bottom = 12 if self._light_theme else 8
+        fill.setColorAt(0.0, QColor(47, 128, 237, alpha_top))
+        fill.setColorAt(1.0, QColor(47, 128, 237, alpha_bottom))
         p.setBrush(QBrush(fill))
 
         p.drawRoundedRect(QRectF(ws_x, ws_y, ws_w, ws_h), 7, 7)
@@ -133,35 +147,40 @@ class Windshield2DWidget(QWidget):
         cy = ws_y + ws_h / 2
 
         # Grid lines
-        grid_pen = QPen(QColor(255, 255, 255, 18), 1, Qt.DashLine)
+        grid_color = QColor(66, 86, 102, 55) if self._light_theme else QColor(170, 195, 214, 24)
+        grid_pen = QPen(grid_color, 1, Qt.DashLine)
         p.setPen(grid_pen)
         p.drawLine(int(ws_x + 4), int(cy), int(ws_x + ws_w - 4), int(cy))
         p.drawLine(int(cx), int(ws_y + 4), int(cx), int(ws_y + ws_h - 4))
 
         # Centre crosshair
         ch_size = 6
-        ch_pen = QPen(QColor(34, 184, 207, 60), 1)
+        ch_pen = QPen(QColor(47, 128, 237, 105 if self._light_theme else 75), 1)
         p.setPen(ch_pen)
         p.drawLine(int(cx - ch_size), int(cy), int(cx + ch_size), int(cy))
         p.drawLine(int(cx), int(cy - ch_size), int(cx), int(cy + ch_size))
 
     def _draw_labels(self, p, ws_x, ws_y, ws_w, ws_h, margin):
-        cx = ws_x + ws_w / 2
-
         # Edge labels
         label_font = QFont("Segoe UI", 7)
         label_font.setWeight(QFont.Medium)
         p.setFont(label_font)
-        p.setPen(QColor("#3d5268"))
-        p.drawText(int(cx - 8), int(ws_y - 5), "TOP")
-        p.drawText(int(cx - 15), int(ws_y + ws_h + 13), "BOTTOM")
-        p.drawText(max(2, int(ws_x - 22)), int(ws_y + ws_h / 2 + 3), "L")
-        p.drawText(min(self.width() - 12, int(ws_x + ws_w + 6)), int(ws_y + ws_h / 2 + 3), "R")
+        label_color = QColor("#536b7c") if self._light_theme else QColor("#61788a")
+        p.setPen(label_color)
+        p.drawText(QRectF(ws_x, ws_y - 20, ws_w, 15),
+                   Qt.AlignHCenter | Qt.AlignVCenter, "TOP")
+        p.drawText(QRectF(ws_x, ws_y + ws_h + 4, ws_w, 15),
+                   Qt.AlignHCenter | Qt.AlignVCenter, "BOTTOM")
+        p.drawText(QRectF(max(1, ws_x - 24), ws_y, 18, ws_h),
+                   Qt.AlignCenter, "L")
+        p.drawText(QRectF(min(self.width() - 19, ws_x + ws_w + 6), ws_y, 18, ws_h),
+                   Qt.AlignCenter, "R")
 
         # Title
-        p.setPen(QColor("#6b8299"))
+        p.setPen(QColor("#365d78") if self._light_theme else QColor("#7da4c1"))
         p.setFont(QFont("Segoe UI", 8, QFont.Bold))
-        p.drawText(max(6, int(ws_x)), margin + 14, "WINDSHIELD FRONT VIEW")
+        p.drawText(QRectF(margin, 4, self.width() - margin * 2, 20),
+                   Qt.AlignLeft | Qt.AlignVCenter, "WINDSHIELD FRONT VIEW")
 
     def _draw_glare_spots(self, p, ws_x, ws_y, ws_w, ws_h):
         for norm_x, norm_y, in_bounds in self._glares:

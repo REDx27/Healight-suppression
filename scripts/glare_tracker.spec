@@ -12,6 +12,7 @@ for package in ("mediapipe", "pyqtgraph"):
     hiddenimports += package_hiddenimports
 
 datas.append(("../assets/glaretracker-icon.ico", "assets"))
+datas.append(("../assets/face_landmarker.task", "assets"))
 
 
 analysis = Analysis(

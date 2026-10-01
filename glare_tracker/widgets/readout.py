@@ -21,8 +21,11 @@ class ReadoutPanel(QGroupBox):
         self.setProperty("section", "telemetry")
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         layout = QFormLayout(self)
-        layout.setSpacing(6)
+        layout.setHorizontalSpacing(10)
+        layout.setVerticalSpacing(7)
+        layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         layout.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
+        layout.setRowWrapPolicy(QFormLayout.WrapLongRows)
 
         mono = QFont("Consolas", 9)
         self._labels: dict[str, QLabel] = {}

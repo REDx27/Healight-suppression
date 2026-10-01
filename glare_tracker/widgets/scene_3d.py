@@ -7,7 +7,7 @@ overlay — all updated in-place via ``setData()`` for 60+ FPS.
 
 import numpy as np
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QFrame, QGridLayout, QLabel,
@@ -28,6 +28,8 @@ _MAX_LIGHTS = 4
 class Scene3DWidget(QWidget):
     """Wraps a ``GLViewWidget`` and manages all 3D scene objects."""
 
+    scene_theme_changed = pyqtSignal(bool)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._scene_colors = {
@@ -43,6 +45,7 @@ class Scene3DWidget(QWidget):
         self._last_light_positions = None
         self._last_eye_position = None
         self._last_ray_positions = None
+        self._light_scene = False
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -56,33 +59,36 @@ class Scene3DWidget(QWidget):
         self._build_dynamic_items()
         self._build_settings_overlay()
         self._build_legend_overlay()
+        self._apply_scene_theme()
         self._hide_tracking()
 
     # ── static scene elements ───────────────────────────────────────
 
     def _build_static_scene(self):
         # Layered floor grid: fine navigation grid plus subdued major divisions.
-        grid = gl.GLGridItem()
-        grid.setSize(240, 240, 1)
-        grid.setSpacing(10, 10, 10)
-        grid.setColor(QColor(70, 96, 128, 38))
-        self.gl_view.addItem(grid)
-        major_grid = gl.GLGridItem()
-        major_grid.setSize(240, 240, 1)
-        major_grid.setSpacing(40, 40, 40)
-        major_grid.setColor(QColor(34, 184, 207, 35))
-        major_grid.translate(0, 0, 0.04)
-        self.gl_view.addItem(major_grid)
+        self._minor_grid = gl.GLGridItem()
+        self._minor_grid.setSize(240, 240, 1)
+        self._minor_grid.setSpacing(10, 10, 10)
+        self._minor_grid.setColor(QColor(70, 96, 128, 38))
+        self.gl_view.addItem(self._minor_grid)
+        self._major_grid = gl.GLGridItem()
+        self._major_grid.setSize(240, 240, 1)
+        self._major_grid.setSpacing(40, 40, 40)
+        self._major_grid.setColor(QColor(34, 184, 207, 35))
+        self._major_grid.translate(0, 0, 0.04)
+        self.gl_view.addItem(self._major_grid)
 
         # Road/lane context in front of the windshield.
+        self._road_lines = []
         for x, color, width in [
             (-45, (0.22, 0.35, 0.48, 0.50), 1.2),
             (45, (0.22, 0.35, 0.48, 0.50), 1.2),
             (0, (0.20, 0.72, 0.82, 0.32), 1.0),
         ]:
             points = np.array([[x, 0, 0.12], [x, 220, 0.12]], dtype=np.float32)
-            self.gl_view.addItem(gl.GLLinePlotItem(
-                pos=points, color=color, width=width, antialias=True))
+            line = gl.GLLinePlotItem(pos=points, color=color, width=width, antialias=True)
+            self.gl_view.addItem(line)
+            self._road_lines.append(line)
 
         # Windshield mesh (rebuilt when dimensions change)
         self._ws_mesh = None
@@ -93,19 +99,25 @@ class Scene3DWidget(QWidget):
 
         # Axis lines + labels
         axis_len = 50
+        self._axis_lines = []
         for pts, color in [
             (np.array([[0, 0, 0], [axis_len, 0, 0]]), (0.97, 0.44, 0.44, 0.55)),
             (np.array([[0, 0, 0], [0, axis_len, 0]]), (0.20, 0.83, 0.60, 0.55)),
             (np.array([[0, 0, 0], [0, 0, axis_len]]), (0.38, 0.65, 0.98, 0.55)),
         ]:
-            self.gl_view.addItem(gl.GLLinePlotItem(pos=pts, color=color, width=1.5, antialias=True))
+            line = gl.GLLinePlotItem(pos=pts, color=color, width=1.5, antialias=True)
+            self.gl_view.addItem(line)
+            self._axis_lines.append(line)
 
+        self._axis_labels = []
         for text, pos, color in [
             ("X", (axis_len, 0, 0), (1.0, 0.3, 0.3, 1.0)),
             ("Y", (0, axis_len, 0), (0.3, 1.0, 0.3, 1.0)),
             ("Z", (0, 0, axis_len), (0.3, 0.3, 1.0, 1.0)),
         ]:
-            self.gl_view.addItem(GLTextItem(pos=pos, text=text, color=color))
+            label = GLTextItem(pos=pos, text=text, color=color)
+            self.gl_view.addItem(label)
+            self._axis_labels.append(label)
 
     # ── dynamic tracking items ──────────────────────────────────────
 
@@ -322,11 +334,20 @@ class Scene3DWidget(QWidget):
 
     def _build_settings_overlay(self):
         self.settings_button = QToolButton(self)
+        self.settings_button.setObjectName("sceneToolButton")
         self.settings_button.setIcon(IconFactory.icon("settings", "#c4b5fd"))
         self.settings_button.setIconSize(ICON_SIZE)
         self.settings_button.setToolTip("3D view settings")
         self.settings_button.setFixedSize(36, 36)
         self.settings_button.clicked.connect(self._toggle_settings)
+
+        self.theme_button = QToolButton(self)
+        self.theme_button.setObjectName("sceneToolButton")
+        self.theme_button.setIconSize(ICON_SIZE)
+        self.theme_button.setToolTip("Use a light gray 3D canvas")
+        self.theme_button.setFixedSize(36, 36)
+        self.theme_button.setCheckable(True)
+        self.theme_button.toggled.connect(self._toggle_scene_theme)
 
         self.settings_panel = QFrame(self)
         self.settings_panel.setObjectName("sceneSettingsPanel")
@@ -458,6 +479,117 @@ class Scene3DWidget(QWidget):
         self.settings_panel.setVisible(not self.settings_panel.isVisible())
         self._position_settings()
 
+    def _toggle_scene_theme(self, light: bool):
+        self._light_scene = light
+        self._apply_scene_theme()
+        self.scene_theme_changed.emit(light)
+
+    def _apply_scene_theme(self):
+        """Keep the original dark scene and provide a high-contrast gray variant."""
+        if self._light_scene:
+            self.gl_view.setBackgroundColor(QColor("#c3c9cf"))
+            self._minor_grid.setColor(QColor(55, 68, 78, 60))
+            self._major_grid.setColor(QColor(0, 96, 125, 90))
+            road_colors = [
+                (0.24, 0.34, 0.42, 0.62),
+                (0.24, 0.34, 0.42, 0.62),
+                (0.06, 0.42, 0.55, 0.62),
+            ]
+            axis_colors = [
+                (0.72, 0.18, 0.18, 0.76),
+                (0.08, 0.48, 0.22, 0.76),
+                (0.10, 0.32, 0.72, 0.76),
+            ]
+            label_colors = [
+                (0.62, 0.10, 0.10, 1.0),
+                (0.04, 0.38, 0.16, 1.0),
+                (0.06, 0.25, 0.62, 1.0),
+            ]
+            self._set_tracking_colors(
+                eye=(0.08, 0.32, 0.72, 1.0),
+                light=(0.76, 0.38, 0.0, 1.0),
+                intersection=(0.76, 0.18, 0.02, 1.0),
+                ray=(0.72, 0.08, 0.08, 0.82),
+                additive=False,
+            )
+            self.legend_panel.setStyleSheet(
+                "QFrame#sceneLegend { background: rgba(218, 223, 227, 240); "
+                "border: 1px solid #71808b; border-radius: 7px; }"
+                "QLabel { color: #2f3d46; background: transparent; font-size: 8pt; }"
+            )
+            icon_color = "#245d94"
+            self.theme_button.setIcon(IconFactory.icon("moon", icon_color))
+            self.theme_button.setToolTip("Use the original dark 3D canvas")
+        else:
+            # Exact scene palette present at the start of today's work.
+            self.gl_view.setBackgroundColor(QColor("#050810"))
+            self._minor_grid.setColor(QColor(70, 96, 128, 38))
+            self._major_grid.setColor(QColor(34, 184, 207, 35))
+            road_colors = [
+                (0.22, 0.35, 0.48, 0.50),
+                (0.22, 0.35, 0.48, 0.50),
+                (0.20, 0.72, 0.82, 0.32),
+            ]
+            axis_colors = [
+                (0.97, 0.44, 0.44, 0.55),
+                (0.20, 0.83, 0.60, 0.55),
+                (0.38, 0.65, 0.98, 0.55),
+            ]
+            label_colors = [
+                (1.0, 0.3, 0.3, 1.0),
+                (0.3, 1.0, 0.3, 1.0),
+                (0.3, 0.3, 1.0, 1.0),
+            ]
+            self._set_tracking_colors(
+                eye=(0.38, 0.65, 0.98, 1.0),
+                light=(1.0, 0.75, 0.18, 1.0),
+                intersection=(1.0, 0.82, 0.25, 1.0),
+                ray=(0.97, 0.35, 0.28, 0.68),
+                additive=True,
+            )
+            self.legend_panel.setStyleSheet(
+                "QFrame#sceneLegend { background: rgba(12, 13, 17, 220); "
+                "border: 1px solid #30353e; border-radius: 7px; }"
+                "QLabel { color: #929aa7; background: transparent; font-size: 8pt; }"
+            )
+            icon_color = "#78b7ff"
+            self.theme_button.setIcon(IconFactory.icon("sun", icon_color))
+            self.theme_button.setToolTip("Use a light gray 3D canvas")
+
+        self.settings_button.setIcon(IconFactory.icon("settings", icon_color))
+        for line, color in zip(self._road_lines, road_colors):
+            line.setData(color=color)
+        for line, color in zip(self._axis_lines, axis_colors):
+            line.setData(color=color)
+        for label, color in zip(self._axis_labels, label_colors):
+            label.setData(color=color)
+
+    def _set_tracking_colors(self, eye, light, intersection, ray, additive):
+        option = "additive" if additive else "translucent"
+        for glow, core, label in zip(
+                self._light_glows, self._light_scatters, self._light_labels):
+            glow.setGLOptions(option)
+            core.setGLOptions(option)
+            glow_color = (*light[:3], 0.16 if additive else 0.18)
+            glow.setData(color=glow_color)
+            core.setData(color=light)
+            label.setData(color=light)
+        for glow, core, label in zip(
+                self._inter_glows, self._inter_scatters, self._inter_labels):
+            glow.setGLOptions(option)
+            core.setGLOptions(option)
+            glow_color = (*intersection[:3], 0.18 if additive else 0.22)
+            glow.setData(color=glow_color)
+            core.setData(color=intersection)
+            label.setData(color=intersection)
+        self._eye_glow.setGLOptions(option)
+        self._eye_scatter.setGLOptions(option)
+        self._eye_glow.setData(color=(*eye[:3], 0.16 if additive else 0.18))
+        self._eye_scatter.setData(color=eye)
+        self._eye_label.setData(color=eye)
+        for line in self._ray_lines:
+            line.setData(color=ray)
+
     def _toggle_eye_visibility(self, visible):
         self._eye_points_visible = visible
         self._eye_glow.setVisible(visible)
@@ -474,7 +606,11 @@ class Scene3DWidget(QWidget):
     def _position_settings(self):
         margin = 10
         self.settings_button.move(self.width() - self.settings_button.width() - margin, margin)
+        self.theme_button.move(
+            self.width() - self.settings_button.width() - self.theme_button.width()
+            - margin * 2, margin)
         self.settings_button.raise_()
+        self.theme_button.raise_()
         if self.settings_panel.isVisible():
             self.settings_panel.adjustSize()
             self.settings_panel.move(
