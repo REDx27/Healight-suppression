@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import QGroupBox, QFormLayout, QVBoxLayout, QLabel, QSizePo
 
 
 _READOUT_STYLE = (
-    "color: {color}; background-color: #0b0d11; "
+    "color: {color}; background-color: rgba(11, 13, 17, 210); "
     "padding: 6px 10px; border-radius: 5px; border: 1px solid #2a2f38;"
     "font-family: 'Consolas', 'Cascadia Code', monospace;"
 )

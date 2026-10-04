@@ -174,6 +174,14 @@ class ThemeManager:
             background: #101820;
             color: #b8c8d4;
         }}
+        QGroupBox[overlay="true"] {{
+            background: rgba(14, 23, 31, 218);
+            border: 1px solid rgba(91, 136, 168, 190);
+            border-left: 2px solid #35b86b;
+        }}
+        QGroupBox[overlay="true"]::title {{
+            background: rgba(14, 23, 31, 235);
+        }}
 
         /* ── Inputs ── */
         QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
@@ -262,6 +270,33 @@ class ThemeManager:
             background: {p.danger_bg};
             border-color: {p.danger};
             color: #fecdd3;
+        }}
+        QPushButton#sessionStateAction {{
+            min-height: 30px;
+            padding-left: 11px;
+            padding-right: 11px;
+            background: #15212b;
+            border: 1px solid #354755;
+            color: #b8c8d4;
+            font-weight: 700;
+        }}
+        QPushButton#sessionStateAction:hover {{
+            border-color: #6da9d6;
+        }}
+        QPushButton#sessionStateAction[sessionRole="run"]:checked {{
+            background: #166534;
+            border-color: #4ade80;
+            color: #dcfce7;
+        }}
+        QPushButton#sessionStateAction[sessionRole="standby"]:checked {{
+            background: #854d0e;
+            border-color: #facc15;
+            color: #fef9c3;
+        }}
+        QPushButton#sessionStateAction[sessionRole="stop"]:checked {{
+            background: #7f1d1d;
+            border-color: #f87171;
+            color: #fee2e2;
         }}
         QPushButton#headerAction {{
             min-height: 30px;
@@ -395,6 +430,11 @@ class ThemeManager:
             background: #080e14;
             border: 1px solid #344756;
             border-radius: 10px;
+        }}
+        QFrame#configurationSidebar {{
+            background: #0d151c;
+            border: 1px solid #2b3d4a;
+            border-radius: 8px;
         }}
 
         QToolButton#sceneToolButton {{

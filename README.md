@@ -2,10 +2,11 @@
 
 GlareTracker is a Windows desktop application that tracks driver eye position from a webcam and visualizes glare intersections on a virtual windshield.
 
-Headlight coordinates can be supplied manually or detected from cameras. Auto mode
-supports an initial single-camera setup (with a user-supplied depth estimate) and a
-calibrated or fallback stereo-camera setup. The driver and outdoor camera feeds are
-shown in the sidebar, together with connection and detection status.
+Driver and headlight coordinates can each come from a camera or a fixed manual value.
+The four explicit operating modes are Fully Auto, Fully Manual, Driver Position Fixed,
+and Headlight Position Fixed. Run enables calculations, Standby keeps required previews
+live while calculations are frozen, and Stop releases all cameras. Road tracking
+supports a single-camera estimate or a calibrated/fallback stereo setup.
 
 Version 1.1 introduces an operator-focused dashboard with a full-size 3D workspace,
 responsive windshield-intersection overlay, live system-state header, reusable camera
@@ -27,18 +28,19 @@ scene, and responsive scene controls.
 
 ## Current development status
 
-As of 2026-10-01, the source is version 1.2.0. The tracking, headlight-input,
+As of 2026-10-03, the source is version 1.2.0. The tracking, headlight-input,
 intersection, simulation, and visualization paths are implemented in source. Camera
 capture now includes Windows backend fallback, a low-bandwidth 640x480 MJPEG profile,
 adaptive bright-source detection, temporal light tracking, dropout tolerance, and
-MediaPipe Tasks compatibility for Python 3.13. A functional test plan records verified
-and pending checks for the two-camera demonstration.
+MediaPipe Tasks compatibility for Python 3.13. Eleven automated tests cover the core
+mode/state, session, calibration-profile, and detection policies; the functional test
+plan records the remaining physical-camera checks for the two-camera demonstration.
 
 The current demonstration uses camera 0 for the driver and camera 1 for the road view.
-Single-camera road tracking measures a light bearing and projects it at an operator-
-supplied distance; it does not independently recover absolute range. The next planned
-feature is a detailed guided calibration workflow for driver depth and reference-based
-monocular road-distance estimation. Remaining physical-system work includes camera-to-
+Single-camera road tracking measures a light bearing and, without a saved demonstration
+profile, projects it at an operator-supplied distance. The guided calibration wizard can
+instead estimate driver depth from measured IPD and estimate road-light range from the
+apparent size of one reference lamp. Remaining physical-system work includes camera-to-
 windshield extrinsics, separate left/right-eye intersections, secondary-display LCD
 blocking, prediction, and research-data logging.
 
@@ -64,6 +66,29 @@ range. Stereo or an RGB-D camera is recommended when robust absolute depth is re
 For the outdoor light camera, a single image supplies direction but not independently
 measured range; single-camera mode therefore requires the configured distance. Use the
 stereo setup for measured 3D headlight position.
+
+## Guided single-camera demonstration calibration
+
+Open **Configuration → Single-Camera Calibration → Calibrate Single-Camera Distances** with
+the integrated driver camera on index 0 and USB road camera on index 1. The wizard starts
+the required feeds and provides three guided pages:
+
+1. **Driver reference:** enter measured IPD and lens-to-eye distance, face the camera,
+   hold still, and capture at least 20 stable iris-separation samples. The saved focal
+   scale enables the pinhole estimate `distance = IPD × focal / iris_pixels`.
+2. **Road reference:** place the same demonstration lamp at a measured distance, keep it
+   centred and steady in a dim scene, and capture at least 20 stable bright-core diameter
+   samples. Live range uses `distance = reference_distance × reference_diameter /
+   live_diameter`.
+3. **Review:** activate either profile after reviewing its validity limits. Calibrated
+   road values are marked `EST`; values using the manual depth control are marked
+   `ASSUMED`.
+
+The road profile is tied to the camera index, resolution scale, brightness threshold,
+lamp, exposure behaviour, and viewing angle used during capture. It is intended only
+for a controlled demonstration. A point light in one image does not contain general
+absolute-range information, so use calibrated stereo or RGB-D sensing for defensible
+physical distance measurements.
 
 ## Run from source
 
@@ -104,6 +129,8 @@ The executable is created at `dist/GlareTracker.exe`. If Inno Setup (`iscc`) is 
 │   ├── app.py                  #   QApplication setup, main()
 │   ├── config.py               #   TrackingConfig dataclass
 │   ├── geometry.py             #   Intersection & coordinate math
+│   ├── calibration.py          #   Calibration profiles and persistence
+│   ├── operating_modes.py      #   Mode/state source policy
 │   ├── styles.py               #   Centralized application theme stylesheet
 │   ├── camera.py               #   Webcam capture thread (OpenCV + MediaPipe)
 │   ├── capture.py              #   Compatible backend/profile camera setup
@@ -117,7 +144,9 @@ The executable is created at `dist/GlareTracker.exe`. If Inno Setup (`iscc`) is 
 │       ├── dashboard.py        #     Reusable dashboard and camera components
 │       ├── icons.py            #     Dependency-free vector icon factory
 │       ├── readout.py          #     Telemetry readout panel
-│       └── controls.py        #     User controls & inputs
+│       ├── controls.py         #     User controls & inputs
+│       └── calibration_wizard.py #   Guided distance calibration
+├── tests/                      # Automated regression tests
 ├── requirements.txt            # Python dependencies
 ├── README.md                   # This file
 ├── assets/                     # Branding (icon files)

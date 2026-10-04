@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import sys
 import time
+from dataclasses import dataclass
 from typing import Optional
 
 import cv2
@@ -15,7 +16,12 @@ import numpy as np
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtGui import QImage
 
-from glare_tracker.calibration import StereoCalibrationResult, load_stereo_calibration
+from glare_tracker.calibration import (
+    MonocularRangeCalibration,
+    StereoCalibrationResult,
+    load_monocular_range_calibration,
+    load_stereo_calibration,
+)
 from glare_tracker.capture import configure_video_capture, open_video_capture
 
 
@@ -66,11 +72,20 @@ class TemporalPointFilter:
         return self.point
 
 
-def detect_bright_spot(
+@dataclass(frozen=True)
+class BrightSpotObservation:
+    """Detected light centre and apparent thresholded size."""
+
+    center: tuple[float, float]
+    diameter_px: float
+    area_px: float
+
+
+def detect_bright_spot_observation(
     frame: np.ndarray, thresh_val: int = 210, min_area: float = 5.0,
     max_area: float = 10000.0,
     previous_point: Optional[tuple[float, float]] = None,
-) -> Optional[tuple[float, float]]:
+) -> Optional[BrightSpotObservation]:
     """Detect a compact light source using contrast and weighted centroid.
 
     The threshold is combined with the frame's background level so exposure
@@ -133,12 +148,25 @@ def detect_bright_spot(
         if previous_point is not None:
             distance = float(np.hypot(cx - previous_point[0], cy - previous_point[1]))
             score -= min(55.0, distance * 0.08)
-        candidates.append((score, cx, cy))
+        diameter_px = 2.0 * np.sqrt(area / np.pi)
+        candidates.append((score, cx, cy, diameter_px, area))
 
     if not candidates:
         return None
-    _, cx, cy = max(candidates, key=lambda candidate: candidate[0])
-    return (cx, cy)
+    _, cx, cy, diameter_px, area = max(
+        candidates, key=lambda candidate: candidate[0])
+    return BrightSpotObservation((cx, cy), float(diameter_px), float(area))
+
+
+def detect_bright_spot(
+    frame: np.ndarray, thresh_val: int = 210, min_area: float = 5.0,
+    max_area: float = 10000.0,
+    previous_point: Optional[tuple[float, float]] = None,
+) -> Optional[tuple[float, float]]:
+    """Backward-compatible centre-only bright-spot detector."""
+    observation = detect_bright_spot_observation(
+        frame, thresh_val, min_area, max_area, previous_point)
+    return None if observation is None else observation.center
 
 
 class MonocularHeadlightDetectorThread(QThread):
@@ -151,13 +179,15 @@ class MonocularHeadlightDetectorThread(QThread):
 
     frame_ready = pyqtSignal(QImage)
     headlight_detected = pyqtSignal(float, float, float)
+    light_observed = pyqtSignal(float, float, float, int, int)
     headlight_lost = pyqtSignal()
     camera_status = pyqtSignal(str, bool)
 
     def __init__(
         self, camera_index: int = 1, depth_cm: float = 120.0,
         windshield_h_cm: float = 19.5, hfov_deg: float = 70.0,
-        brightness_threshold: int = 210, parent=None,
+        brightness_threshold: int = 210,
+        use_range_calibration: bool = True, parent=None,
     ):
         super().__init__(parent)
         self.camera_index = camera_index
@@ -168,6 +198,15 @@ class MonocularHeadlightDetectorThread(QThread):
         self._running = False
         self._point_filter = TemporalPointFilter(
             alpha=0.32, hold_frames=5, max_step=180.0)
+        self._diameter_filter = TemporalPointFilter(alpha=0.25, hold_frames=5)
+        self._range_calibration: Optional[MonocularRangeCalibration] = None
+        if use_range_calibration:
+            try:
+                calibration = load_monocular_range_calibration()
+                if calibration is not None and calibration.camera_index == camera_index:
+                    self._range_calibration = calibration
+            except Exception:
+                self._range_calibration = None
 
     def update_projection(
         self, depth_cm: float, windshield_h_cm: float, hfov_deg: float,
@@ -177,6 +216,12 @@ class MonocularHeadlightDetectorThread(QThread):
         self.windshield_h_cm = windshield_h_cm
         self.hfov_deg = hfov_deg
         self.brightness_threshold = brightness_threshold
+
+    def set_range_calibration(
+        self, calibration: Optional[MonocularRangeCalibration],
+    ):
+        """Enable or clear reference-size ranging while the thread runs."""
+        self._range_calibration = calibration
 
     def stop(self):
         self._running = False
@@ -233,12 +278,15 @@ class MonocularHeadlightDetectorThread(QThread):
                     fps_frames = 0
                     fps_started = time.monotonic()
 
-                raw_point = detect_bright_spot(
+                observation = detect_bright_spot_observation(
                     frame,
                     thresh_val=int(self.brightness_threshold),
                     previous_point=self._point_filter.point,
                 )
+                raw_point = None if observation is None else observation.center
                 point = self._point_filter.update(raw_point)
+                diameter = self._diameter_filter.update(
+                    None if observation is None else (observation.diameter_px,))
                 if point is None:
                     if not lost_announced:
                         self.headlight_lost.emit()
@@ -247,7 +295,20 @@ class MonocularHeadlightDetectorThread(QThread):
                     lost_announced = False
                     u, v = point
                     h, w = frame.shape[:2]
-                    depth = max(1.0, float(self.depth_cm))
+                    if observation is not None:
+                        self.light_observed.emit(
+                            observation.center[0], observation.center[1],
+                            observation.diameter_px, w, h)
+                    if self._range_calibration is not None and diameter is not None:
+                        reference_width = self._range_calibration.image_size[0]
+                        normalized_diameter = diameter[0] * reference_width / max(1, w)
+                        depth = self._range_calibration.estimate_distance_cm(
+                            normalized_diameter)
+                        depth = float(np.clip(depth, 10.0, 5000.0))
+                        range_label = "EST"
+                    else:
+                        depth = max(1.0, float(self.depth_cm))
+                        range_label = "ASSUMED"
                     hfov = np.deg2rad(np.clip(self.hfov_deg, 10.0, 170.0))
                     fx = (w / 2.0) / np.tan(hfov / 2.0)
                     fy = fx
@@ -259,7 +320,9 @@ class MonocularHeadlightDetectorThread(QThread):
                     self.headlight_detected.emit(gt_x, gt_y, gt_z)
                     cv2.circle(frame, (int(u), int(v)), 10, (0, 255, 0), 2)
                     cv2.putText(
-                        frame, f"X:{gt_x:.1f} Y:{gt_y:.1f} Z:{gt_z:.1f} cm",
+                        frame,
+                        f"X:{gt_x:.1f} Y:{gt_y:.1f} Z:{gt_z:.1f} cm "
+                        f"[{range_label}]",
                         (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.65,
                         (0, 255, 0), 2,
                     )
@@ -307,6 +370,7 @@ class HeadlightDetectorThread(QThread):
     """
 
     frame_ready = pyqtSignal(QImage)
+    stereo_frames_ready = pyqtSignal(QImage, QImage)
     headlight_detected = pyqtSignal(float, float, float)
     headlight_lost = pyqtSignal()
     camera_status = pyqtSignal(str, bool)
@@ -483,6 +547,18 @@ class HeadlightDetectorThread(QThread):
                 
                 f1_small = cv2.resize(frame1, (target_w, target_h))
                 f2_small = cv2.resize(frame2, (target_w, target_h))
+
+                f1_rgb = cv2.cvtColor(f1_small, cv2.COLOR_BGR2RGB)
+                f2_rgb = cv2.cvtColor(f2_small, cv2.COLOR_BGR2RGB)
+                image1 = QImage(
+                    f1_rgb.data, target_w, target_h, target_w * 3,
+                    QImage.Format_RGB888,
+                ).copy()
+                image2 = QImage(
+                    f2_rgb.data, target_w, target_h, target_w * 3,
+                    QImage.Format_RGB888,
+                ).copy()
+                self.stereo_frames_ready.emit(image1, image2)
                 
                 composite = np.hstack((f1_small, f2_small))
                 composite_rgb = cv2.cvtColor(composite, cv2.COLOR_BGR2RGB)

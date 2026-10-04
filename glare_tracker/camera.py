@@ -68,6 +68,7 @@ class VideoCaptureThread(QThread):
     eye_lost = pyqtSignal()
     depth_updated = pyqtSignal(float)
     head_pose_updated = pyqtSignal(float, float, float)
+    eye_pixels_detected = pyqtSignal(float, float, float, float, int, int)
     camera_status = pyqtSignal(str, bool)
 
     def __init__(self, camera_index=0, parent=None):
@@ -231,6 +232,8 @@ class VideoCaptureThread(QThread):
                     # Midpoint (used for backward compat)
                     eye_x_px = (lx_px + rx_px) / 2
                     eye_y_px = (ly_px + ry_px) / 2
+                    self.eye_pixels_detected.emit(
+                        lx_px, ly_px, rx_px, ry_px, w, h)
 
                     # Draw overlays on the RGB frame
                     cv2.circle(rgb, (int(eye_x_px), int(eye_y_px)), 6, (255, 50, 50), -1)

@@ -1,6 +1,6 @@
 # GlareTracker — Project Status & Specification
 
-> **Last Updated:** 2026-10-01
+> **Last Updated:** 2026-10-03
 > **Python Version:** 3.13 (current test environment; 3.11 previously verified)
 > **Platform:** Windows 10/11
 > **UI Framework:** PyQt5
@@ -14,7 +14,7 @@
 
 GlareTracker is currently a **source-level visualization and tracking prototype**, not yet an end-to-end physical glare-suppression system. The source contains driver-eye tracking, manual/single-camera/stereo headlight input, ray-plane intersection, 2D/3D visualization, simulation controls, calibration backends, and the v1.2 operator UI. The physical blocking output and the calibration needed for measurement-grade windshield coordinates are still pending.
 
-### Recent changes (through 2026-10-01)
+### Recent changes (through 2026-10-03)
 
 | Area | Current result |
 |---|---|
@@ -28,21 +28,24 @@ GlareTracker is currently a **source-level visualization and tracking prototype*
 | Road-light stability | Adaptive contrast thresholding, candidate persistence, exponential smoothing, dropout tolerance, reduced status flicker, and live FPS diagnostics |
 | MediaPipe compatibility | Bundled Face Landmarker model and compatibility path for current MediaPipe/Python 3.13 packages while retaining the legacy FaceMesh path |
 | Test workflow | Repeatable functional test checklist covering startup, eyes, calibration, geometry, simulation, road detection, end-to-end operation, and shutdown |
+| Guided demonstration calibration | Wizard captures stable IPD and lamp-size references, saves camera-specific profiles, enables IPD driver depth and apparent-size road range, and labels estimated versus assumed values |
+| Operating policy | Explicit Run/Standby/Stop states and four source modes now control camera ownership, manual inputs, calculations, previews, and movement simulation consistently |
+| Automated coverage | 11 tests cover mode/state policy, session transitions, source switching, calibration profile persistence, calibrated scaling, and bright-spot observations |
 
 ### Current blockers to the physical prototype
 
 1. Camera-to-windshield extrinsic calibration is not implemented, so tracked centimetre coordinates are not yet physically trustworthy.
-2. Calibration algorithms exist only as backend code; there is no guided intrinsic/stereo/extrinsic or monocular reference-distance workflow in the UI.
+2. A guided one-point demonstration workflow now exists, but full checkerboard intrinsic, stereo, and camera-to-windshield extrinsic calibration are not yet exposed in the UI.
 3. Tracking uses the eye midpoint for intersection calculations; binocular LCD blocking needs a separate ray and spot for each eye.
 4. No secondary-display LCD blocker has been implemented.
-5. There is no Kalman/predictive filtering, research-data logging, settings persistence, or automated test suite.
+5. There is no Kalman/predictive filtering, research-data logging, or settings persistence; current automated coverage does not yet validate physical-camera behavior or measurement accuracy.
 
 ### Packaging and verification snapshot
 
 - The source reports version **1.2.0**.
 - The only local packaged artifact is `dist/GlareTracker-v1.exe`, built on 2026-09-10; it predates the September 25 v1.2 work. The current build script instead produces `dist/GlareTracker.exe`, so a fresh package is required after the next stable milestone.
 - This review inspected the tracked source, repository history, dependency list, and available build artifact. The repository contained no uncommitted changes before this notes update.
-- Verification through 2026-10-01 passed dependency imports, package compilation before the latest compatibility refactor, off-screen and visible UI startup, two-camera discovery, driver capture (94 frames and 93 eye detections in 10 seconds), road-camera throughput (improved from 7 to 81 frames in 12 seconds), and synthetic bright-source/smoothing checks. Live regression of the final backend/adaptive-threshold refactor, measurement accuracy, automated coverage, and stripped-LCD hardware validation remain outstanding.
+- Verification through 2026-10-03 passed package/test compilation, 11 automated tests, off-screen UI construction and shutdown, earlier two-camera discovery, driver capture (94 frames and 93 eye detections in 10 seconds), road-camera throughput (improved from 7 to 81 frames in 12 seconds), and synthetic bright-source/smoothing checks. Physical-camera regression of the new mode/state UI, measurement accuracy, and stripped-LCD hardware validation remain outstanding.
 
 ---
 
@@ -87,10 +90,10 @@ measured rigid transform `p_windshield = R_wc * p_camera + t_wc`.
 - **Outdoor camera:** one camera provides a bearing only. Current single-camera mode
   projects that bearing onto a user-supplied distance; calibrated stereo is required
   to measure headlight range from a simultaneous frame pair.
-- **Current implementation limitation:** intrinsic unprojection exists, but the driver
-  camera-to-windshield rotation/translation is not yet applied, and calibrated mode is
-  not selectable from the UI. The default uncalibrated mapping is therefore an
-  approximation for visualization, not a verified physical measurement.
+- **Current implementation limitation:** intrinsic unprojection and guided one-point
+  depth/range profiles are selectable from the UI, but full intrinsic/stereo workflows
+  and the driver camera-to-windshield rotation/translation are not yet exposed. The
+  resulting coordinates remain approximations, not verified physical measurements.
 
 ---
 
@@ -113,6 +116,7 @@ Glare suppression system_test2/
 │   ├── styles.py               # Centralized application stylesheet (DARK_STYLESHEET)
 │   ├── geometry.py             # Pure math: intersection, pixel_to_cm, IPD depth
 │   ├── calibration.py          # Camera calibration (single + stereo, save/load .npz)
+│   ├── operating_modes.py      # Operating-mode and session-state policy
 │   ├── camera.py               # VideoCaptureThread (QThread) — eye tracking
 │   ├── headlight_detector.py   # HeadlightDetectorThread (QThread) — stereo bright-spot
 │   ├── tracking.py             # TrackingController — business logic coordinator
@@ -125,8 +129,10 @@ Glare suppression system_test2/
 │       ├── dashboard.py        # Header, camera cards, workspace, tabbed sidebar
 │       ├── icons.py            # Consistent dependency-free vector icon set
 │       ├── readout.py          # ReadoutPanel — text telemetry display
-│       └── controls.py         # ControlsPanel — parameter inputs, buttons
+│       ├── controls.py         # ControlsPanel — parameter inputs, buttons
+│       └── calibration_wizard.py # Guided driver/road distance calibration
 │
+├── tests/                      # Automated policy, session, and calibration tests
 ├── calibration/                # Saved .npz calibration files (auto-generated)
 ├── assets/                     # Application icon (glaretracker-icon.ico)
 ├── docs/                       # Architecture docs (HTML, PDF)
@@ -217,7 +223,7 @@ dist/GlareTracker-v1.exe
 ---
 
 ### REQ-03: Camera Calibration System
-**Status: 🔧 PARTIAL** — Backend complete, no GUI
+**Status: 🔧 PARTIAL** — backend plus guided demonstration workflow; full intrinsic/stereo/extrinsic wizard remains
 
 | Sub-requirement | Status | Implementation |
 |---|---|---|
@@ -227,7 +233,9 @@ dist/GlareTracker-v1.exe
 | Save/load calibration to .npz files | ✅ | `calibration.py` — `save_single_calibration()`, `load_single_calibration()`, etc. |
 | Calibrated unprojection helper | ✅ | `calibration.py` — `pixel_to_3d()` and `undistort_point()` |
 | Focal length estimation from HFOV | ✅ | `calibration.py` — `estimate_focal_length_from_fov()` |
-| Interactive calibration UI dialog | ❌ | No GUI yet; must be called programmatically |
+| Guided IPD driver-depth reference | ✅ | Wizard captures stable iris separation at a measured distance and saves a camera-specific focal-scale profile |
+| Guided monocular road reference | ✅ | Wizard captures one lamp at known range and saves an apparent-size range profile with threshold and resolution metadata |
+| Full intrinsic/stereo/extrinsic UI | ❌ | Checkerboard and installed-pose backends are not yet exposed as guided pages |
 
 **Key files:** `calibration.py`
 
@@ -563,7 +571,7 @@ Recommended execution order follows the measurement chain: establish trustworthy
 
 ### High Priority
 1. **Camera-to-Windshield Extrinsic Calibration** — Measure each camera's rotation and translation relative to the windshield frame, apply the rigid transform after unprojection, and validate error across the usable cabin volume.
-2. **Calibration UI** — Add a dialog/wizard in the app to run intrinsic, extrinsic, stereo, and per-driver IPD calibration interactively instead of programmatically.
+2. **Measurement-Grade Calibration UI** — Extend the demonstration wizard with checkerboard intrinsic, stereo, and installed camera-to-windshield extrinsic calibration.
 3. **Both-Eyes Intersection** — Compute separate left/right-eye rays and intersection spots for every headlight instead of using only the midpoint.
 4. **LCD Light Blocking** (`lcd_blocker.py`) — Render Gaussian-feathered black spots on a stripped TN LCD panel/secondary display, using the per-eye intersections.
 5. **Kalman Filter** — Smooth eye/intersection jitter and provide the state estimate needed by predictive rendering.

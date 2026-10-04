@@ -66,6 +66,55 @@ class StereoCalibrationResult:
             self.baseline_cm = abs(float(self.P2[0, 3])) / f
 
 
+@dataclass
+class DriverDepthCalibration:
+    """One-point monocular driver-depth calibration for demonstrations."""
+
+    ipd_cm: float
+    reference_distance_cm: float
+    reference_ipd_px: float
+    focal_length_px: float
+    image_size: tuple[int, int]
+    camera_index: int
+
+    def as_intrinsic_calibration(self) -> CalibrationResult:
+        """Create a zero-distortion intrinsic approximation from the scale."""
+        width, height = self.image_size
+        camera_matrix = np.array([
+            [self.focal_length_px, 0.0, width / 2.0],
+            [0.0, self.focal_length_px, height / 2.0],
+            [0.0, 0.0, 1.0],
+        ], dtype=np.float64)
+        return CalibrationResult(
+            camera_matrix=camera_matrix,
+            dist_coeffs=np.zeros((5, 1), dtype=np.float64),
+            image_size=self.image_size,
+            rms_error=-1.0,
+        )
+
+
+@dataclass
+class MonocularRangeCalibration:
+    """Reference-size range model for one road-facing camera.
+
+    ``range_scale_cm_px`` is the product of known reference distance and the
+    observed bright-blob diameter.  Live range is estimated as scale/diameter.
+    This is suitable for a controlled demonstration using the same lamp and
+    exposure conditions, not for measurement-grade ranging.
+    """
+
+    reference_distance_cm: float
+    reference_diameter_px: float
+    range_scale_cm_px: float
+    image_size: tuple[int, int]
+    camera_index: int
+    brightness_threshold: int = 210
+
+    def estimate_distance_cm(self, diameter_px: float) -> float:
+        diameter = max(1.0, float(diameter_px))
+        return float(self.range_scale_cm_px / diameter)
+
+
 # ── Calibration file I/O ────────────────────────────────────────────
 
 def _calibration_dir() -> Path:
@@ -94,13 +143,86 @@ def load_single_calibration(name: str = "driver_cam") -> Optional[CalibrationRes
     path = _calibration_dir() / f"{name}_calib.npz"
     if not path.exists():
         return None
-    data = np.load(str(path))
-    return CalibrationResult(
-        camera_matrix=data["camera_matrix"],
-        dist_coeffs=data["dist_coeffs"],
-        image_size=tuple(data["image_size"].tolist()),
-        rms_error=float(data["rms_error"][0]),
+    with np.load(str(path)) as data:
+        return CalibrationResult(
+            camera_matrix=data["camera_matrix"],
+            dist_coeffs=data["dist_coeffs"],
+            image_size=tuple(data["image_size"].tolist()),
+            rms_error=float(data["rms_error"][0]),
+        )
+
+
+def save_driver_depth_calibration(
+    result: DriverDepthCalibration, name: str = "driver_depth",
+):
+    """Save a guided one-point driver depth profile."""
+    path = _calibration_dir() / f"{name}_calib.npz"
+    np.savez(
+        str(path),
+        ipd_cm=np.array([result.ipd_cm]),
+        reference_distance_cm=np.array([result.reference_distance_cm]),
+        reference_ipd_px=np.array([result.reference_ipd_px]),
+        focal_length_px=np.array([result.focal_length_px]),
+        image_size=np.array(result.image_size),
+        camera_index=np.array([result.camera_index]),
     )
+    return path
+
+
+def load_driver_depth_calibration(
+    name: str = "driver_depth",
+) -> Optional[DriverDepthCalibration]:
+    """Load a guided driver depth profile, if present."""
+    path = _calibration_dir() / f"{name}_calib.npz"
+    if not path.exists():
+        return None
+    with np.load(str(path)) as data:
+        camera_index = int(data["camera_index"][0]) if "camera_index" in data.files else 0
+        return DriverDepthCalibration(
+            ipd_cm=float(data["ipd_cm"][0]),
+            reference_distance_cm=float(data["reference_distance_cm"][0]),
+            reference_ipd_px=float(data["reference_ipd_px"][0]),
+            focal_length_px=float(data["focal_length_px"][0]),
+            image_size=tuple(int(value) for value in data["image_size"].tolist()),
+            camera_index=camera_index,
+        )
+
+
+def save_monocular_range_calibration(
+    result: MonocularRangeCalibration, name: str = "road_range",
+):
+    """Save a one-point apparent-size road range profile."""
+    path = _calibration_dir() / f"{name}_calib.npz"
+    np.savez(
+        str(path),
+        reference_distance_cm=np.array([result.reference_distance_cm]),
+        reference_diameter_px=np.array([result.reference_diameter_px]),
+        range_scale_cm_px=np.array([result.range_scale_cm_px]),
+        image_size=np.array(result.image_size),
+        camera_index=np.array([result.camera_index]),
+        brightness_threshold=np.array([result.brightness_threshold]),
+    )
+    return path
+
+
+def load_monocular_range_calibration(
+    name: str = "road_range",
+) -> Optional[MonocularRangeCalibration]:
+    """Load a one-point road range profile, if present."""
+    path = _calibration_dir() / f"{name}_calib.npz"
+    if not path.exists():
+        return None
+    with np.load(str(path)) as data:
+        camera_index = int(data["camera_index"][0]) if "camera_index" in data.files else 1
+        threshold = int(data["brightness_threshold"][0]) if "brightness_threshold" in data.files else 210
+        return MonocularRangeCalibration(
+            reference_distance_cm=float(data["reference_distance_cm"][0]),
+            reference_diameter_px=float(data["reference_diameter_px"][0]),
+            range_scale_cm_px=float(data["range_scale_cm_px"][0]),
+            image_size=tuple(int(value) for value in data["image_size"].tolist()),
+            camera_index=camera_index,
+            brightness_threshold=threshold,
+        )
 
 
 def save_stereo_calibration(result: StereoCalibrationResult, name: str = "stereo"):
@@ -123,15 +245,15 @@ def load_stereo_calibration(name: str = "stereo") -> Optional[StereoCalibrationR
     path = _calibration_dir() / f"{name}_calib.npz"
     if not path.exists():
         return None
-    d = np.load(str(path))
-    cam1 = CalibrationResult(d["mtx1"], d["dist1"], tuple(d["image_size"].tolist()))
-    cam2 = CalibrationResult(d["mtx2"], d["dist2"], tuple(d["image_size"].tolist()))
-    return StereoCalibrationResult(
-        cam1=cam1, cam2=cam2,
-        R=d["R"], T=d["T"], E=d["E"], F=d["F"],
-        R1=d["R1"], R2=d["R2"], P1=d["P1"], P2=d["P2"], Q=d["Q"],
-        rms_error=float(d["rms_error"][0]),
-    )
+    with np.load(str(path)) as d:
+        cam1 = CalibrationResult(d["mtx1"], d["dist1"], tuple(d["image_size"].tolist()))
+        cam2 = CalibrationResult(d["mtx2"], d["dist2"], tuple(d["image_size"].tolist()))
+        return StereoCalibrationResult(
+            cam1=cam1, cam2=cam2,
+            R=d["R"], T=d["T"], E=d["E"], F=d["F"],
+            R1=d["R1"], R2=d["R2"], P1=d["P1"], P2=d["P2"], Q=d["Q"],
+            rms_error=float(d["rms_error"][0]),
+        )
 
 
 # ── Checkerboard detection helpers ──────────────────────────────────

@@ -94,6 +94,12 @@ class TrackingController:
 
     # ── core tracking calculation ───────────────────────────────────
 
+    def on_manual_eye(self, eye_cm: tuple[float, float, float]):
+        """Apply a fixed/manual driver position to the geometry pipeline."""
+        self._last_observed_eye_cm = eye_cm
+        self._last_eye_cm = eye_cm
+        self.process_tracking(eye_cm)
+
     def process_tracking(self, eye_cm: tuple[float, float, float]):
         """Compute intersections and update all panels."""
         lights = self._simulation_lights or self._controls.get_light_positions()
@@ -161,7 +167,7 @@ class TrackingController:
 
     # ── parameter change handling ───────────────────────────────────
 
-    def on_params_changed(self):
+    def on_params_changed(self, calculate: bool = True):
         """Called when any control spin-box or combo-box changes."""
         ws_w, ws_h = self._controls.get_windshield_dims()
         lights = self._controls.get_light_positions()
@@ -171,12 +177,22 @@ class TrackingController:
         self._scene_3d.update_camera(*self._controls.get_camera_pos())
         self._windshield_2d.set_windshield_aspect(ws_w, ws_h)
 
-        self._readout.set_value(
-            "light_pos",
-            f"{len(lights)} source(s) — {self._controls.combo_vehicle.currentText()}",
-        )
+        if lights:
+            lx, ly, lz = lights[0]
+            mode = "CAMERA" if self._controls.is_auto_light() else "FIXED"
+            suffix = f" +{len(lights) - 1}" if len(lights) > 1 else ""
+            self._readout.set_value(
+                "light_pos",
+                f"{mode}{suffix}  X:{lx:.1f}  Y:{ly:.1f}  Z:{lz:.1f}",
+            )
+        else:
+            self._readout.set_value("light_pos", "— no sources")
 
-        if self._last_eye_cm:
+        if not calculate:
+            return
+        if self._controls.mode_policy().manual_driver:
+            self.on_manual_eye(self._controls.get_manual_eye_pos())
+        elif self._last_eye_cm:
             self.process_tracking(self._last_eye_cm)
 
     # ── light movement simulation ───────────────────────────────────

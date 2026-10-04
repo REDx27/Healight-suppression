@@ -9,21 +9,29 @@ import sys
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QVBoxLayout, QSplitter,
+    QApplication, QMainWindow, QWidget, QVBoxLayout, QSplitter, QMessageBox,
+    QSizePolicy,
 )
 
 from glare_tracker import __version__
+from glare_tracker.calibration import (
+    load_driver_depth_calibration,
+    load_monocular_range_calibration,
+)
 from glare_tracker.camera import VideoCaptureThread
 from glare_tracker.headlight_detector import (
     HeadlightDetectorThread, MonocularHeadlightDetectorThread,
 )
 from glare_tracker.config import TrackingConfig
+from glare_tracker.operating_modes import (
+    OperatingMode, SessionState, calculations_enabled, cameras_enabled,
+)
 from glare_tracker.styles import DARK_STYLESHEET
 from glare_tracker.tracking import TrackingController
 from glare_tracker.widgets import (
-    ApplicationHeader, CameraFeedPanel, ControlsPanel, OperationsSidebar,
+    ApplicationHeader, CameraFeedPanel, ConfigurationSidebar, ControlsPanel,
     ReadoutPanel, Scene3DWidget, SceneWorkspace, Windshield2DWidget,
-    IconFactory,
+    GuidedCalibrationWizard, IconFactory,
 )
 
 
@@ -46,6 +54,25 @@ class MainWindow(QMainWindow):
         self.header = ApplicationHeader(__version__)
         self.camera_feeds = CameraFeedPanel()
         self.workspace = SceneWorkspace(self.scene_3d, self.windshield_2d)
+        self._session_state = SessionState.STOP
+        self._driver_source_was_manual = self.controls.mode_policy().manual_driver
+        self._road_source_was_manual = self.controls.mode_policy().manual_headlight
+        self._road_position_ready = False
+
+        # Saved demonstration calibration profiles
+        try:
+            self._driver_depth_calibration = load_driver_depth_calibration()
+        except Exception:
+            self._driver_depth_calibration = None
+        try:
+            self._road_range_calibration = load_monocular_range_calibration()
+        except Exception:
+            self._road_range_calibration = None
+        self._refresh_calibration_controls()
+        self.controls.check_driver_depth_calibration.setChecked(
+            self.controls.check_driver_depth_calibration.isEnabled())
+        self.controls.check_road_range_calibration.setChecked(
+            self.controls.check_road_range_calibration.isEnabled())
 
         # ── tracking controller ──
         self.tracker = TrackingController(
@@ -74,19 +101,51 @@ class MainWindow(QMainWindow):
         self._movement_timer.timeout.connect(self.tracker.advance_movement)
 
         # Push initial parameters
-        self.tracker.on_params_changed()
+        self._operating_mode_changed()
+        self.tracker.on_params_changed(calculate=False)
 
     # ── layout ──────────────────────────────────────────────────────
 
     def _build_layout(self):
-        self.sidebar = OperationsSidebar(
-            [self.readout, self.camera_feeds], self.controls)
+        self.sidebar = ConfigurationSidebar(self.controls)
         self.sidebar.setMinimumWidth(380)
         self.sidebar.setMaximumWidth(500)
 
-        # Main: viewport | sidebar
+        self.visual_column = QWidget()
+        visual_layout = QVBoxLayout(self.visual_column)
+        visual_layout.setContentsMargins(0, 0, 0, 0)
+        visual_layout.setSpacing(0)
+        self.visual_splitter = QSplitter(Qt.Vertical)
+        self.visual_splitter.setObjectName("visualSplitter")
+        self.visual_splitter.setChildrenCollapsible(False)
+        self.visual_splitter.setHandleWidth(5)
+        self.visual_splitter.addWidget(self.workspace)
+
+        # Independent lower panels: camera feeds on the left and telemetry on
+        # the right. Neither panel owns the other, and their divider is movable.
+        self.bottom_splitter = QSplitter(Qt.Horizontal)
+        self.bottom_splitter.setObjectName("bottomSplitter")
+        self.bottom_splitter.setChildrenCollapsible(False)
+        self.bottom_splitter.setHandleWidth(5)
+        self.readout.setProperty("overlay", False)
+        self.readout.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        self.readout.setMinimumWidth(320)
+        self.readout.setMaximumWidth(430)
+        self.bottom_splitter.addWidget(self.camera_feeds)
+        self.bottom_splitter.addWidget(self.readout)
+        self.bottom_splitter.setStretchFactor(0, 1)
+        self.bottom_splitter.setStretchFactor(1, 0)
+        self.bottom_splitter.setSizes([900, 380])
+
+        self.visual_splitter.addWidget(self.bottom_splitter)
+        self.visual_splitter.setStretchFactor(0, 1)
+        self.visual_splitter.setStretchFactor(1, 0)
+        self.visual_splitter.setSizes([650, 300])
+        visual_layout.addWidget(self.visual_splitter)
+
+        # Main: visual operations workspace | dedicated configuration panel
         self.main_splitter = QSplitter(Qt.Horizontal)
-        self.main_splitter.addWidget(self.workspace)
+        self.main_splitter.addWidget(self.visual_column)
         self.main_splitter.addWidget(self.sidebar)
         self.main_splitter.setSizes([1080, 460])
         self.main_splitter.setStretchFactor(0, 1)
@@ -109,11 +168,15 @@ class MainWindow(QMainWindow):
         self.cap_thread.eye_lost.connect(self._on_eye_lost)
         self.cap_thread.camera_status.connect(self._on_driver_camera_status)
 
-        # Manual/auto source and camera setup
-        self.controls.combo_light_mode.currentTextChanged.connect(self._light_mode_changed)
-        self.controls.combo_detection_setup.currentTextChanged.connect(self._auto_setup_changed)
-        self.controls.spin_headlight_camera.valueChanged.connect(self._auto_setup_changed)
-        self.controls.spin_headlight_camera_2.valueChanged.connect(self._auto_setup_changed)
+        # Operating mode and camera setup
+        self.controls.combo_operating_mode.currentTextChanged.connect(
+            self._operating_mode_changed)
+        self.controls.combo_detection_setup.currentTextChanged.connect(
+            self._camera_setup_changed)
+        self.controls.spin_headlight_camera.valueChanged.connect(
+            self._camera_setup_changed)
+        self.controls.spin_headlight_camera_2.valueChanged.connect(
+            self._camera_setup_changed)
         self.controls.spin_driver_camera.valueChanged.connect(self._driver_camera_changed)
         self.controls.spin_single_depth.valueChanged.connect(self._update_single_projection)
         self.controls.spin_camera_hfov.valueChanged.connect(self._update_single_projection)
@@ -121,10 +184,21 @@ class MainWindow(QMainWindow):
             self._update_detection_settings)
 
         # Buttons
-        self.header.btn_stream.clicked.connect(self._toggle_stream)
+        self.header.btn_run.clicked.connect(
+            lambda: self._set_session_state(SessionState.RUN))
+        self.header.btn_standby.clicked.connect(
+            lambda: self._set_session_state(SessionState.STANDBY))
+        self.header.btn_stop.clicked.connect(
+            lambda: self._set_session_state(SessionState.STOP))
         self.header.btn_calibrate.clicked.connect(self.tracker.calibrate)
         self.header.btn_reset_view.clicked.connect(self._reset_3d_view)
         self.controls.btn_play_movement.clicked.connect(self._toggle_movement)
+        self.controls.btn_guided_calibration.clicked.connect(
+            self._open_guided_calibration)
+        self.controls.check_driver_depth_calibration.stateChanged.connect(
+            self._calibration_options_changed)
+        self.controls.check_road_range_calibration.stateChanged.connect(
+            self._calibration_options_changed)
         self.header.panel_toggle.toggled.connect(self.sidebar.setVisible)
         self.scene_3d.scene_theme_changed.connect(self.windshield_2d.set_light_theme)
 
@@ -136,6 +210,8 @@ class MainWindow(QMainWindow):
             self.controls.spin_camera_z,
             self.controls.spin_light_x, self.controls.spin_light_y,
             self.controls.spin_light_z,
+            self.controls.spin_driver_x, self.controls.spin_driver_y,
+            self.controls.spin_driver_z,
         ):
             widget.valueChanged.connect(self._on_params_changed)
         self.controls.combo_vehicle.currentIndexChanged.connect(self._on_params_changed)
@@ -143,10 +219,14 @@ class MainWindow(QMainWindow):
     # ── slots ───────────────────────────────────────────────────────
 
     def _on_eye_detected(self, x, y, z):
+        if not calculations_enabled(self._session_state):
+            return
         self.tracker.on_eye_detected(x, y, z)
         self.header.set_tracking("EYE TRACKING", "active")
 
     def _on_eye_lost(self):
+        if not calculations_enabled(self._session_state):
+            return
         self.tracker.on_eye_lost()
         self.header.set_tracking("NO FACE", "warning")
 
@@ -155,6 +235,9 @@ class MainWindow(QMainWindow):
 
     def _update_headlight_frame(self, q_img):
         self.camera_feeds.headlight.set_frame(q_img)
+
+    def _update_stereo_frames(self, primary, secondary):
+        self.camera_feeds.set_stereo_frames(primary, secondary)
 
     def _on_driver_camera_status(self, message, available):
         self.camera_feeds.driver.set_status(
@@ -167,11 +250,19 @@ class MainWindow(QMainWindow):
         self._headlight_camera_available = available
         self.camera_feeds.headlight.set_status(
             message, "active" if available else "error")
+        if self.controls.is_stereo_detection():
+            self.camera_feeds.headlight_secondary.set_status(
+                message, "active" if available else "error")
         if not available:
             self.camera_feeds.headlight.set_placeholder("Camera not detected")
+            if self.controls.is_stereo_detection():
+                self.camera_feeds.headlight_secondary.set_placeholder(
+                    "Camera not detected")
 
     def _on_auto_headlight(self, x, y, z):
-        if self.controls.is_auto_light():
+        if (calculations_enabled(self._session_state)
+                and self.controls.mode_policy().use_road_camera):
+            self._road_position_ready = True
             self._headlight_camera_available = True
             self.camera_feeds.headlight.set_status("Tracking bright light", "active")
             # Update sliders without triggering a signal loop
@@ -189,26 +280,154 @@ class MainWindow(QMainWindow):
 
             self._on_params_changed()
 
-    def _light_mode_changed(self):
-        auto = self.controls.is_auto_light()
-        self.header.set_mode(auto)
-        self.controls.btn_play_movement.setEnabled(not auto)
-        if auto:
-            if self._movement_timer.isActive():
-                self._movement_timer.stop()
-                self.tracker.stop_movement()
-                self.controls.btn_play_movement.setChecked(False)
-                self.controls.btn_play_movement.setText("Play Light Movement")
-                self.controls.btn_play_movement.setIcon(IconFactory.icon("play"))
-            self._start_headlight_detection()
+    def _operating_mode_changed(self):
+        policy = self.controls.mode_policy()
+        if policy.manual_driver != self._driver_source_was_manual:
+            # A coordinate produced by one source must never leak into a mode
+            # that expects the other source.
+            self.tracker.reset_on_stream_stop()
+        self._driver_source_was_manual = policy.manual_driver
+        if policy.manual_headlight != self._road_source_was_manual:
+            self._road_position_ready = False
+        self._road_source_was_manual = policy.manual_headlight
+        self.header.set_mode(self.controls.operating_mode().value)
+        stereo = policy.use_road_camera and self.controls.is_stereo_detection()
+        self.camera_feeds.configure_sources(
+            policy.use_driver_camera, policy.use_road_camera, stereo)
+        self.controls.btn_play_movement.setEnabled(
+            policy.manual_headlight
+            and calculations_enabled(self._session_state))
+        self.header.btn_calibrate.setEnabled(
+            policy.use_driver_camera
+            and calculations_enabled(self._session_state))
+
+        if not policy.manual_headlight and self._movement_timer.isActive():
+            self._stop_movement_simulation()
+
+        if cameras_enabled(self._session_state):
+            self._ensure_required_cameras()
         else:
             self._stop_headlight_detection()
-            self.camera_feeds.headlight.set_placeholder("Manual coordinates")
-            self.camera_feeds.headlight.set_status("Fixed coordinate input", "info")
+            if self.cap_thread.isRunning():
+                self.cap_thread.stop()
 
-    def _auto_setup_changed(self):
-        if self.controls.is_auto_light():
+        self._refresh_calibration_controls()
+        self.tracker.on_params_changed(
+            calculate=self._coordinates_ready_for_calculation())
+
+    def _coordinates_ready_for_calculation(self):
+        """Return whether every camera-sourced coordinate has live data."""
+        if not calculations_enabled(self._session_state):
+            return False
+        policy = self.controls.mode_policy()
+        return not policy.use_road_camera or self._road_position_ready
+
+    def _set_session_state(self, state: SessionState | str):
+        """Apply the Run/Standby/Stop policy to cameras and calculations."""
+        if not isinstance(state, SessionState):
+            state = SessionState(state)
+
+        self._session_state = state
+        self.header.set_session_state(state.value)
+        policy = self.controls.mode_policy()
+
+        self.controls.btn_play_movement.setEnabled(
+            state is SessionState.RUN and policy.manual_headlight)
+        self.header.btn_calibrate.setEnabled(
+            state is SessionState.RUN and policy.use_driver_camera)
+
+        if state is SessionState.STOP:
+            self._road_position_ready = False
+            self._stop_movement_simulation()
+            self.cap_thread.stop()
+            self._stop_headlight_detection()
+            self.camera_feeds.driver.set_placeholder("Driver camera stopped")
+            self.camera_feeds.headlight.set_placeholder("Road camera stopped")
+            self.camera_feeds.headlight_secondary.set_placeholder(
+                "Stereo camera stopped")
+            self.camera_feeds.driver.set_status("Session stopped", "idle")
+            self.camera_feeds.headlight.set_status("Session stopped", "idle")
+            self.camera_feeds.headlight_secondary.set_status(
+                "Session stopped", "idle")
+            self.scene_3d.hide_tracking()
+            self.windshield_2d.clear_glare()
+            self.tracker.reset_on_stream_stop()
+            self.readout.set_intersections([])
+            self.readout.set_value("eye_pos", "— stopped", "#666")
+            self.readout.set_value("status", "STOPPED ○", "#666")
+            self.header.set_tracking("SYSTEM IDLE", "idle")
+            return
+
+        self._ensure_required_cameras()
+        if state is SessionState.STANDBY:
+            self._stop_movement_simulation()
+            self.readout.set_value("status", "STANDBY ○", "#ffb74d")
+            self.header.set_tracking("STANDBY", "warning")
+            return
+
+        # Entering Run immediately evaluates fixed/manual coordinates. Camera
+        # modes update when their next accepted tracking result arrives.
+        self.tracker.on_params_changed(
+            calculate=self._coordinates_ready_for_calculation())
+        if policy.use_driver_camera or policy.use_road_camera:
+            self.readout.set_value("status", "WAITING FOR TRACKING", "#ffb74d")
+            self.header.set_tracking("STARTING", "warning")
+        else:
+            self.header.set_tracking("MANUAL GEOMETRY", "active")
+
+    def _ensure_required_cameras(self):
+        """Start only the camera workers required by the active mode."""
+        policy = self.controls.mode_policy()
+
+        if policy.use_driver_camera:
+            if not self.cap_thread.isRunning():
+                self._push_config()
+                self.camera_feeds.driver.set_status(
+                    "Opening camera...", "warning")
+                self.cap_thread.start()
+        else:
+            self.cap_thread.stop()
+            self.camera_feeds.driver.set_placeholder(
+                "Driver position supplied manually")
+            self.camera_feeds.driver.set_status("Manual driver position", "info")
+
+        if policy.use_road_camera:
+            if self.headlight_thread is None or not self.headlight_thread.isRunning():
+                self._start_headlight_detection()
+        else:
+            self._stop_headlight_detection()
+            self.camera_feeds.headlight.set_placeholder(
+                "Headlight position supplied manually")
+            self.camera_feeds.headlight_secondary.set_placeholder(
+                "Headlight position supplied manually")
+            self.camera_feeds.headlight.set_status(
+                "Manual headlight position", "info")
+            self.camera_feeds.headlight_secondary.set_status(
+                "Manual headlight position", "info")
+
+    def _stop_movement_simulation(self):
+        """Stop movement and return its button to a consistent idle state."""
+        self._movement_timer.stop()
+        self.tracker.stop_movement()
+        self.controls.btn_play_movement.blockSignals(True)
+        self.controls.btn_play_movement.setChecked(False)
+        self.controls.btn_play_movement.blockSignals(False)
+        self.controls.btn_play_movement.setText("Play Light Movement")
+        self.controls.btn_play_movement.setIcon(IconFactory.icon("play"))
+
+    def _camera_setup_changed(self):
+        policy = self.controls.mode_policy()
+        self._road_position_ready = False
+        self.camera_feeds.configure_sources(
+            policy.use_driver_camera,
+            policy.use_road_camera,
+            policy.use_road_camera and self.controls.is_stereo_detection(),
+        )
+        if cameras_enabled(self._session_state) and policy.use_road_camera:
             self._start_headlight_detection()
+        elif not policy.use_road_camera:
+            self._stop_headlight_detection()
+        self._refresh_calibration_controls()
 
     def _driver_camera_changed(self):
         was_running = self.cap_thread.isRunning()
@@ -225,12 +444,15 @@ class MainWindow(QMainWindow):
             self._push_config()
             self.camera_feeds.driver.set_status("Opening camera...", "warning")
             self.cap_thread.start()
+        self._refresh_calibration_controls()
 
     def _start_headlight_detection(self):
         self._stop_headlight_detection()
+        self._road_position_ready = False
         cam1 = self.controls.spin_headlight_camera.value()
         driver_cam = self.controls.spin_driver_camera.value()
-        if self.cap_thread.isRunning() and cam1 == driver_cam:
+        driver_in_use = self.controls.mode_policy().use_driver_camera
+        if driver_in_use and cam1 == driver_cam:
             self.camera_feeds.headlight.set_status(
                 "Road and driver cameras must use different indices", "error")
             self.camera_feeds.headlight.set_placeholder(
@@ -239,7 +461,13 @@ class MainWindow(QMainWindow):
         ws_h = self.controls.spin_ws_h.value()
         if self.controls.is_stereo_detection():
             cam2 = self.controls.spin_headlight_camera_2.value()
-            if self.cap_thread.isRunning() and cam2 == driver_cam:
+            if cam2 == cam1:
+                self.camera_feeds.headlight.set_status(
+                    "Primary and secondary road cameras must differ", "error")
+                self.camera_feeds.headlight_secondary.set_status(
+                    "Choose a different camera index", "error")
+                return
+            if driver_in_use and cam2 == driver_cam:
                 self.camera_feeds.headlight.set_status(
                     "Stereo cameras must differ from the driver camera", "error")
                 self.camera_feeds.headlight.set_placeholder(
@@ -258,13 +486,23 @@ class MainWindow(QMainWindow):
                 windshield_h_cm=ws_h,
                 hfov_deg=self.controls.spin_camera_hfov.value(),
                 brightness_threshold=self.controls.spin_brightness_threshold.value(),
+                use_range_calibration=(
+                    self.controls.check_road_range_calibration.isChecked()),
             )
-        self.headlight_thread.frame_ready.connect(self._update_headlight_frame)
+        if isinstance(self.headlight_thread, HeadlightDetectorThread):
+            self.headlight_thread.stereo_frames_ready.connect(
+                self._update_stereo_frames)
+        else:
+            self.headlight_thread.frame_ready.connect(self._update_headlight_frame)
         self.headlight_thread.headlight_detected.connect(self._on_auto_headlight)
         self.headlight_thread.headlight_lost.connect(self._on_headlight_lost)
         self.headlight_thread.camera_status.connect(self._on_headlight_camera_status)
         self.camera_feeds.headlight.set_status("Opening camera...", "warning")
+        if self.controls.is_stereo_detection():
+            self.camera_feeds.headlight_secondary.set_status(
+                "Opening camera...", "warning")
         self.headlight_thread.start()
+        self._refresh_calibration_controls()
 
     def _stop_headlight_detection(self):
         if self.headlight_thread is not None:
@@ -294,58 +532,154 @@ class MainWindow(QMainWindow):
             self.headlight_thread.update_detection_threshold(
                 self.controls.spin_brightness_threshold.value())
 
-    def _toggle_stream(self, checked):
-        if checked:
-            if self.controls.is_auto_light():
-                driver_cam = self.controls.spin_driver_camera.value()
-                road_cameras = [self.controls.spin_headlight_camera.value()]
-                if self.controls.is_stereo_detection():
-                    road_cameras.append(
-                        self.controls.spin_headlight_camera_2.value())
-                if driver_cam in road_cameras:
-                    self.header.btn_stream.blockSignals(True)
-                    self.header.btn_stream.setChecked(False)
-                    self.header.btn_stream.blockSignals(False)
-                    self.header.set_tracking("CAMERA CONFLICT", "error")
-                    self.camera_feeds.driver.set_status(
-                        f"Camera {driver_cam} is assigned to road tracking", "error")
-                    return
-            if self.cap_thread.isRunning():
-                return
-            self.header.btn_stream.setText("Stop Session")
-            self.header.btn_stream.setIcon(IconFactory.icon("stop", "#fff1f2"))
+    def _open_guided_calibration(self):
+        previous_state = self._session_state
+        previous_mode = self.controls.combo_operating_mode.currentText()
+        previous_setup = self.controls.combo_detection_setup.currentText()
+        driver_index = self.controls.spin_driver_camera.value()
+        road_index = self.controls.spin_headlight_camera.value()
+        if driver_index == road_index:
+            QMessageBox.warning(
+                self,
+                "Camera index conflict",
+                "Guided calibration needs two independent feeds. Set the driver "
+                "camera to 0 and the USB road camera to 1, then try again.",
+            )
+            return
+
+        # Calibration is a temporary preparation workflow: both single-camera
+        # previews are opened, while normal intersection calculations remain paused.
+        self._set_session_state(SessionState.STANDBY)
+        if self.controls.combo_operating_mode.currentText() != OperatingMode.FULLY_AUTO.value:
+            self.controls.combo_operating_mode.setCurrentText(
+                OperatingMode.FULLY_AUTO.value)
+        if self.controls.combo_detection_setup.currentText() != "Single Camera":
+            self.controls.combo_detection_setup.setCurrentText("Single Camera")
+        self._ensure_required_cameras()
+
+        if not isinstance(self.headlight_thread, MonocularHeadlightDetectorThread):
+            QMessageBox.warning(
+                self,
+                "Road camera unavailable",
+                "The single road-camera worker could not be started. Check camera "
+                "index 1 and close other applications using the webcam.",
+            )
+            self._restore_after_calibration(
+                previous_state, previous_mode, previous_setup)
+            return
+
+        wizard = GuidedCalibrationWizard(
+            self.cap_thread,
+            self.headlight_thread,
+            driver_camera_index=driver_index,
+            road_camera_index=road_index,
+            parent=self,
+        )
+        try:
+            if wizard.exec_() == GuidedCalibrationWizard.Accepted:
+                self._driver_depth_calibration = wizard.driver_calibration
+                self._road_range_calibration = wizard.road_calibration
+                self.controls.spin_brightness_threshold.setValue(
+                    self._road_range_calibration.brightness_threshold)
+                self.cap_thread.set_calibration(
+                    self._driver_depth_calibration.as_intrinsic_calibration())
+                self.headlight_thread.set_range_calibration(
+                    self._road_range_calibration
+                    if wizard.activate_road_range else None)
+                self.controls.check_driver_depth_calibration.setChecked(
+                    wizard.activate_driver_depth)
+                self.controls.check_road_range_calibration.setChecked(
+                    wizard.activate_road_range)
+                self._calibration_options_changed()
+        finally:
+            self._restore_after_calibration(
+                previous_state, previous_mode, previous_setup)
+
+    def _restore_after_calibration(self, state, mode, setup):
+        self._stop_headlight_detection()
+        self.controls.combo_operating_mode.blockSignals(True)
+        self.controls.combo_detection_setup.blockSignals(True)
+        self.controls.combo_operating_mode.setCurrentText(mode)
+        self.controls.combo_detection_setup.setCurrentText(setup)
+        self.controls.combo_operating_mode.blockSignals(False)
+        self.controls.combo_detection_setup.blockSignals(False)
+        self.controls._update_mode_controls()
+        self._set_session_state(state)
+        self._refresh_calibration_controls()
+
+    def _refresh_calibration_controls(self):
+        driver_index = self.controls.spin_driver_camera.value()
+        road_index = self.controls.spin_headlight_camera.value()
+        driver_valid = (
+            self._driver_depth_calibration is not None
+            and self._driver_depth_calibration.camera_index == driver_index)
+        road_valid = (
+            self._road_range_calibration is not None
+            and self._road_range_calibration.camera_index == road_index)
+
+        driver_box = self.controls.check_driver_depth_calibration
+        road_box = self.controls.check_road_range_calibration
+        policy = self.controls.mode_policy()
+        single_road = not self.controls.is_stereo_detection()
+        driver_box.setEnabled(driver_valid and policy.use_driver_camera)
+        road_box.setEnabled(
+            road_valid and policy.use_road_camera and single_road)
+        if not driver_valid:
+            driver_box.setChecked(False)
+        if not road_valid:
+            road_box.setChecked(False)
+
+        driver_text = "driver ready" if driver_valid else "driver not calibrated"
+        road_text = "road ready" if road_valid else "road not calibrated"
+        self.controls.calibration_status.setText(
+            f"Camera {driver_index}: {driver_text} · Camera {road_index}: {road_text}")
+
+    def _calibration_options_changed(self):
+        if self.cap_thread.isRunning():
             self._push_config()
-            self.cap_thread.start()
-            self.readout.set_value("status", "ACTIVE ●", "#4caf50")
-            self.header.set_tracking("STARTING", "warning")
-            self.camera_feeds.driver.set_status("Opening camera...", "warning")
-        else:
-            self.header.btn_stream.setText("Start Session")
-            self.header.btn_stream.setIcon(IconFactory.icon("play", "#dffaff"))
-            self.cap_thread.stop()
-            self.camera_feeds.driver.set_placeholder("Driver camera stopped")
-            self.scene_3d.hide_tracking()
-            self.windshield_2d.clear_glare()
-            self.tracker.reset_on_stream_stop()
-            self.readout.set_value("status", "STOPPED ○", "#666")
-            self.camera_feeds.driver.set_status("Stream stopped", "idle")
-            self.header.set_tracking("SYSTEM IDLE", "idle")
+        if isinstance(self.headlight_thread, MonocularHeadlightDetectorThread):
+            calibration = (
+                self._road_range_calibration
+                if self.controls.check_road_range_calibration.isChecked()
+                else None)
+            if (calibration is not None
+                    and self.controls.spin_brightness_threshold.value()
+                    != calibration.brightness_threshold):
+                self.controls.spin_brightness_threshold.setValue(
+                    calibration.brightness_threshold)
+            self.headlight_thread.set_range_calibration(calibration)
 
     def _push_config(self):
+        profile = self._driver_depth_calibration
+        use_calibration = (
+            profile is not None
+            and profile.camera_index == self.controls.spin_driver_camera.value()
+            and self.controls.check_driver_depth_calibration.isChecked())
+        camera_x, camera_y, camera_z = self.controls.get_camera_pos()
         self.cap_thread.update_config(TrackingConfig(
-            self.controls.spin_ws_w.value(),
-            self.controls.spin_ws_h.value(),
-            self.controls.spin_eye_dist.value(),
-            *self.controls.get_camera_pos(),
+            screen_w_cm=self.controls.spin_ws_w.value(),
+            screen_h_cm=self.controls.spin_ws_h.value(),
+            eye_dist_cm=self.controls.spin_eye_dist.value(),
+            camera_x_cm=camera_x,
+            camera_y_cm=camera_y,
+            camera_z_cm=camera_z,
+            ipd_cm=profile.ipd_cm if profile is not None else 6.3,
+            use_calibration=use_calibration,
         ))
 
     def _on_params_changed(self):
         if self.cap_thread.isRunning():
             self._push_config()
-        self.tracker.on_params_changed()
+        self.tracker.on_params_changed(
+            calculate=self._coordinates_ready_for_calculation())
         self._update_single_projection()
 
     def _toggle_movement(self, playing):
+        if (playing and (
+                not calculations_enabled(self._session_state)
+                or not self.controls.mode_policy().manual_headlight)):
+            self._stop_movement_simulation()
+            return
         if playing:
             self.controls.btn_play_movement.setText("Stop Light Movement")
             self.controls.btn_play_movement.setIcon(IconFactory.icon("stop"))
@@ -356,7 +690,8 @@ class MainWindow(QMainWindow):
             self.tracker.stop_movement()
             self.controls.btn_play_movement.setText("Play Light Movement")
             self.controls.btn_play_movement.setIcon(IconFactory.icon("play"))
-            self.tracker.on_params_changed()
+            self.tracker.on_params_changed(
+                calculate=self._coordinates_ready_for_calculation())
 
     def _reset_3d_view(self):
         self.scene_3d.gl_view.setCameraPosition(distance=145, elevation=22, azimuth=-45)
