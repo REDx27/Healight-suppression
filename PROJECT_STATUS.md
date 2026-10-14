@@ -1,6 +1,6 @@
 # GlareTracker — Project Status & Specification
 
-> **Last Updated:** 2026-10-03
+> **Last Updated:** 2026-10-14
 > **Python Version:** 3.13 (current test environment; 3.11 previously verified)
 > **Platform:** Windows 10/11
 > **UI Framework:** PyQt5
@@ -12,40 +12,40 @@
 
 ## 0. Current Status Snapshot
 
-GlareTracker is currently a **source-level visualization and tracking prototype**, not yet an end-to-end physical glare-suppression system. The source contains driver-eye tracking, manual/single-camera/stereo headlight input, ray-plane intersection, 2D/3D visualization, simulation controls, calibration backends, and the v1.2 operator UI. The physical blocking output and the calibration needed for measurement-grade windshield coordinates are still pending.
+GlareTracker is currently a **source-level visualization and tracking prototype**, not yet a validated end-to-end physical glare-suppression system. The source contains driver-eye tracking, manual/single-camera/stereo headlight input, ray-plane intersection, 2D/3D visualization, simulation controls, calibration/validation backends, timestamped research recording, and an experimental disabled-by-default secondary-display blocker. Installed-camera and stripped-panel physical validation are still pending.
 
-### Recent changes (through 2026-10-03)
+### Recent changes (through 2026-10-14)
 
 | Area | Current result |
 |---|---|
-| Headlight input | Selectable manual, single-camera, and stereo-camera modes with configurable camera indices, threshold, range/HFOV, and live status previews |
+| Headlight input | Manual, single-camera, and stereo modes now support independent tracked-source lists plus custom camera/detector tuning and processing-stage previews |
 | Operator workflow | Full-size 3D workspace, Operations/Configuration sidebar, top-ribbon session controls, and collapsible/responsive panels |
 | Runtime/UI efficiency | Throttled camera-card rendering, pooled telemetry labels, and cached static windshield graphics |
 | Visual system | Standardized blue/green/gray palette, improved vector icons, and a redesigned 3D scene with road context, glass frame, marker glows, and legend |
 | Scene usability | Restored the start-of-day 3D scene exactly in dark mode, with an optional high-contrast light-gray canvas, synchronized windshield overlay, and floating controls |
 | Window/layout | Screen-aware centered startup size, earlier camera-card stacking, aligned form labels, and corrected windshield title/edge-label placement |
 | Camera compatibility | DirectShow/Media Foundation/automatic backend fallback, 640x480 MJPEG compatibility profile, small capture buffers, and camera-index conflict checks |
-| Road-light stability | Adaptive contrast thresholding, candidate persistence, exponential smoothing, dropout tolerance, reduced status flicker, and live FPS diagnostics |
+| Road-light stability | Multi-scale directional saliency at six apparent sizes, adaptive statistical segmentation, confidence filtering, strongest-channel color support, stable IDs, optional captured-background rejection, smoothing, dropout tolerance, and live diagnostics |
 | MediaPipe compatibility | Bundled Face Landmarker model and compatibility path for current MediaPipe/Python 3.13 packages while retaining the legacy FaceMesh path |
 | Test workflow | Repeatable functional test checklist covering startup, eyes, calibration, geometry, simulation, road detection, end-to-end operation, and shutdown |
 | Guided demonstration calibration | Wizard captures stable IPD and lamp-size references, saves camera-specific profiles, enables IPD driver depth and apparent-size road range, and labels estimated versus assumed values |
 | Operating policy | Explicit Run/Standby/Stop states and four source modes now control camera ownership, manual inputs, calculations, previews, and movement simulation consistently |
-| Automated coverage | 11 tests cover mode/state policy, session transitions, source switching, calibration profile persistence, calibrated scaling, and bright-spot observations |
+| Automated coverage | 70 tests cover geometry boundaries, mode/state policy, diagnostics/video recording, ground-truth analysis, rigid transforms, guarded extrinsic fitting, latency/stale rejection, LCD fail-safe behavior, camera assignment, detector robustness, binocular/multi-light geometry, stable source identity, tuning UI, calibration profiles, and bright-spot observations |
 
 ### Current blockers to the physical prototype
 
-1. Camera-to-windshield extrinsic calibration is not implemented, so tracked centimetre coordinates are not yet physically trustworthy.
-2. A guided one-point demonstration workflow now exists, but full checkerboard intrinsic, stereo, and camera-to-windshield extrinsic calibration are not yet exposed in the UI.
-3. Tracking uses the eye midpoint for intersection calculations; binocular LCD blocking needs a separate ray and spot for each eye.
-4. No secondary-display LCD blocker has been implemented.
-5. There is no Kalman/predictive filtering, research-data logging, or settings persistence; current automated coverage does not yet validate physical-camera behavior or measurement accuracy.
+1. Camera-to-windshield fitting, persistence, compatibility checks, and held-out validation tools now exist, but no installed camera has passed the physical target matrix and the profiles are not yet applied by the live pipelines.
+2. A guided one-point demonstration workflow exists, but full checkerboard intrinsic, stereo, and installed-extrinsic calibration are not yet exposed in the UI.
+3. Separate eye rays and windshield intersections are implemented, but their physical LCD coverage and accuracy have not yet been validated.
+4. An experimental secondary-display blocker is implemented, but the stripped panel's optics, mapping, latency, thermal behavior, and safe state are not physically validated.
+5. Timestamped CSV/video logging and pipeline timing exist, but there is no Kalman/predictive filtering or settings persistence; automated coverage still cannot validate physical-camera behavior or measurement accuracy.
 
 ### Packaging and verification snapshot
 
 - The source reports version **1.2.0**.
 - The only local packaged artifact is `dist/GlareTracker-v1.exe`, built on 2026-09-10; it predates the September 25 v1.2 work. The current build script instead produces `dist/GlareTracker.exe`, so a fresh package is required after the next stable milestone.
 - This review inspected the tracked source, repository history, dependency list, and available build artifact. The repository contained no uncommitted changes before this notes update.
-- Verification through 2026-10-03 passed package/test compilation, 11 automated tests, off-screen UI construction and shutdown, earlier two-camera discovery, driver capture (94 frames and 93 eye detections in 10 seconds), road-camera throughput (improved from 7 to 81 frames in 12 seconds), and synthetic bright-source/smoothing checks. Physical-camera regression of the new mode/state UI, measurement accuracy, and stripped-LCD hardware validation remain outstanding.
+- Verification on 2026-10-14 passed compilation, all documented validation-script entry points, and 70 automated tests. Coverage includes geometry boundaries, timestamped telemetry/video, ground-truth analysis, rigid/extrinsic transforms, held-out calibration gating, independent physical-intersection analysis, latency/stale rejection, LCD fail-safe behavior, and the earlier detector/session cases. The six-scale detector previously benchmarked at 31.4 FPS on a synthetic 640x480 frame. Physical-camera regression, measurement accuracy, external latency, and stripped-LCD hardware validation remain outstanding.
 
 ---
 
@@ -135,7 +135,7 @@ Glare suppression system_test2/
 ├── tests/                      # Automated policy, session, and calibration tests
 ├── calibration/                # Saved .npz calibration files (auto-generated)
 ├── assets/                     # Application icon (glaretracker-icon.ico)
-├── docs/                       # Architecture docs (HTML, PDF)
+├── docs/                       # Indexed plans, guides, protocols, and references
 ├── dist/                       # Standalone executables
 │   └── GlareTracker-v1.exe     # Standalone build v1 (PyInstaller)
 ├── scripts/                    # Build scripts
@@ -247,6 +247,12 @@ dist/GlareTracker-v1.exe
 | Sub-requirement | Status | Implementation |
 |---|---|---|
 | Bright spot detection (threshold + contours + weighted centroid) | ✅ | `headlight_detector.py` — `detect_bright_spot()` with sub-pixel accuracy |
+| Independent multiple-light detection | ✅ | Variable candidate list with stable IDs, timestamps, confidence, state, and per-source geometry |
+| Custom detection tuning | ✅ | Optional exposure/brightness/contrast/gain and software threshold/area/blur/cleanup/source/matching controls |
+| Processing preview selector | ✅ | Road-feed dropdown switches among overlay, original, threshold mask, grayscale, and blurred grayscale |
+| Controlled-scene background rejection | ✅ | Operator captures the static scene without the test lamp; detection then requires a configurable bright change, suppressing windows and other stationary bright regions |
+| Camera-control readback | ✅ | UI reports requested versus camera-reported exposure and indicates when the driver rejects a manual setting |
+| Detected-camera role assignment | ✅ | Refreshable dropdowns list cameras that successfully return frames; driver and one/two headlight roles are assigned independently |
 | Stereo camera synchronization (grab/retrieve pattern) | ✅ | `HeadlightDetectorThread.run()` — `cap1.grab()` + `cap2.grab()` |
 | Stereo triangulation to 3D position (cm) | ✅ | Both calibrated (`cv2.undistortPoints` + disparity formula) and uncalibrated fallback |
 | Manual low exposure to isolate light source | ✅ | `CAP_PROP_EXPOSURE = -8`, `CAP_PROP_AUTO_EXPOSURE = 0.25` |
@@ -274,7 +280,7 @@ dist/GlareTracker-v1.exe
 | OpenGL 3D view embedded in PyQt5 | ✅ | `scene_3d.py` — `Scene3DWidget` using `pyqtgraph.opengl.GLViewWidget` |
 | Render windshield plane (rectangle at Y=0) | ✅ | `GLMeshItem` with dynamic width/height |
 | Render driver eye position (sphere/point) | ✅ | `GLScatterPlotItem` |
-| Render light source(s) (up to 4) | ✅ | `GLScatterPlotItem` with yellow color |
+| Render light source(s) (up to 8) | ✅ | `GLScatterPlotItem` with yellow color |
 | Render eye-to-light rays (lines) | ✅ | `GLLinePlotItem` |
 | Render intersection points on windshield | ✅ | Layered amber/yellow `GLScatterPlotItem` markers |
 | Render camera position indicator | ✅ | `GLScatterPlotItem` |
@@ -379,26 +385,28 @@ dist/GlareTracker-v1.exe
 ---
 
 ### REQ-12: LCD Light Blocking Prototype
-**Status: ❌ NOT STARTED**
+**Status: 🔧 PARTIAL** — software renderer implemented; physical panel validation pending
 
 | Sub-requirement | Status | Implementation |
 |---|---|---|
-| Create lcd_blocker.py module | ❌ | — |
-| Fullscreen borderless window on secondary display | ❌ | — |
-| White canvas (= transparent on stripped LCD) | ❌ | — |
-| Black spots with Gaussian edge softening at intersection pixels | ❌ | — |
-| Binocular parallax (2 separate spots per headlight) | ❌ | — |
+| Create lcd_blocker.py module | ✅ | Disabled-by-default `LCDBlockerWindow` |
+| Fullscreen borderless window on secondary display | ✅ | Explicit enable requires a detected secondary screen |
+| White canvas (= transparent on stripped LCD) | ✅ | Software safe state; physical polarity/transparency still requires validation |
+| Black spots with Gaussian edge softening at intersection pixels | ✅ | Radial feathering with bounded pixel mapping |
+| Binocular parallax (2 separate spots per headlight) | ✅ | Consumes all valid per-eye/per-light intersections |
 | Predictive rendering with Kalman filter | ❌ | — |
 
 ---
 
 ### REQ-13: Data Logging
-**Status: ❌ NOT STARTED**
+**Status: ✅ IMPLEMENTED IN SOURCE** — physical soak validation pending
 
 | Sub-requirement | Status | Implementation |
 |---|---|---|
-| CSV export of eye position, light position, intersections per frame | ❌ | — |
-| Session timestamping | ❌ | — |
+| CSV export of eye position, light position, intersections per frame | ✅ | Asynchronous `telemetry.csv` with ground-truth and pipeline events |
+| Session timestamping | ✅ | UTC plus monotonic nanoseconds; video-frame sidecar timestamps |
+| Camera preview video | ✅ | Driver/primary/secondary MJPEG streams with per-frame CSV |
+| Session metadata and health | ✅ | `session.json` records configuration, frames, drops, and errors |
 
 ---
 
@@ -567,23 +575,28 @@ Stereo cams (cam 1+2) → HeadlightDetectorThread → headlight_detected signal
 
 ## 8. Remaining Work (Roadmap)
 
-Recommended execution order follows the measurement chain: establish trustworthy coordinates first, expose calibration to the operator, add per-eye output geometry, and only then drive the physical LCD.
+Recommended execution order follows the active validation plan. Software readiness is
+not treated as a physical test pass.
 
 ### High Priority
-1. **Camera-to-Windshield Extrinsic Calibration** — Measure each camera's rotation and translation relative to the windshield frame, apply the rigid transform after unprojection, and validate error across the usable cabin volume.
-2. **Measurement-Grade Calibration UI** — Extend the demonstration wizard with checkerboard intrinsic, stereo, and installed camera-to-windshield extrinsic calibration.
-3. **Both-Eyes Intersection** — Compute separate left/right-eye rays and intersection spots for every headlight instead of using only the midpoint.
-4. **LCD Light Blocking** (`lcd_blocker.py`) — Render Gaussian-feathered black spots on a stripped TN LCD panel/secondary display, using the per-eye intersections.
-5. **Kalman Filter** — Smooth eye/intersection jitter and provide the state estimate needed by predictive rendering.
+1. **Dual-Camera Logging Soak** — Connect a second camera and complete the ten-minute timestamped CSV/video recording exit check.
+2. **Ground-Truth Baselines** — Measure driver-eye and road-light accuracy, jitter, availability, and dropouts with fixed mounts and repeated positions.
+3. **Installed Extrinsic Validation** — Fit, apply, and physically validate each camera-to-windshield profile using independent held-out targets.
+4. **End-to-End Intersection Validation** — Compare the implemented per-eye/per-light intersections with independently marked physical windshield crossings.
+5. **Physical LCD Bench Validation** — Characterize the implemented secondary-display blocker, pixel mapping, attenuation, response, temperature, and transparent fail-safe state.
 
 ### Medium Priority
-6. **Data Logging** — CSV export of eye, light, and intersection data per frame for research analysis.
-7. **Predictive Rendering** — Predict intersection positions to compensate for approximately 30–60 ms system latency.
-8. **Automated Tests** — Add unit coverage for geometry/calibration transforms and smoke coverage for configuration and UI construction.
+6. **Latency and Failure Recovery** — Execute the instrumented software timing matrix, external photon-to-display measurement, and failure-injection protocol.
+7. **Environmental Validation** — Run the phased illumination, weather-like, thermal, vibration, endurance, and stationary vehicle-like tests after earlier gates pass.
+8. **Measurement-Grade Calibration UI** — Expose checkerboard intrinsic, stereo, and installed-extrinsic workflows after the scripted physical process is proven.
+9. **Filtering and Prediction** — Add Kalman/predictive rendering only after measured jitter and latency establish the required model and acceptance limits.
 
 ### Low Priority
-9. **Standalone v1.2+** — Rebuild and launch-test the PyInstaller executable after the next stable feature milestone.
-10. **Settings Persistence** — Save/load user preferences (windshield dimensions, camera positions) between sessions.
+10. **Standalone v1.2+** — Rebuild and launch-test the PyInstaller executable after the next stable feature milestone.
+11. **Settings Persistence** — Save/load user preferences (windshield dimensions, camera positions) between sessions.
+
+The detailed checkboxes, exit criteria, and evidence paths are maintained in
+`docs/plans/VALIDATION_PLAN.md`.
 
 ---
 

@@ -1,14 +1,70 @@
 """User-configurable controls panel (windshield, camera, light, vehicle)."""
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, pyqtSignal
 
 from PyQt5.QtWidgets import (
     QWidget, QGroupBox, QVBoxLayout, QFormLayout, QLabel,
     QPushButton, QDoubleSpinBox, QComboBox, QSpinBox, QSizePolicy, QCheckBox,
+    QLineEdit,
 )
 
 from glare_tracker.widgets.icons import ICON_SIZE, IconFactory
 from glare_tracker.operating_modes import OperatingMode, policy_for
+from glare_tracker.headlight_detector import LightDetectionSettings
+
+
+class CameraSelector(QComboBox):
+    """Dropdown that exposes a spin-box-compatible camera-index API."""
+
+    valueChanged = pyqtSignal(int)
+
+    def __init__(self, default_index=0, parent=None):
+        super().__init__(parent)
+        self._fallback_value = int(default_index)
+        self.setMinimumHeight(30)
+        self.addItem(f"Camera {default_index} (not scanned)", default_index)
+        self.currentIndexChanged.connect(self._emit_value_changed)
+
+    def value(self):
+        value = self.currentData()
+        return self._fallback_value if value is None else int(value)
+
+    def setValue(self, camera_index):
+        camera_index = int(camera_index)
+        self._fallback_value = camera_index
+        item_index = self.findData(camera_index)
+        if item_index < 0:
+            self.addItem(f"Camera {camera_index} (unavailable)", camera_index)
+            item_index = self.count() - 1
+        self.setCurrentIndex(item_index)
+
+    def set_available_cameras(self, devices):
+        previous = self.value()
+        self.blockSignals(True)
+        self.clear()
+        for device in devices:
+            camera_index = int(device.index)
+            label = (
+                f"Camera {camera_index} — {device.width}×{device.height} "
+                f"({device.backend})"
+            )
+            self.addItem(label, camera_index)
+        if self.count():
+            selected = self.findData(previous)
+            self.setCurrentIndex(selected if selected >= 0 else 0)
+            self._fallback_value = int(self.currentData())
+            self.setEnabled(True)
+        else:
+            self.addItem("No available cameras detected", None)
+            self.setEnabled(False)
+        self.blockSignals(False)
+        if self.isEnabled():
+            self.valueChanged.emit(self.value())
+
+    def _emit_value_changed(self):
+        if self.currentData() is not None:
+            self._fallback_value = int(self.currentData())
+            self.valueChanged.emit(self._fallback_value)
 
 
 class ControlsPanel(QWidget):
@@ -142,8 +198,9 @@ class ControlsPanel(QWidget):
         light_layout.addRow("Z:", self.spin_light_z)
         layout.addWidget(self.light_group)
 
-        # ── Camera setup (shown only in Auto mode) ──
-        self.auto_camera_group = QGroupBox("Camera Setup")
+        # Camera roles remain assignable even while a role is inactive. This
+        # allows Camera 0 to detect a lamp while driver coordinates are fixed.
+        self.auto_camera_group = QGroupBox("Camera Selection")
         self.auto_camera_group.setProperty("section", "vision")
         auto_layout = QFormLayout(self.auto_camera_group)
         auto_layout.setSpacing(6)
@@ -157,23 +214,183 @@ class ControlsPanel(QWidget):
         self.spin_camera_hfov = self._make_spin(10.0, 170.0, 70.0, " deg")
         self.spin_brightness_threshold = QSpinBox()
         self.spin_brightness_threshold.setRange(0, 255)
-        self.spin_brightness_threshold.setValue(210)
+        self.spin_brightness_threshold.setValue(200)
         self.spin_brightness_threshold.setMinimumHeight(30)
+        self.spin_brightness_threshold.setToolTip(
+            "In adaptive mode this is a ceiling; scene brightness chooses the "
+            "lower working threshold shown on the feed")
+        self.btn_refresh_cameras = QPushButton("Refresh Available Cameras")
+        self.btn_refresh_cameras.setIcon(IconFactory.icon("reset"))
+        self.btn_refresh_cameras.setIconSize(ICON_SIZE)
+        self.btn_refresh_cameras.setMinimumHeight(34)
+        self.camera_scan_status = QLabel(
+            "Choose which detected camera is used for each role.")
+        self.camera_scan_status.setWordWrap(True)
+        self.camera_scan_status.setObjectName("mutedText")
         self.auto_note = QLabel()
         self.auto_note.setWordWrap(True)
         self.auto_note.setObjectName("mutedText")
         auto_layout.addRow("Setup:", self.combo_detection_setup)
         auto_layout.addRow("Driver camera:", self.spin_driver_camera)
         auto_layout.addRow("Headlight camera:", self.spin_headlight_camera)
-        auto_layout.addRow("Stereo camera 2:", self.spin_headlight_camera_2)
+        auto_layout.addRow("Headlight camera 2:", self.spin_headlight_camera_2)
         auto_layout.addRow("Assumed depth:", self.spin_single_depth)
         auto_layout.addRow("Camera HFOV:", self.spin_camera_hfov)
-        auto_layout.addRow("Brightness threshold:", self.spin_brightness_threshold)
+        auto_layout.addRow(self.btn_refresh_cameras)
+        auto_layout.addRow(self.camera_scan_status)
         auto_layout.addRow(self.auto_note)
         layout.addWidget(self.auto_camera_group)
 
+        # Camera-driver controls and software image-processing controls are
+        # intentionally grouped together so the operator can tune a new lamp
+        # while watching the selectable processing previews above the feed.
+        self.light_detection_group = QGroupBox("Custom Light Detection")
+        self.light_detection_group.setProperty("section", "light")
+        detection_layout = QFormLayout(self.light_detection_group)
+        detection_layout.setSpacing(6)
+        self._configure_form(detection_layout)
+
+        self.check_apply_camera_controls = QCheckBox(
+            "Apply camera controls")
+        self.check_auto_exposure = QCheckBox("Use auto exposure")
+        self.check_auto_exposure.setChecked(True)
+        self.spin_exposure = self._make_spin(-13.0, 1.0, -6.0)
+        self.spin_exposure.setSingleStep(1.0)
+        self.spin_camera_brightness = self._make_spin(0.0, 255.0, 128.0)
+        self.spin_camera_brightness.setSingleStep(1.0)
+        self.spin_camera_contrast = self._make_spin(0.0, 255.0, 128.0)
+        self.spin_camera_contrast.setSingleStep(1.0)
+        self.spin_camera_gain = self._make_spin(0.0, 255.0, 0.0)
+        self.spin_camera_gain.setSingleStep(1.0)
+        self.camera_control_feedback = QLabel(
+            "Camera controls OFF — the values above are not sent to the camera.")
+        self.camera_control_feedback.setObjectName("mutedText")
+        self.camera_control_feedback.setWordWrap(True)
+
+        self.check_background_rejection = QCheckBox(
+            "Reject captured background")
+        self.spin_background_difference = QSpinBox()
+        self.spin_background_difference.setRange(1, 255)
+        self.spin_background_difference.setValue(30)
+        self.spin_background_difference.setMinimumHeight(30)
+        self.btn_capture_background = QPushButton(
+            "Capture Background Without Test Light")
+        self.btn_capture_background.setMinimumHeight(34)
+        self.btn_clear_background = QPushButton("Clear Background Reference")
+        self.btn_clear_background.setMinimumHeight(32)
+        self.background_status = QLabel(
+            "No background captured. Start Standby, remove the phone light, "
+            "then capture the static scene.")
+        self.background_status.setObjectName("mutedText")
+        self.background_status.setWordWrap(True)
+
+        self.check_local_contrast = QCheckBox(
+            "Require multi-scale light saliency")
+        self.check_local_contrast.setChecked(True)
+        self.spin_local_contrast_threshold = QSpinBox()
+        self.spin_local_contrast_threshold.setRange(1, 255)
+        self.spin_local_contrast_threshold.setValue(8)
+        self.spin_local_contrast_threshold.setMinimumHeight(30)
+        self.spin_local_contrast_threshold.setToolTip(
+            "Minimum multi-scale contrast response required for a light")
+        self.spin_min_source_confidence = self._make_spin(
+            0.0, 100.0, 25.0, " %")
+        self.spin_min_source_confidence.setDecimals(0)
+        self.spin_min_source_confidence.setToolTip(
+            "Reject candidates whose combined saliency, brightness, shape, "
+            "and saturated-core score is below this percentage")
+        self.btn_daylight_phone_preset = QPushButton(
+            "Load Daylight Phone-Light Preset")
+        self.btn_daylight_phone_preset.setMinimumHeight(34)
+
+        self.check_adaptive_threshold = QCheckBox(
+            "Adapt threshold to scene")
+        self.check_adaptive_threshold.setChecked(True)
+        self.spin_min_light_area = self._make_spin(
+            1.0, 100000.0, 5.0, " px")
+        self.spin_min_light_area.setDecimals(0)
+        self.spin_max_light_area = self._make_spin(
+            2.0, 500000.0, 50000.0, " px")
+        self.spin_max_light_area.setDecimals(0)
+        self.combo_blur_size = QComboBox()
+        self.combo_blur_size.addItems([
+            "None", "3 x 3", "5 x 5", "7 x 7", "9 x 9",
+        ])
+        self.combo_blur_size.setCurrentText("3 x 3")
+        self.spin_morphology_iterations = QSpinBox()
+        self.spin_morphology_iterations.setRange(0, 5)
+        self.spin_morphology_iterations.setValue(1)
+        self.spin_morphology_iterations.setMinimumHeight(30)
+        self.spin_max_light_sources = QSpinBox()
+        self.spin_max_light_sources.setRange(1, 8)
+        self.spin_max_light_sources.setValue(1)
+        self.spin_max_light_sources.setMinimumHeight(30)
+        self.spin_light_match_distance = self._make_spin(
+            5.0, 500.0, 80.0, " px")
+        self.spin_light_match_distance.setDecimals(0)
+        self.btn_reset_light_detection = QPushButton("Reset Detection Defaults")
+        self.btn_reset_light_detection.setMinimumHeight(32)
+        self.detection_note = QLabel(
+            "Multi-scale saliency compares each bright patch with eight "
+            "surrounding patches at six sizes, so nearby and distant lamps "
+            "share one detector. Confidence rejects weak clutter. Capturing "
+            "the unchanged scene provides an additional optional check."
+        )
+        self.detection_note.setObjectName("mutedText")
+        self.detection_note.setWordWrap(True)
+
+        detection_layout.addRow(self.check_apply_camera_controls)
+        detection_layout.addRow(self.check_auto_exposure)
+        detection_layout.addRow("Exposure:", self.spin_exposure)
+        detection_layout.addRow("Camera brightness:", self.spin_camera_brightness)
+        detection_layout.addRow("Camera contrast:", self.spin_camera_contrast)
+        detection_layout.addRow("Camera gain:", self.spin_camera_gain)
+        detection_layout.addRow(self.camera_control_feedback)
+        detection_layout.addRow(self.check_background_rejection)
+        detection_layout.addRow(
+            "Change threshold:", self.spin_background_difference)
+        detection_layout.addRow(self.btn_capture_background)
+        detection_layout.addRow(self.btn_clear_background)
+        detection_layout.addRow(self.background_status)
+        detection_layout.addRow(self.check_local_contrast)
+        detection_layout.addRow(
+            "Saliency floor:", self.spin_local_contrast_threshold)
+        detection_layout.addRow(
+            "Minimum source confidence:", self.spin_min_source_confidence)
+        detection_layout.addRow(self.check_adaptive_threshold)
+        detection_layout.addRow(
+            "Brightness threshold:", self.spin_brightness_threshold)
+        detection_layout.addRow("Minimum light area:", self.spin_min_light_area)
+        detection_layout.addRow("Maximum light area:", self.spin_max_light_area)
+        detection_layout.addRow("Gaussian blur:", self.combo_blur_size)
+        detection_layout.addRow(
+            "Noise cleanup passes:", self.spin_morphology_iterations)
+        detection_layout.addRow("Maximum sources:", self.spin_max_light_sources)
+        detection_layout.addRow(
+            "ID matching distance:", self.spin_light_match_distance)
+        detection_layout.addRow(self.btn_daylight_phone_preset)
+        detection_layout.addRow(self.btn_reset_light_detection)
+        detection_layout.addRow(self.detection_note)
+        layout.addWidget(self.light_detection_group)
+
         self.combo_operating_mode.currentTextChanged.connect(self._update_mode_controls)
         self.combo_detection_setup.currentTextChanged.connect(self._update_auto_controls)
+        self.check_apply_camera_controls.toggled.connect(
+            self._update_detection_control_states)
+        self.check_auto_exposure.toggled.connect(
+            self._update_detection_control_states)
+        self.check_background_rejection.toggled.connect(
+            self._update_detection_control_states)
+        self.check_local_contrast.toggled.connect(
+            self._update_detection_control_states)
+        self.spin_min_light_area.valueChanged.connect(
+            self._minimum_light_area_changed)
+        self.spin_max_light_area.valueChanged.connect(
+            self._maximum_light_area_changed)
+        self.btn_reset_light_detection.clicked.connect(
+            self.reset_light_detection_defaults)
+        self.btn_daylight_phone_preset.clicked.connect(
+            self.load_daylight_phone_preset)
 
         # ── Light movement ──
         movement_group = QGroupBox("Simulation")
@@ -196,7 +413,77 @@ class ControlsPanel(QWidget):
         movement_layout.addWidget(self.btn_play_movement)
         layout.addWidget(movement_group)
 
+        # ── Research diagnostics ──
+        self.diagnostics_group = QGroupBox("Research Recording")
+        self.diagnostics_group.setProperty("section", "vision")
+        diagnostics_layout = QVBoxLayout(self.diagnostics_group)
+        diagnostics_layout.setSpacing(6)
+        self.check_record_diagnostics = QCheckBox(
+            "Record timestamped CSV and camera video"
+        )
+        self.check_record_diagnostics.setToolTip(
+            "Write telemetry.csv, per-frame video timestamps, session metadata, "
+            "and available camera previews to a diagnostics session folder"
+        )
+        self.diagnostics_status = QLabel("Recording is off")
+        self.diagnostics_status.setObjectName("mutedText")
+        self.diagnostics_status.setWordWrap(True)
+        diagnostics_layout.addWidget(self.check_record_diagnostics)
+        diagnostics_layout.addWidget(self.diagnostics_status)
+
+        marker_form = QFormLayout()
+        self.combo_ground_truth_target = QComboBox()
+        self.combo_ground_truth_target.addItems(
+            ["Driver Eye Midpoint", "Road Light", "Windshield Intersection"]
+        )
+        self.edit_ground_truth_label = QLineEdit()
+        self.edit_ground_truth_label.setPlaceholderText("e.g. driver-D50-X0-R1")
+        self.spin_ground_truth_x = self._make_spin(-5000, 5000, 0.0, " cm")
+        self.spin_ground_truth_y = self._make_spin(-5000, 5000, -50.0, " cm")
+        self.spin_ground_truth_z = self._make_spin(-5000, 5000, 9.75, " cm")
+        self.btn_mark_ground_truth = QPushButton("Mark Measured Position")
+        self.btn_mark_ground_truth.setMinimumHeight(32)
+        self.ground_truth_status = QLabel(
+            "Start recording, enter tape-measured coordinates, then mark each "
+            "stable test position."
+        )
+        self.ground_truth_status.setObjectName("mutedText")
+        self.ground_truth_status.setWordWrap(True)
+        marker_form.addRow("Target:", self.combo_ground_truth_target)
+        marker_form.addRow("Condition ID:", self.edit_ground_truth_label)
+        marker_form.addRow("Measured X:", self.spin_ground_truth_x)
+        marker_form.addRow("Measured Y:", self.spin_ground_truth_y)
+        marker_form.addRow("Measured Z:", self.spin_ground_truth_z)
+        marker_form.addRow(self.btn_mark_ground_truth)
+        marker_form.addRow(self.ground_truth_status)
+        diagnostics_layout.addLayout(marker_form)
+        layout.addWidget(self.diagnostics_group)
+
+        self.lcd_group = QGroupBox("Experimental LCD Output")
+        self.lcd_group.setProperty("section", "geometry")
+        lcd_layout = QFormLayout(self.lcd_group)
+        lcd_layout.setSpacing(6)
+        self._configure_form(lcd_layout)
+        self.check_lcd_output = QCheckBox(
+            "Enable blocker on secondary display"
+        )
+        self.check_lcd_output.setToolTip(
+            "Experimental stationary-rig output only. Requires a second display."
+        )
+        self.spin_lcd_radius = self._make_spin(2.0, 500.0, 40.0, " px")
+        self.spin_lcd_radius.setDecimals(0)
+        self.lcd_status = QLabel(
+            "Disabled. White is the fail-safe output for a stripped TN panel."
+        )
+        self.lcd_status.setObjectName("mutedText")
+        self.lcd_status.setWordWrap(True)
+        lcd_layout.addRow(self.check_lcd_output)
+        lcd_layout.addRow("Spot radius:", self.spin_lcd_radius)
+        lcd_layout.addRow(self.lcd_status)
+        layout.addWidget(self.lcd_group)
+
         layout.addStretch()
+        self._update_detection_control_states()
         self._update_mode_controls()
 
     # ── helpers ──────────────────────────────────────────────────────
@@ -220,11 +507,7 @@ class ControlsPanel(QWidget):
 
     @staticmethod
     def _make_index_spin(default):
-        spin = QSpinBox()
-        spin.setRange(0, 20)
-        spin.setValue(default)
-        spin.setMinimumHeight(30)
-        return spin
+        return CameraSelector(default)
 
     def _set_form_row_visible(self, layout, widget, visible):
         widget.setVisible(visible)
@@ -237,10 +520,10 @@ class ControlsPanel(QWidget):
         self.mode_description.setText(policy.description)
         self.manual_driver_group.setEnabled(policy.manual_driver)
         self.light_group.setEnabled(policy.manual_headlight)
+        self.vehicle_group.setEnabled(policy.manual_headlight)
         self.dist_group.setEnabled(policy.use_driver_camera)
-        self.auto_camera_group.setVisible(
-            policy.use_driver_camera or policy.use_road_camera)
-        self.spin_driver_camera.setEnabled(policy.use_driver_camera)
+        self.auto_camera_group.setVisible(True)
+        self.spin_driver_camera.setEnabled(True)
         self._update_auto_controls()
 
     def _update_auto_controls(self):
@@ -248,32 +531,53 @@ class ControlsPanel(QWidget):
         road = policy.use_road_camera
         stereo = self.combo_detection_setup.currentText() == "Stereo Cameras"
         form = self.auto_camera_group.layout()
+        # Role assignments are always editable. Whether a role opens a camera
+        # is controlled by the selected operating mode.
         for widget in (
             self.combo_detection_setup,
             self.spin_headlight_camera,
+        ):
+            self._set_form_row_visible(form, widget, True)
+            widget.setEnabled(True)
+        for widget in (
             self.spin_single_depth,
             self.spin_camera_hfov,
-            self.spin_brightness_threshold,
         ):
             self._set_form_row_visible(form, widget, road)
             widget.setEnabled(road)
         self._set_form_row_visible(
-            form, self.spin_headlight_camera_2, road and stereo)
-        self.spin_headlight_camera_2.setEnabled(road and stereo)
+            form, self.spin_headlight_camera_2, stereo)
+        self.spin_headlight_camera_2.setEnabled(stereo)
+        self.light_detection_group.setVisible(road)
 
         single_camera = not stereo
         self.calibration_group.setVisible(
             (policy.use_driver_camera or road) and single_camera)
         self.btn_guided_calibration.setVisible(single_camera)
         self.auto_note.setText(
-            "Single-camera road distance is estimated from a calibrated test lamp; "
-            "without that profile it uses the assumed depth."
+            "Single camera: the Headlight camera selection is used. In Driver "
+            "Position Fixed mode, the Driver camera is not opened. Road distance "
+            "uses the assumed depth unless a matching lamp profile is active."
             if road and single_camera else
             "Stereo uses two road cameras. Both feeds must view the same light and "
             "the rigid pair must be calibrated."
             if road else
-            "Only the driver-facing camera is required in this mode."
+            "Assignments are saved in the panel, but inactive camera roles are "
+            "not opened in the selected mode."
         )
+
+    def set_available_cameras(self, devices):
+        """Populate each role dropdown from one shared discovery result."""
+
+        for selector in (
+            self.spin_driver_camera,
+            self.spin_headlight_camera,
+            self.spin_headlight_camera_2,
+        ):
+            selector.set_available_cameras(devices)
+
+    def set_camera_scan_status(self, text):
+        self.camera_scan_status.setText(text)
 
     def is_auto_light(self):
         """Compatibility name: true when the road-camera source is active."""
@@ -287,6 +591,128 @@ class ControlsPanel(QWidget):
 
     def is_stereo_detection(self):
         return self.combo_detection_setup.currentText() == "Stereo Cameras"
+
+    def _update_detection_control_states(self):
+        camera_controls = self.check_apply_camera_controls.isChecked()
+        self.check_auto_exposure.setEnabled(camera_controls)
+        self.spin_exposure.setEnabled(
+            camera_controls and not self.check_auto_exposure.isChecked())
+        for widget in (
+            self.spin_camera_brightness,
+            self.spin_camera_contrast,
+            self.spin_camera_gain,
+        ):
+            widget.setEnabled(camera_controls)
+        self.spin_background_difference.setEnabled(
+            self.check_background_rejection.isChecked())
+        self.spin_local_contrast_threshold.setEnabled(
+            self.check_local_contrast.isChecked())
+        if not camera_controls:
+            self.camera_control_feedback.setText(
+                "Camera controls OFF — exposure, brightness, contrast, and "
+                "gain are not sent. Automatic exposure is restored.")
+        elif self.check_auto_exposure.isChecked():
+            self.camera_control_feedback.setText(
+                "Camera controls ON — automatic exposure is requested. "
+                "Manual exposure is disabled; camera readback appears here.")
+        else:
+            self.camera_control_feedback.setText(
+                "Camera controls ON — manual exposure and image controls are "
+                "requested. Camera readback appears here.")
+
+    def _minimum_light_area_changed(self, value):
+        if value > self.spin_max_light_area.value():
+            self.spin_max_light_area.setValue(value)
+
+    def _maximum_light_area_changed(self, value):
+        if value < self.spin_min_light_area.value():
+            self.spin_min_light_area.setValue(value)
+
+    def set_camera_control_feedback(self, text):
+        self.camera_control_feedback.setText(text)
+
+    def set_background_status(self, text):
+        self.background_status.setText(text)
+
+    def reset_light_detection_defaults(self):
+        defaults = LightDetectionSettings()
+        self.check_apply_camera_controls.setChecked(
+            defaults.apply_camera_controls)
+        self.check_auto_exposure.setChecked(defaults.auto_exposure)
+        self.spin_exposure.setValue(defaults.exposure)
+        self.spin_camera_brightness.setValue(defaults.brightness)
+        self.spin_camera_contrast.setValue(defaults.contrast)
+        self.spin_camera_gain.setValue(defaults.gain)
+        self.check_background_rejection.setChecked(
+            defaults.background_rejection)
+        self.spin_background_difference.setValue(
+            defaults.background_difference_threshold)
+        self.check_local_contrast.setChecked(
+            defaults.require_local_contrast)
+        self.spin_local_contrast_threshold.setValue(
+            defaults.local_contrast_threshold)
+        self.spin_min_source_confidence.setValue(
+            defaults.minimum_confidence * 100.0)
+        self.check_adaptive_threshold.setChecked(defaults.adaptive_threshold)
+        self.spin_brightness_threshold.setValue(defaults.brightness_threshold)
+        self.spin_min_light_area.setValue(defaults.min_area_px)
+        self.spin_max_light_area.setValue(defaults.max_area_px)
+        self.combo_blur_size.setCurrentText(f"{defaults.blur_size} x {defaults.blur_size}")
+        self.spin_morphology_iterations.setValue(
+            defaults.morphology_iterations)
+        self.spin_max_light_sources.setValue(defaults.max_sources)
+        self.spin_light_match_distance.setValue(defaults.match_distance_px)
+        self._update_detection_control_states()
+
+    def load_daylight_phone_preset(self):
+        """Load a repeatable starting point for a lamp near a bright window."""
+
+        self.check_apply_camera_controls.setChecked(False)
+        # Never let a stale or accidentally lamp-containing reference frame
+        # silently veto the automatic detector when loading this preset.
+        self.check_background_rejection.setChecked(False)
+        self.check_adaptive_threshold.setChecked(True)
+        self.spin_brightness_threshold.setValue(200)
+        self.check_local_contrast.setChecked(True)
+        self.spin_local_contrast_threshold.setValue(8)
+        self.spin_background_difference.setValue(20)
+        self.spin_min_light_area.setValue(5)
+        self.spin_max_light_area.setValue(50000)
+        self.spin_min_source_confidence.setValue(25)
+        self.combo_blur_size.setCurrentText("3 x 3")
+        self.spin_morphology_iterations.setValue(1)
+        self.spin_max_light_sources.setValue(1)
+        self.spin_light_match_distance.setValue(80)
+        self._update_detection_control_states()
+
+    def get_light_detection_settings(self):
+        blur_text = self.combo_blur_size.currentText()
+        blur_size = 1 if blur_text == "None" else int(blur_text.split()[0])
+        return LightDetectionSettings(
+            brightness_threshold=self.spin_brightness_threshold.value(),
+            adaptive_threshold=self.check_adaptive_threshold.isChecked(),
+            min_area_px=self.spin_min_light_area.value(),
+            max_area_px=self.spin_max_light_area.value(),
+            blur_size=blur_size,
+            morphology_iterations=self.spin_morphology_iterations.value(),
+            max_sources=self.spin_max_light_sources.value(),
+            match_distance_px=self.spin_light_match_distance.value(),
+            require_local_contrast=self.check_local_contrast.isChecked(),
+            local_contrast_threshold=(
+                self.spin_local_contrast_threshold.value()),
+            minimum_confidence=(
+                self.spin_min_source_confidence.value() / 100.0),
+            background_rejection=(
+                self.check_background_rejection.isChecked()),
+            background_difference_threshold=(
+                self.spin_background_difference.value()),
+            apply_camera_controls=self.check_apply_camera_controls.isChecked(),
+            auto_exposure=self.check_auto_exposure.isChecked(),
+            exposure=self.spin_exposure.value(),
+            brightness=self.spin_camera_brightness.value(),
+            contrast=self.spin_camera_contrast.value(),
+            gain=self.spin_camera_gain.value(),
+        ).normalized()
 
     # ── public getters ──────────────────────────────────────────────
 

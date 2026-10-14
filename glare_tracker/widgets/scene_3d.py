@@ -1,6 +1,6 @@
 """GPU-accelerated 3D scene widget (PyQtGraph OpenGL).
 
-Manages windshield mesh, eye point, up to 4 light sources, intersection
+Manages windshield mesh, two eye points, up to 8 light sources, intersection
 markers, ray lines, axis labels, camera marker, and a floating settings
 overlay — all updated in-place via ``setData()`` for 60+ FPS.
 """
@@ -22,7 +22,9 @@ from glare_tracker.widgets.icons import ICON_SIZE, IconFactory
 
 _OFFSCREEN_POINT = np.array([[9999, 9999, 9999]], dtype=np.float32)
 _OFFSCREEN_LINE = np.array([[9999, 9999, 9999], [9999, 9999, 9999]], dtype=np.float32)
-_MAX_LIGHTS = 4
+_MAX_LIGHTS = 8
+_MAX_EYES = 2
+_MAX_INTERSECTIONS = _MAX_LIGHTS * _MAX_EYES
 
 
 class Scene3DWidget(QWidget):
@@ -43,7 +45,7 @@ class Scene3DWidget(QWidget):
         self._light_label_size = 16
         self._intersection_points: list = []
         self._last_light_positions = None
-        self._last_eye_position = None
+        self._last_eye_positions = None
         self._last_ray_positions = None
         self._light_scene = False
 
@@ -146,6 +148,7 @@ class Scene3DWidget(QWidget):
             self.gl_view.addItem(light_l)
             self._light_labels.append(light_l)
 
+        for idx in range(_MAX_INTERSECTIONS):
             inter_g = gl.GLScatterPlotItem(
                 pos=_OFFSCREEN_POINT, size=36, color=(0.98, 0.45, 0.12, 0.18), pxMode=True)
             self.gl_view.addItem(inter_g)
@@ -166,18 +169,28 @@ class Scene3DWidget(QWidget):
             self.gl_view.addItem(ray)
             self._ray_lines.append(ray)
 
-        # Eye
-        self._eye_glow = gl.GLScatterPlotItem(
-            pos=np.array([[0, -50, 10]], dtype=np.float32),
-            size=30, color=(0.38, 0.65, 0.98, 0.16), pxMode=True)
-        self.gl_view.addItem(self._eye_glow)
-        self._eye_scatter = gl.GLScatterPlotItem(
-            pos=np.array([[0, -50, 10]], dtype=np.float32),
-            size=10, color=(0.38, 0.65, 0.98, 1.0), pxMode=True)
-        self.gl_view.addItem(self._eye_scatter)
-        self._eye_label = GLTextItem(pos=(9999, 9999, 9999), text="Driver Eye",
-                                     color=(0.4, 0.6, 1.0, 1.0))
-        self.gl_view.addItem(self._eye_label)
+        # Independent eye markers preserve the separation caused by head roll.
+        self._eye_glows = []
+        self._eye_scatters = []
+        self._eye_labels = []
+        for idx in range(_MAX_EYES):
+            eye_glow = gl.GLScatterPlotItem(
+                pos=_OFFSCREEN_POINT, size=30,
+                color=(0.38, 0.65, 0.98, 0.16), pxMode=True)
+            self.gl_view.addItem(eye_glow)
+            self._eye_glows.append(eye_glow)
+
+            eye_scatter = gl.GLScatterPlotItem(
+                pos=_OFFSCREEN_POINT, size=10,
+                color=(0.38, 0.65, 0.98, 1.0), pxMode=True)
+            self.gl_view.addItem(eye_scatter)
+            self._eye_scatters.append(eye_scatter)
+
+            eye_label = GLTextItem(
+                pos=(9999, 9999, 9999), text=f"Eye {idx + 1}",
+                color=(0.4, 0.6, 1.0, 1.0))
+            self.gl_view.addItem(eye_label)
+            self._eye_labels.append(eye_label)
 
         # Camera marker
         self._camera_glow = gl.GLScatterPlotItem(
@@ -257,15 +270,27 @@ class Scene3DWidget(QWidget):
                 self._light_labels[i].setData(pos=(9999, 9999, 9999))
 
     def update_eye(self, x, y, z):
-        position = (x, y, z)
-        if position == self._last_eye_position:
+        self.update_eyes(((x, y, z),))
+
+    def update_eyes(self, eye_positions):
+        positions = tuple(tuple(position) for position in eye_positions[:_MAX_EYES])
+        if positions == self._last_eye_positions:
             return
-        self._last_eye_position = position
-        pos = np.array([[x, y, z]], dtype=np.float32)
-        self._eye_glow.setData(pos=pos)
-        self._eye_scatter.setData(pos=pos)
-        self._eye_label.setData(pos=position)
-        self._eye_visible = True
+        self._last_eye_positions = positions
+        dual = len(positions) > 1
+        for idx in range(_MAX_EYES):
+            if idx < len(positions):
+                position = positions[idx]
+                pos = np.array([position], dtype=np.float32)
+                self._eye_glows[idx].setData(pos=pos)
+                self._eye_scatters[idx].setData(pos=pos)
+                label = f"Eye {idx + 1}" if dual else "Driver Eye"
+                self._eye_labels[idx].setData(pos=position, text=label)
+            else:
+                self._eye_glows[idx].setData(pos=_OFFSCREEN_POINT)
+                self._eye_scatters[idx].setData(pos=_OFFSCREEN_POINT)
+                self._eye_labels[idx].setData(pos=(9999, 9999, 9999))
+        self._eye_visible = bool(positions)
 
     def update_camera(self, x, y, z):
         pos = np.array([[x, y, z]], dtype=np.float32)
@@ -277,11 +302,11 @@ class Scene3DWidget(QWidget):
         self.update_intersections([(ix, iy, iz)])
 
     def update_intersections(self, intersections):
-        self._intersection_points = list(intersections[:_MAX_LIGHTS])
+        self._intersection_points = list(intersections[:_MAX_INTERSECTIONS])
         self._restore_intersections()
 
     def _restore_intersections(self):
-        for i in range(_MAX_LIGHTS):
+        for i in range(_MAX_INTERSECTIONS):
             if i < len(self._intersection_points):
                 pt = self._intersection_points[i]
                 display = (pt[0], -0.6, pt[2])
@@ -298,29 +323,37 @@ class Scene3DWidget(QWidget):
         self.update_rays(eye_cm, [light_cm])
 
     def update_rays(self, eye_cm, light_positions):
-        ray_key = (tuple(eye_cm), *(tuple(p) for p in light_positions[:_MAX_LIGHTS]))
+        self.update_eye_rays((eye_cm,), light_positions)
+
+    def update_eye_rays(self, eye_positions, light_positions):
+        eyes = tuple(tuple(eye) for eye in eye_positions[:_MAX_EYES])
+        lights = tuple(tuple(light) for light in light_positions[:_MAX_LIGHTS])
+        ray_key = (eyes, lights)
         if ray_key == self._last_ray_positions:
             return
         self._last_ray_positions = ray_key
-        for i in range(_MAX_LIGHTS):
-            if i < len(light_positions):
-                pts = np.array([list(eye_cm), list(light_positions[i])], dtype=np.float32)
+        pairs = [(eye, light) for light in lights for eye in eyes]
+        for i in range(_MAX_INTERSECTIONS):
+            if i < len(pairs):
+                eye, light = pairs[i]
+                pts = np.array([eye, light], dtype=np.float32)
                 self._ray_lines[i].setData(pos=pts)
             else:
                 self._ray_lines[i].setData(pos=_OFFSCREEN_LINE)
-        if light_positions:
-            self._ray_visible = True
+        self._ray_visible = bool(pairs)
 
     def hide_tracking(self):
         self._hide_tracking()
 
     def _hide_tracking(self):
         self._intersection_points = []
-        self._last_eye_position = None
+        self._last_eye_positions = None
         self._last_ray_positions = None
-        self._eye_glow.setData(pos=_OFFSCREEN_POINT)
-        self._eye_scatter.setData(pos=_OFFSCREEN_POINT)
-        self._eye_label.setData(pos=(9999, 9999, 9999))
+        for glow, scatter, label in zip(
+                self._eye_glows, self._eye_scatters, self._eye_labels):
+            glow.setData(pos=_OFFSCREEN_POINT)
+            scatter.setData(pos=_OFFSCREEN_POINT)
+            label.setData(pos=(9999, 9999, 9999))
         for g, s, l in zip(self._inter_glows, self._inter_scatters, self._inter_labels):
             g.setData(pos=_OFFSCREEN_POINT)
             s.setData(pos=_OFFSCREEN_POINT)
@@ -439,7 +472,8 @@ class Scene3DWidget(QWidget):
         font = QFont("Segoe UI", size)
         if key == "eye":
             self._eye_label_size = size
-            self._eye_label.setData(font=font)
+            for label in self._eye_labels:
+                label.setData(font=font)
         else:
             self._light_label_size = size
             for lbl in self._light_labels:
@@ -471,9 +505,11 @@ class Scene3DWidget(QWidget):
             l.setData(color=light_c)
         eye_glow = QColor(eye_c)
         eye_glow.setAlpha(42)
-        self._eye_glow.setData(color=eye_glow)
-        self._eye_scatter.setData(color=eye_c)
-        self._eye_label.setData(color=eye_c)
+        for glow, scatter, label in zip(
+                self._eye_glows, self._eye_scatters, self._eye_labels):
+            glow.setData(color=eye_glow)
+            scatter.setData(color=eye_c)
+            label.setData(color=eye_c)
 
     def _toggle_settings(self):
         self.settings_panel.setVisible(not self.settings_panel.isVisible())
@@ -582,19 +618,23 @@ class Scene3DWidget(QWidget):
             glow.setData(color=glow_color)
             core.setData(color=intersection)
             label.setData(color=intersection)
-        self._eye_glow.setGLOptions(option)
-        self._eye_scatter.setGLOptions(option)
-        self._eye_glow.setData(color=(*eye[:3], 0.16 if additive else 0.18))
-        self._eye_scatter.setData(color=eye)
-        self._eye_label.setData(color=eye)
+        for glow, scatter, label in zip(
+                self._eye_glows, self._eye_scatters, self._eye_labels):
+            glow.setGLOptions(option)
+            scatter.setGLOptions(option)
+            glow.setData(color=(*eye[:3], 0.16 if additive else 0.18))
+            scatter.setData(color=eye)
+            label.setData(color=eye)
         for line in self._ray_lines:
             line.setData(color=ray)
 
     def _toggle_eye_visibility(self, visible):
         self._eye_points_visible = visible
-        self._eye_glow.setVisible(visible)
-        self._eye_scatter.setVisible(visible)
-        self._eye_label.setVisible(visible)
+        for glow, scatter, label in zip(
+                self._eye_glows, self._eye_scatters, self._eye_labels):
+            glow.setVisible(visible)
+            scatter.setVisible(visible)
+            label.setVisible(visible)
 
     def _toggle_light_visibility(self, visible):
         self._light_points_visible = visible

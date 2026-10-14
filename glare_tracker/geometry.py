@@ -117,8 +117,8 @@ def intersection_to_pixel(
     if not (0 <= x_local <= panel_w_cm) or not (0 <= z_local <= panel_h_cm):
         return None
 
-    px = int(x_local / panel_w_cm * panel_res_x)
-    py = int(z_local / panel_h_cm * panel_res_y)
+    px = min(int(x_local / panel_w_cm * panel_res_x), panel_res_x - 1)
+    py = min(int(z_local / panel_h_cm * panel_res_y), panel_res_y - 1)
     return (px, py)
 
 

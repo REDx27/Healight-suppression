@@ -70,6 +70,7 @@ class VideoCaptureThread(QThread):
     head_pose_updated = pyqtSignal(float, float, float)
     eye_pixels_detected = pyqtSignal(float, float, float, float, int, int)
     camera_status = pyqtSignal(str, bool)
+    pipeline_timing = pyqtSignal(object)
 
     def __init__(self, camera_index=0, parent=None):
         super().__init__(parent)
@@ -192,12 +193,16 @@ class VideoCaptureThread(QThread):
                 f"({width}x{height})", True)
 
             face_mesh, uses_tasks_api = self._create_face_tracker()
+            frame_number = 0
 
             while self._running:
+                capture_started_ns = time.monotonic_ns()
                 ret, frame = cap.read()
                 if not ret:
                     self.msleep(10)
                     continue
+                capture_complete_ns = time.monotonic_ns()
+                frame_number += 1
 
                 frame = cv2.flip(frame, 1)  # mirror for natural feel
                 h, w, _ = frame.shape
@@ -213,6 +218,15 @@ class VideoCaptureThread(QThread):
                 else:
                     results = face_mesh.process(rgb)
                     faces = [face.landmark for face in results.multi_face_landmarks or []]
+                detection_complete_ns = time.monotonic_ns()
+                self.pipeline_timing.emit({
+                    "stream": "driver",
+                    "frame_index": frame_number,
+                    "capture_started_ns": capture_started_ns,
+                    "capture_complete_ns": capture_complete_ns,
+                    "detection_complete_ns": detection_complete_ns,
+                    "observation_valid": bool(faces),
+                })
 
                 if faces:
                     lm = faces[0]
@@ -289,12 +303,22 @@ class VideoCaptureThread(QThread):
                         )
                     else:
                         # ── UNCALIBRATED MODE (fallback) ──
-                        eye_cm = pixel_to_cm(
-                            int(eye_x_px), int(eye_y_px), w, h,
+                        left_cm = pixel_to_cm(
+                            lx_px, ly_px, w, h,
                             config.screen_w_cm, config.screen_h_cm,
                             config.eye_dist_cm,
                         )
-                        self.eye_detected.emit(*eye_cm)
+                        right_cm = pixel_to_cm(
+                            rx_px, ry_px, w, h,
+                            config.screen_w_cm, config.screen_h_cm,
+                            config.eye_dist_cm,
+                        )
+                        mid_cm = tuple(
+                            (left + right) / 2.0
+                            for left, right in zip(left_cm, right_cm)
+                        )
+                        self.eye_detected.emit(*mid_cm)
+                        self.eyes_detected.emit(*left_cm, *right_cm)
                 else:
                     self.eye_lost.emit()
 

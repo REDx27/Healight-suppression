@@ -2,6 +2,11 @@
 
 GlareTracker is a Windows desktop application that tracks driver eye position from a webcam and visualizes glare intersections on a virtual windshield.
 
+The documentation map and source-of-truth order are in
+[docs/README.md](docs/README.md). Long-form design history, implementation rationale,
+validation methodology, and later-thesis material are in
+[docs/reference/THESIS_AND_DESIGN_REFERENCE.md](docs/reference/THESIS_AND_DESIGN_REFERENCE.md).
+
 Driver and headlight coordinates can each come from a camera or a fixed manual value.
 The four explicit operating modes are Fully Auto, Fully Manual, Driver Position Fixed,
 and Headlight Position Fixed. Run enables calculations, Standby keeps required previews
@@ -28,21 +33,24 @@ scene, and responsive scene controls.
 
 ## Current development status
 
-As of 2026-10-03, the source is version 1.2.0. The tracking, headlight-input,
+As of 2026-10-14, the source is version 1.2.0. The tracking, headlight-input,
 intersection, simulation, and visualization paths are implemented in source. Camera
 capture now includes Windows backend fallback, a low-bandwidth 640x480 MJPEG profile,
 adaptive bright-source detection, temporal light tracking, dropout tolerance, and
-MediaPipe Tasks compatibility for Python 3.13. Eleven automated tests cover the core
-mode/state, session, calibration-profile, and detection policies; the functional test
-plan records the remaining physical-camera checks for the two-camera demonstration.
+MediaPipe Tasks compatibility for Python 3.13. Seventy automated tests cover geometry,
+mode/state, session, calibration profiles, extrinsic fitting, diagnostics, latency,
+LCD fail-safe behavior, and detection policies; the validation plan records the
+remaining physical-camera and optical checks.
 
 The current demonstration uses camera 0 for the driver and camera 1 for the road view.
 Single-camera road tracking measures a light bearing and, without a saved demonstration
 profile, projects it at an operator-supplied distance. The guided calibration wizard can
 instead estimate driver depth from measured IPD and estimate road-light range from the
 apparent size of one reference lamp. Remaining physical-system work includes camera-to-
-windshield extrinsics, separate left/right-eye intersections, secondary-display LCD
-blocking, prediction, and research-data logging.
+windshield extrinsic measurement/application, physical validation of the new
+left/right-eye intersections, stripped-panel optical validation, prediction, and the
+ordered ground-truth/environmental test campaigns. Timestamped CSV/video recording
+and an experimental disabled-by-default secondary-display blocker now exist in source.
 
 The local `dist/GlareTracker-v1.exe` artifact predates the v1.2 source changes. Run the
 build script and launch-test the resulting `dist/GlareTracker.exe` before treating the
@@ -150,7 +158,7 @@ The executable is created at `dist/GlareTracker.exe`. If Inno Setup (`iscc`) is 
 ├── requirements.txt            # Python dependencies
 ├── README.md                   # This file
 ├── assets/                     # Branding (icon files)
-├── docs/                       # Technical documentation
+├── docs/                       # Indexed plans, guides, protocols, and references
 ├── scripts/                    # Build & utility scripts
 └── dist/                       # Built executable (git-ignored)
 ```

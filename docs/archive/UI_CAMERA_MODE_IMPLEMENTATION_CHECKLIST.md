@@ -1,8 +1,9 @@
-# Temporary UI and Camera-Mode Implementation Checklist
+# UI and Camera-Mode Implementation Checklist — Archived
 
 > Created: 2026-10-02  
 > Purpose: keep the UI/camera redesign ordered, testable, and resumable.  
 > Rule: mark an item complete only after its acceptance checks pass.
+> Archive status: retained for implementation history; it is not an active work queue.
 
 ## Agreed operating model
 

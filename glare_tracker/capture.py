@@ -8,8 +8,56 @@ without making the tracking workers depend on one Windows driver stack.
 from __future__ import annotations
 
 import sys
+from dataclasses import dataclass
 
 import cv2
+from PyQt5.QtCore import QThread, pyqtSignal
+
+
+@dataclass(frozen=True)
+class CameraDevice:
+    """One OpenCV camera index confirmed by a successful frame read."""
+
+    index: int
+    width: int
+    height: int
+    backend: str
+
+
+class CameraDiscoveryThread(QThread):
+    """Probe camera indices without freezing the operator interface."""
+
+    cameras_discovered = pyqtSignal(object)
+
+    def __init__(self, max_index: int = 10, parent=None):
+        super().__init__(parent)
+        self.max_index = max(1, int(max_index))
+
+    def run(self):
+        devices = []
+        for camera_index in range(self.max_index):
+            if self.isInterruptionRequested():
+                break
+            capture, backend_name = open_video_capture(camera_index)
+            if capture is None:
+                continue
+            try:
+                ok, frame = capture.read()
+                if not ok or frame is None:
+                    continue
+                height, width = frame.shape[:2]
+                devices.append(CameraDevice(
+                    index=camera_index,
+                    width=int(width),
+                    height=int(height),
+                    backend=backend_name,
+                ))
+            finally:
+                try:
+                    capture.release()
+                except cv2.error:
+                    pass
+        self.cameras_discovered.emit(devices)
 
 
 def open_video_capture(camera_index: int):
@@ -32,7 +80,10 @@ def open_video_capture(camera_index: int):
                    else cv2.VideoCapture(camera_index, backend))
         if capture.isOpened():
             return capture, backend_name
-        capture.release()
+        try:
+            capture.release()
+        except cv2.error:
+            pass
     return None, "Unavailable"
 
 

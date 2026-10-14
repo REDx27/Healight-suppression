@@ -1,7 +1,7 @@
-# GlareTracker Temporary System Workflow and Test Guide
+# GlareTracker System Workflow and Test Guide
 
 > Date: 2026-10-02  
-> Purpose: temporary reference for testing the current prototype and planning the
+> Purpose: operating reference for testing the current prototype and planning the
 > final physical glare-suppression system.  
 > Status: the current software is a research demonstration. It is not yet suitable
 > for use in a moving vehicle.
@@ -69,13 +69,13 @@ measurement-grade camera tracking.
 | Independent camera capture | **Implemented and live-tested** | Driver and road cameras run in separate workers; camera-index conflicts are rejected. DirectShow, Media Foundation, and automatic backend fallback are available. |
 | USB camera compatibility | **Implemented and partly validated** | Both cameras request 640x480 MJPEG, 30 FPS, and a one-frame capture buffer. The tested USB road camera improved from 7 to 81 frames in 12 seconds. Other camera models still need regression testing. |
 | Driver face and iris detection | **Implemented and live-tested** | A recorded run produced 94 driver frames and 93 eye detections in 10 seconds. Blink recovery, glasses, difficult lighting, and head-angle limits still need quantified tests. |
-| Separate eye observations | **Implemented at the tracker output** | Left- and right-eye positions are emitted separately, but the active intersection calculation still uses their midpoint. Separate rays and blockers are not complete. |
+| Separate eye observations | **Implemented through visualization geometry** | Left- and right-eye positions now produce independent rays and windshield intersections. Physical LCD rendering and measured binocular coverage remain incomplete. |
 | Driver distance estimation | **Demonstration feature implemented** | The guided wizard captures IPD and lens-to-eye distance, rejects unstable samples, saves a camera-specific profile, and enables live estimated depth. Accuracy at several distances and yaw angles remains unverified. |
-| Road bright-light detection | **Implemented; final live regression pending** | Adaptive thresholding, weighted centroiding, temporal smoothing, candidate persistence, dropout hold, overexposure warning, and FPS telemetry exist. Synthetic blank rejection, centroid, smoothing, and dropout tests pass; the revised detector still requires physical lamp testing. |
+| Road bright-light detection | **Multi-source software implemented; live validation pending** | Independent candidates now receive stable IDs, timestamps, confidence and state. Camera/detector tuning and selectable processing previews are exposed. Synthetic multi-light/identity tests pass; physical motorcycle, car, and mixed-light testing remains. |
 | Single-camera road range | **Controlled demonstration only** | The guided wizard estimates distance from the apparent diameter of one calibrated lamp and labels output `EST`; otherwise it labels depth `ASSUMED`. This is not valid for arbitrary headlights. |
 | Stereo road-camera path | **Code exists; hardware validation incomplete** | Stereo capture, calibration data structures, rectification, epipolar checking, and disparity ranging are present. A rigid calibrated pair, synchronization measurements, and range-accuracy results are still missing. |
 | Camera calibration | **Backend present; operator workflow partial** | Checkerboard intrinsic and stereo-calibration functions exist, while the current wizard exposes only one-point driver and lamp references. Camera-to-windshield extrinsic calibration is not implemented. |
-| Automated camera-related checks | **Small regression baseline passing** | Four tests pass for calibration profile construction/persistence and bright-core observation. They do not exercise physical cameras, exposure behaviour, timing, or metric accuracy. |
+| Automated camera-related checks | **Small regression baseline passing** | Twelve tests include calibration profiles, bright-core observation, UI/session policy, and a head-roll case proving vertically separated eye intersections. They do not exercise physical cameras, exposure behaviour, timing, or metric accuracy. |
 
 ### 2.2 Camera challenges that currently limit the project
 
@@ -90,7 +90,7 @@ future design decisions:
 | **High** | End-to-end timing is not measured | Driver frames and road frames are captured independently. With motion, even correct positions from different times produce a wrong ray intersection. | Timestamp capture, detection, geometry, and rendering; measure inter-camera skew and total latency; then add synchronization or prediction. |
 | **High** | Driver depth depends on IPD and frontal pose | Incorrect IPD, yaw, glasses, partial eye visibility, or landmark jitter directly changes the estimated distance. | Compare estimates with measured ground truth at several depths and yaw angles, including glasses and blink recovery. |
 | **High** | Calibration validity is not fully enforced | A saved profile can become invalid after changing resolution, camera device, mount, focus, threshold, lamp, or exposure behaviour. | Store and check device identity and all capture settings; reject mismatches and require recalibration after physical movement. |
-| **High** | Binocular geometry stops at the tracking boundary | The camera worker provides two eyes, but midpoint-only geometry cannot guarantee that a physical blocker covers glare paths to both pupils. | Carry both eye coordinates through ray intersection, LCD mapping, confidence, and validation. |
+| **High** | Binocular geometry is not physically validated | Separate eye rays and virtual windshield intersections now exist, but no physical LCD output has demonstrated coverage of both pupils. | Validate both eye paths through LCD mapping, blocker sizing, confidence, and measured head-roll tests. |
 | **Medium** | Camera health and confidence are incomplete | Connected/offline and FPS states exist, but the system has no unified confidence for stale frames, marginal landmarks, ambiguous lights, or calibration quality. | Add per-frame timestamps, confidence, dropout duration, stale-data rejection, and a fail-safe output state. |
 | **Medium** | Hardware evidence is not yet reproducible | Current observations are useful but are not synchronized with ground-truth distances, video, configuration, and error logs. | Add CSV/video logging and repeat a fixed camera test matrix with measured positions and saved failure examples. |
 
@@ -103,8 +103,8 @@ subsystem**, not merely more visual features. The recommended order is:
 4. Implement camera-to-windshield extrinsic calibration.
 5. Replace demonstration road ranging with a validated stereo or independent-depth
    solution.
-6. Carry separate left/right-eye geometry through to the blocker output and measure
-   total latency.
+6. Validate the separate left/right-eye geometry through the physical blocker output
+   and measure total latency.
 
 ## 3. Coordinate system used by the software
 
@@ -198,7 +198,7 @@ Expected result:
 - Driver preview becomes live.
 - Camera status reports its backend and resolution.
 - Iris markers appear when the face is visible.
-- Header changes to `EYE TRACKING`.
+- Header changes to `BOTH EYES TRACKING` when both iris positions are available.
 - Eye telemetry shows X, Y, and Z.
 
 ## 7. Guided distance calibration
@@ -298,6 +298,7 @@ Pass:
 Action:
 
 - Move the head left/right, up/down, closer/farther, and blink normally.
+- Roll the head so one eye is visibly higher than the other.
 
 Pass:
 
@@ -305,6 +306,8 @@ Pass:
 - Tracking recovers after a blink.
 - X and Z follow lateral and vertical movement.
 - Calibrated Y changes smoothly with distance.
+- One light produces two blocker points, and head roll gives those points different
+  vertical coordinates.
 
 Fail indicators:
 
@@ -485,8 +488,8 @@ Also record:
 1. The road range is not a general single-camera measurement.
 2. Guided calibration is one-point scale calibration, not full intrinsic calibration.
 3. Camera-to-windshield rotation and translation are not calibrated.
-4. Eye tracking currently uses the midpoint between both eyes for the ray calculation.
-5. A physical blocker needs separate left-eye and right-eye rays.
+4. Separate eye rays exist, but physical binocular blocker coverage is not validated.
+5. Blocker size still needs to include tracking uncertainty, optical spread, and latency.
 6. No physical transparent/stripped LCD output is active.
 7. No formal latency compensation or predictive filter is implemented.
 8. No research CSV logger or synchronized ground-truth capture is implemented.
@@ -514,7 +517,8 @@ unexplained instability.
 3. Separate centre reference from metric distance calibration.
 4. Show `ASSUMED`, `ESTIMATED`, or `MEASURED` beside every depth value.
 5. Add calibration validity warnings when camera, threshold, resolution, or lamp changes.
-6. Add a dedicated diagnostics page for FPS, exposure, threshold mask, and confidence.
+6. Validate the new feed-level threshold/grayscale previews, confidence overlays, and
+   custom camera controls on each physical webcam driver.
 
 Exit condition: a new user can complete setup and testing without reading source code.
 
@@ -545,9 +549,9 @@ from one lamp's appearance.
 
 ### Phase 5: binocular eye-to-light geometry
 
-1. Preserve left and right eye coordinates independently.
-2. Compute one ray per eye per light.
-3. Compute separate windshield intersections.
+1. Preserve left and right eye coordinates independently. **Implemented in source.**
+2. Compute one ray per eye per light. **Implemented in source.**
+3. Compute separate windshield intersections. **Implemented in source.**
 4. Determine blocker size using pupil position uncertainty, optical spread, and latency.
 5. Validate coverage while minimizing unnecessary blocked area.
 

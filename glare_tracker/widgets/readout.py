@@ -75,22 +75,28 @@ class ReadoutPanel(QGroupBox):
     def set_intersections(self, intersections):
         """Replace the intersection list.
 
-        *intersections* is a list of ``(point_or_none, in_bounds)`` tuples.
+        Entries may be ``(point_or_none, in_bounds)`` for compatibility or
+        ``(label, point_or_none, in_bounds)`` for per-eye results.
         """
         self._intersection_placeholder.setVisible(not intersections)
         self._ensure_intersection_labels(len(intersections))
 
-        for idx, (point, in_bounds) in enumerate(intersections, start=1):
+        for idx, entry in enumerate(intersections, start=1):
+            if len(entry) == 3:
+                entry_label, point, in_bounds = entry
+            else:
+                point, in_bounds = entry
+                entry_label = f"#{idx}"
             if point is None:
-                text = f"#{idx}: No intersection"
+                text = f"{entry_label}: No intersection"
                 color = "#f87171"
             elif not in_bounds:
                 ix, _, iz = point
-                text = f"#{idx}: OUT  X:{ix:+6.1f}  Z:{iz:+6.1f}"
+                text = f"{entry_label}: OUT  X:{ix:+6.1f}  Z:{iz:+6.1f}"
                 color = "#f87171"
             else:
                 ix, _, iz = point
-                text = f"#{idx}: HIT  X:{ix:+6.1f}  Z:{iz:+6.1f}"
+                text = f"{entry_label}: HIT  X:{ix:+6.1f}  Z:{iz:+6.1f}"
                 color = "#34d399"
 
             label = self._intersection_labels[idx - 1]

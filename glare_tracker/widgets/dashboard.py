@@ -2,14 +2,16 @@
 
 from __future__ import annotations
 
-from PyQt5.QtCore import QElapsedTimer, Qt
+from PyQt5.QtCore import QElapsedTimer, Qt, pyqtSignal
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import (
-    QBoxLayout, QButtonGroup, QFrame, QHBoxLayout, QLabel, QLayout, QScrollArea,
-    QSizePolicy, QTabWidget, QPushButton, QTabBar, QToolButton, QVBoxLayout, QWidget,
+    QBoxLayout, QButtonGroup, QComboBox, QFrame, QHBoxLayout, QLabel, QLayout,
+    QScrollArea, QSizePolicy, QTabWidget, QPushButton, QTabBar, QToolButton,
+    QVBoxLayout, QWidget,
 )
 
 from glare_tracker.widgets.icons import ICON_SIZE, IconFactory
+from glare_tracker.headlight_detector import PREVIEW_MODES
 
 
 class StatusBadge(QLabel):
@@ -35,6 +37,8 @@ class StatusBadge(QLabel):
 class CameraPreviewCard(QFrame):
     """Self-contained camera viewport with throttled rendering and status."""
 
+    preview_mode_changed = pyqtSignal(str)
+
     def __init__(self, title: str, placeholder: str, icon_name: str = "camera", parent=None):
         super().__init__(parent)
         self.setObjectName("cameraCard")
@@ -42,7 +46,7 @@ class CameraPreviewCard(QFrame):
         self.setProperty("feed", feed)
         # Cards share the bounded bottom preview strip. The source pixmap must
         # not be allowed to turn its native resolution into a layout request.
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
         self.setMinimumWidth(280)
         self.setMaximumWidth(480)
         self._last_image: QImage | None = None
@@ -59,9 +63,23 @@ class CameraPreviewCard(QFrame):
         title_label = QLabel(title)
         title_label.setObjectName("cameraTitle")
         self.status_badge = StatusBadge("STOPPED")
+        # SEARCHING/ONLINE may alternate while a marginal source is being
+        # acquired. A fixed badge width prevents that text change from
+        # repeatedly changing the card's layout request.
+        self.status_badge.setFixedWidth(88)
+        self.preview_combo = QComboBox()
+        self.preview_combo.setObjectName("cameraPreviewMode")
+        self.preview_combo.addItems(PREVIEW_MODES)
+        self.preview_combo.setToolTip(
+            "Choose which image-processing stage is shown in this feed")
+        self.preview_combo.setMinimumWidth(126)
+        self.preview_combo.setVisible(feed == "road")
+        self.preview_combo.currentTextChanged.connect(
+            self.preview_mode_changed.emit)
         title_row.addWidget(title_icon)
         title_row.addWidget(title_label)
         title_row.addStretch()
+        title_row.addWidget(self.preview_combo)
         title_row.addWidget(self.status_badge)
 
         self.viewport = QLabel(placeholder)
@@ -75,6 +93,8 @@ class CameraPreviewCard(QFrame):
         self.detail.setObjectName("mutedText")
         self.detail.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.detail.setWordWrap(True)
+        self.detail.setFixedHeight(38)
+        self.detail.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
 
         layout.addLayout(title_row)
         layout.addWidget(self.viewport, 1)  # stretch factor 1
@@ -229,7 +249,10 @@ class CameraFeedPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        # The user controls this region with the vertical splitter. Ignore
+        # changing child size hints so live status/pixmap updates cannot move
+        # the splitter and make the preview jump.
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
         # A 640x480 frame changes QLabel.sizeHint(). Keep the vision area a
         # bounded strip so live frames cannot consume the 3D workspace. Its
         # exact height remains user-adjustable through the workspace splitter.
@@ -243,9 +266,10 @@ class CameraFeedPanel(QWidget):
         self._cards = QBoxLayout(QBoxLayout.LeftToRight)
         self._cards.setSpacing(8)
         self.driver = CameraPreviewCard("DRIVER / EYES", "Driver camera", "eye")
-        self.headlight = CameraPreviewCard("ROAD / PRIMARY", "Road camera", "road")
+        self.headlight = CameraPreviewCard(
+            "HEADLIGHT / PRIMARY", "Headlight camera", "road")
         self.headlight_secondary = CameraPreviewCard(
-            "ROAD / SECONDARY", "Stereo camera", "road")
+            "HEADLIGHT / SECONDARY", "Second headlight camera", "road")
         self._cards.addWidget(self.driver, 1)
         self._cards.addWidget(self.headlight, 1)
         self._cards.addWidget(self.headlight_secondary, 1)
@@ -259,6 +283,12 @@ class CameraFeedPanel(QWidget):
         self.driver.setVisible(driver)
         self.headlight.setVisible(road)
         self.headlight_secondary.setVisible(road and stereo)
+        visible_cards = int(driver) + int(road) + int(road and stereo)
+        card_maximum = 760 if visible_cards == 1 else 480
+        for card in (
+            self.driver, self.headlight, self.headlight_secondary,
+        ):
+            card.setMaximumWidth(card_maximum)
 
     def set_stereo_frames(self, primary: QImage, secondary: QImage):
         self.headlight.set_frame(primary)
