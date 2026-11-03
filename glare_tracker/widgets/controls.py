@@ -239,6 +239,11 @@ class ControlsPanel(QWidget):
         auto_layout.addRow(self.btn_refresh_cameras)
         auto_layout.addRow(self.camera_scan_status)
         auto_layout.addRow(self.auto_note)
+        self.btn_stereo_calibration = QPushButton("Calibrate road stereo (chessboard)")
+        self.stereo_status = QLabel("Calibration required before stereo depth is available.")
+        self.stereo_status.setWordWrap(True)
+        auto_layout.addRow(self.btn_stereo_calibration)
+        auto_layout.addRow(self.stereo_status)
         layout.addWidget(self.auto_camera_group)
 
         # Camera-driver controls and software image-processing controls are
@@ -394,6 +399,7 @@ class ControlsPanel(QWidget):
 
         # ── Light movement ──
         movement_group = QGroupBox("Simulation")
+        self.movement_group = movement_group
         movement_group.setProperty("section", "simulation")
         movement_layout = QVBoxLayout(movement_group)
         movement_layout.setSpacing(6)
@@ -521,6 +527,9 @@ class ControlsPanel(QWidget):
         self.manual_driver_group.setEnabled(policy.manual_driver)
         self.light_group.setEnabled(policy.manual_headlight)
         self.vehicle_group.setEnabled(policy.manual_headlight)
+        self.light_group.setVisible(policy.manual_headlight)
+        self.vehicle_group.setVisible(policy.manual_headlight)
+        self.movement_group.setVisible(policy.manual_headlight)
         self.dist_group.setEnabled(policy.use_driver_camera)
         self.auto_camera_group.setVisible(True)
         self.spin_driver_camera.setEnabled(True)
@@ -543,12 +552,14 @@ class ControlsPanel(QWidget):
             self.spin_single_depth,
             self.spin_camera_hfov,
         ):
-            self._set_form_row_visible(form, widget, road)
-            widget.setEnabled(road)
+            self._set_form_row_visible(form, widget, road and not stereo)
+            widget.setEnabled(road and not stereo)
         self._set_form_row_visible(
             form, self.spin_headlight_camera_2, stereo)
         self.spin_headlight_camera_2.setEnabled(stereo)
         self.light_detection_group.setVisible(road)
+        self.btn_stereo_calibration.setVisible(road and stereo)
+        self.stereo_status.setVisible(road and stereo)
 
         single_camera = not stereo
         self.calibration_group.setVisible(

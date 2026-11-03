@@ -8,4 +8,5 @@ GlareTracker.lnk
 glaretracker-test.*.log
 calibration/*.npz
 calibration/*.json
+calibration/stereo_sessions/
 diagnostics/

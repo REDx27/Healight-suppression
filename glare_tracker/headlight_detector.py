@@ -1,6 +1,6 @@
 """Stereo headlight detection using two USB webcams.
 
-Detects the brightest spot (headlight) in two synchronized camera frames
+Detects bright spots in sequentially grabbed (not hardware-synchronized) frames
 and triangulates its 3D position in real-time.
 """
 
@@ -21,6 +21,8 @@ from glare_tracker.calibration import (
     StereoCalibrationResult,
     load_monocular_range_calibration,
     load_stereo_calibration,
+    stereo_profile_name,
+    stereo_profile_compatible,
 )
 from glare_tracker.capture import configure_video_capture, open_video_capture
 from glare_tracker.light_sources import (
@@ -789,40 +791,28 @@ def _match_stereo_candidates(
     camera_height_cm: float,
 ) -> list[LightCandidate]:
     """Pair independent bright candidates and triangulate each valid pair."""
-
+    if calibration is None:
+        return []  # Uncalibrated previews are useful; invented metric depth is not.
     projected_primary = []
     projected_secondary = []
-    if calibration is not None:
-        for observation in primary.observations:
+    for observations, camera, rotation, projection, output in (
+        (primary.observations, calibration.cam1, calibration.R1, calibration.P1, projected_primary),
+        (secondary.observations, calibration.cam2, calibration.R2, calibration.P2, projected_secondary),
+    ):
+        for observation in observations:
             point = np.array([[observation.center]], dtype=np.float32)
             rectified = cv2.undistortPoints(
-                point,
-                calibration.cam1.camera_matrix,
-                calibration.cam1.dist_coeffs,
-                R=calibration.R1,
-                P=calibration.P1,
+                point, camera.camera_matrix, camera.dist_coeffs,
+                R=rotation, P=projection,
             )[0, 0]
-            projected_primary.append(tuple(float(value) for value in rectified))
-        for observation in secondary.observations:
-            point = np.array([[observation.center]], dtype=np.float32)
-            rectified = cv2.undistortPoints(
-                point,
-                calibration.cam2.camera_matrix,
-                calibration.cam2.dist_coeffs,
-                R=calibration.R2,
-                P=calibration.P2,
-            )[0, 0]
-            projected_secondary.append(tuple(float(value) for value in rectified))
-    else:
-        projected_primary = [item.center for item in primary.observations]
-        projected_secondary = [item.center for item in secondary.observations]
+            output.append(tuple(float(value) for value in rectified))
 
     possible_pairs = []
     for primary_index, (x1, y1) in enumerate(projected_primary):
         for secondary_index, (x2, y2) in enumerate(projected_secondary):
             row_error = abs(y1 - y2)
             disparity = x1 - x2
-            if row_error <= 20.0 and disparity > 0.1:
+            if row_error <= 3.0 and disparity > 0.1:
                 confidence = (
                     primary.observations[primary_index].confidence
                     + secondary.observations[secondary_index].confidence
@@ -838,7 +828,6 @@ def _match_stereo_candidates(
     used_primary = set()
     used_secondary = set()
     candidates = []
-    frame_height, frame_width = frame_shape[:2]
     for _, primary_index, secondary_index, disparity, row_error in sorted(
             possible_pairs):
         if (primary_index in used_primary
@@ -848,16 +837,10 @@ def _match_stereo_candidates(
         used_secondary.add(secondary_index)
 
         x1, y1 = projected_primary[primary_index]
-        if calibration is not None:
-            focal = float(calibration.P1[0, 0])
-            cx = float(calibration.P1[0, 2])
-            cy = float(calibration.P1[1, 2])
-            baseline_cm = float(calibration.baseline_cm)
-        else:
-            focal = 900.0
-            baseline_cm = 25.0
-            cx = frame_width / 2.0
-            cy = frame_height / 2.0
+        focal = float(calibration.P1[0, 0])
+        cx = float(calibration.P1[0, 2])
+        cy = float(calibration.P1[1, 2])
+        baseline_cm = float(calibration.baseline_cm)
 
         depth_cm = focal * baseline_cm / disparity
         if not 5.0 <= depth_cm <= 10000.0:
@@ -1157,6 +1140,7 @@ class HeadlightDetectorThread(QThread):
 
     frame_ready = pyqtSignal(QImage)
     stereo_frames_ready = pyqtSignal(QImage, QImage)
+    stereo_diagnostics = pyqtSignal(str)
     headlight_detected = pyqtSignal(float, float, float)
     lights_detected = pyqtSignal(object)
     headlight_lost = pyqtSignal()
@@ -1196,7 +1180,7 @@ class HeadlightDetectorThread(QThread):
         self._calib: Optional[StereoCalibrationResult] = None
 
         try:
-            self._calib = load_stereo_calibration()
+            self._calib = load_stereo_calibration(stereo_profile_name(cam1_idx, cam2_idx))
         except Exception:
             pass
 
@@ -1234,6 +1218,8 @@ class HeadlightDetectorThread(QThread):
         cap1, cap2 = None, None
 
         try:
+            if self.cam1_idx == self.cam2_idx:
+                raise ValueError("Stereo requires two different camera indices")
             cap1, backend1 = open_video_capture(self.cam1_idx)
             cap2, backend2 = open_video_capture(self.cam2_idx)
 
@@ -1264,11 +1250,21 @@ class HeadlightDetectorThread(QThread):
 
             lost_announced = False
             frame_number = 0
+            last_diagnostics = 0.0
+            read_failures = 0
             while self._running:
-                # Hardware-level near-simultaneous grab
+                # Sequential grabs reduce readout delay but do not synchronize exposure.
                 capture_started_ns = time.monotonic_ns()
-                if not (cap1.grab() and cap2.grab()):
-                    self.msleep(10)
+                grabbed1, grabbed2 = cap1.grab(), cap2.grab()
+                if not (grabbed1 and grabbed2):
+                    read_failures += 1
+                    self._source_tracker.clear()
+                    self.headlight_lost.emit()
+                    if read_failures == 1:
+                        self.stereo_diagnostics.emit("Stereo frame grab failed; output cleared")
+                    if read_failures >= 30:
+                        raise RuntimeError("Repeated stereo grab failures; reconnect and Run again")
+                    self.msleep(30)
                     continue
 
                 ret1, frame1 = cap1.retrieve()
@@ -1276,7 +1272,16 @@ class HeadlightDetectorThread(QThread):
                 ret2, frame2 = cap2.retrieve()
                 secondary_capture_complete_ns = time.monotonic_ns()
                 if not (ret1 and ret2):
+                    read_failures += 1
+                    self._source_tracker.clear()
+                    self.headlight_lost.emit()
+                    if read_failures == 1:
+                        self.stereo_diagnostics.emit("Stereo frame read failed; output cleared")
+                    if read_failures >= 30:
+                        raise RuntimeError("Repeated stereo read failures; reconnect and Run again")
+                    self.msleep(30)
                     continue
+                read_failures = 0
                 frame_number += 1
 
                 if applied_settings_revision != self._settings_revision:
@@ -1304,13 +1309,28 @@ class HeadlightDetectorThread(QThread):
                     frame1, settings, self._background_gray_1)
                 processed2 = process_bright_spots(
                     frame2, settings, self._background_gray_2)
+                compatible = (
+                    frame1.shape[:2] == frame2.shape[:2]
+                    and stereo_profile_compatible(
+                        self._calib, self.cam1_idx, self.cam2_idx,
+                        (frame1.shape[1], frame1.shape[0])))
+                if not compatible:
+                    self._source_tracker.clear()
                 candidates = _match_stereo_candidates(
                     processed1,
                     processed2,
-                    self._calib,
+                    self._calib if compatible else None,
                     frame1.shape,
                     self.camera_height_cm,
                 )
+                now = time.monotonic()
+                if now - last_diagnostics >= 0.5:
+                    prefix = ("Calibrated" if compatible else
+                              "Calibration required (missing/incompatible profile); previews only")
+                    self.stereo_diagnostics.emit(
+                        f"{prefix} | Left: {len(processed1.observations)} | "
+                        f"Right: {len(processed2.observations)} | Matches: {len(candidates)}")
+                    last_diagnostics = now
                 sources = self._source_tracker.update(candidates)
                 detection_complete_ns = time.monotonic_ns()
                 self.pipeline_timing.emit({

@@ -5,8 +5,30 @@
 > test pass. Hardware-dependent stages remain open until measurements and
 > evidence files have been collected.
 
-Current software verification: **70 automated tests passed on Python 3.13** on
-2026-10-14. This does not satisfy any open physical exit criterion.
+Current software verification: **98 automated tests passed on Python 3.13** on
+2026-11-03. This does not satisfy any open physical exit criterion.
+
+## Immediate prerequisite: road stereo bring-up (2026-10-27)
+
+The operator confirmed two road cameras plus the driver camera. Single-camera
+light detection worked with a sunglass lens; the second stereo feed opened but
+the stereo result was not working reliably. Accuracy remains unmeasured and poor
+by operator observation. This supersedes the earlier camera-availability blocker.
+
+At the operator's request, complete this prerequisite before resuming the remaining
+eight stages in order. Do not interpret a calibration fit as a stage 3 or 4 pass.
+
+- [x] Add paired chessboard capture, intrinsic/stereo fitting, fit-quality gates,
+      raw evidence retention and ordered-camera/resolution-bound profiles.
+- [x] Remove assumed stereo depth fallback; add per-view candidate/match diagnostics.
+- [x] Hide monocular range and manual simulation controls in stereo tuning mode.
+- [x] Add camera-free synthetic/profile/UI/runtime regression tests.
+- [ ] Rigidly fix the road cameras and final optical filters; measure the board.
+- [ ] Capture at least 15 varied paired board poses and accept a physically plausible fit.
+- [ ] Verify stationary-light depth at independently measured distances; tune each feed.
+- [ ] Reintroduce live driver tracking, then resume recording soak and stages 3–8.
+
+Procedure: [STEREO_CHESSBOARD_SETUP_GUIDE.md](../guides/STEREO_CHESSBOARD_SETUP_GUIDE.md).
 
 ## Status summary
 
@@ -33,7 +55,7 @@ Current software verification: **70 automated tests passed on Python 3.13** on
 - [x] Run the complete automated regression suite.
 
 Exit evidence: `tests/test_geometry.py`; 15 focused tests pass and the current
-complete suite contains 70 passing tests on Python 3.13.
+complete suite contains 98 passing tests on Python 3.13.
 
 ## 2. Timestamped CSV/video logging
 
@@ -48,6 +70,8 @@ complete suite contains 70 passing tests on Python 3.13.
 - [x] Add an explicit operator control and visible recording path/status.
 - [x] Stop and flush recording safely during application shutdown.
 - [x] Add automated CSV, metadata, video, and shutdown tests.
+- [x] Add a strict finalized-session verifier for duration, timestamp order, exact
+      streams, sidecar/manifest/decode counts, frame continuity, drops and errors.
 - [ ] Complete and inspect a ten-minute dual-camera physical recording.
 
 Exit criteria: a ten-minute dual-camera recording closes cleanly; CSV timestamps
@@ -156,7 +180,10 @@ procedure.
 Add links here as work is completed:
 
 - Stage 1: `tests/test_geometry.py`
-- Stage 2: `glare_tracker/diagnostics.py`, `tests/test_diagnostics.py`
+- Stage 2: `glare_tracker/diagnostics.py`,
+  `scripts/verify_recording_session.py`, `tests/test_diagnostics.py`,
+  `tests/test_recording_verification.py`,
+  `docs/protocols/TIMESTAMPED_RECORDING_SOAK_PROTOCOL.md`
 - Stage 3: `docs/protocols/GROUND_TRUTH_MEASUREMENT_PROTOCOL.md`,
   `scripts/analyze_ground_truth.py`, `tests/test_ground_truth_analysis.py`
 - Stage 4: `glare_tracker/extrinsics.py`, `scripts/calibrate_extrinsics.py`,

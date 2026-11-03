@@ -33,6 +33,7 @@ take precedence and the affected document should be corrected.
 Controlled procedures for hardware-dependent research measurements:
 
 - [`GROUND_TRUTH_MEASUREMENT_PROTOCOL.md`](protocols/GROUND_TRUTH_MEASUREMENT_PROTOCOL.md)
+- [`TIMESTAMPED_RECORDING_SOAK_PROTOCOL.md`](protocols/TIMESTAMPED_RECORDING_SOAK_PROTOCOL.md)
 - [`CAMERA_TO_WINDSHIELD_CALIBRATION_PROTOCOL.md`](protocols/CAMERA_TO_WINDSHIELD_CALIBRATION_PROTOCOL.md)
 - [`PHYSICAL_INTERSECTION_TEST_PROTOCOL.md`](protocols/PHYSICAL_INTERSECTION_TEST_PROTOCOL.md)
 - [`LATENCY_AND_RECOVERY_TEST_PROTOCOL.md`](protocols/LATENCY_AND_RECOVERY_TEST_PROTOCOL.md)
@@ -44,6 +45,8 @@ physical test has passed.
 
 ### `guides/`
 
+- [`STEREO_CHESSBOARD_SETUP_GUIDE.md`](guides/STEREO_CHESSBOARD_SETUP_GUIDE.md) —
+  current priority: mount, calibrate and tune the two road cameras.
 - [`SYSTEM_WORKFLOW_AND_TEST_GUIDE.md`](guides/SYSTEM_WORKFLOW_AND_TEST_GUIDE.md) —
   current operating and test workflow.
 

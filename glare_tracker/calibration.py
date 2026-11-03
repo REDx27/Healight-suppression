@@ -59,6 +59,7 @@ class StereoCalibrationResult:
     Q: np.ndarray                      # disparity-to-depth mapping
     baseline_cm: float = 0.0           # physical baseline distance
     rms_error: float = 0.0
+    camera_indices: tuple[int, int] | None = None
 
     def __post_init__(self):
         f = float(self.P1[0, 0])
@@ -236,6 +237,7 @@ def save_stereo_calibration(result: StereoCalibrationResult, name: str = "stereo
         R=result.R, T=result.T, E=result.E, F=result.F,
         R1=result.R1, R2=result.R2, P1=result.P1, P2=result.P2, Q=result.Q,
         rms_error=np.array([result.rms_error]),
+        camera_indices=np.array(result.camera_indices or (-1, -1)),
     )
     return path
 
@@ -253,7 +255,35 @@ def load_stereo_calibration(name: str = "stereo") -> Optional[StereoCalibrationR
             R=d["R"], T=d["T"], E=d["E"], F=d["F"],
             R1=d["R1"], R2=d["R2"], P1=d["P1"], P2=d["P2"], Q=d["Q"],
             rms_error=float(d["rms_error"][0]),
+            camera_indices=(tuple(int(v) for v in d["camera_indices"])
+                            if "camera_indices" in d else None),
         )
+
+
+def stereo_profile_name(primary: int, secondary: int) -> str:
+    """Camera order is part of a stereo calibration, not interchangeable."""
+    return f"stereo_{int(primary)}_{int(secondary)}"
+
+
+def stereo_profile_compatible(result, primary, secondary, image_size):
+    """Reject mismatched or invalid profiles before producing metric observations."""
+    if result is None:
+        return False
+    matrices = (result.R, result.T, result.R1, result.R2, result.P1, result.P2,
+                result.Q, result.cam1.camera_matrix, result.cam2.camera_matrix,
+                result.cam1.dist_coeffs, result.cam2.dist_coeffs)
+    return bool(
+        result is not None
+        and primary != secondary
+        and result.camera_indices == (primary, secondary)
+        and tuple(result.cam1.image_size) == tuple(image_size)
+        and tuple(result.cam2.image_size) == tuple(image_size)
+        and all(np.isfinite(matrix).all() for matrix in matrices)
+        and 0 <= result.rms_error <= 1.5
+        and np.isfinite(result.baseline_cm) and result.baseline_cm > 0
+        and result.P1[0, 0] > 0 and result.P1[1, 1] > 0
+        and result.P2[0, 3] < 0
+    )
 
 
 # ── Checkerboard detection helpers ──────────────────────────────────
@@ -347,10 +377,19 @@ def calibrate_stereo(
     pattern_size: tuple[int, int] = DEFAULT_PATTERN_SIZE,
     square_size_cm: float = DEFAULT_SQUARE_SIZE_CM,
 ) -> Optional[StereoCalibrationResult]:
-    """Run stereo calibration from synchronized frame pairs.
+    """Run stereo calibration from paired views of a stationary chessboard.
 
     Returns StereoCalibrationResult or None if insufficient detections.
     """
+    if len(frames_cam1) != len(frames_cam2):
+        raise ValueError("Stereo samples must contain the same number of paired frames")
+    if not np.isfinite(square_size_cm) or square_size_cm <= 0:
+        raise ValueError("Measured square size must be positive and finite")
+    if len(pattern_size) != 2 or any(int(v) != v or v < 3 for v in pattern_size):
+        raise ValueError("Specify at least 3 inner corners in each direction")
+    sizes = {frame.shape[:2] for frame in frames_cam1 + frames_cam2}
+    if len(sizes) > 1:
+        raise ValueError("Both cameras and every sample must have the same resolution")
     objp = _build_object_points(pattern_size, square_size_cm)
     obj_points: list[np.ndarray] = []
     img_points1: list[np.ndarray] = []

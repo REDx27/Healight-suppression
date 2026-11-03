@@ -1,16 +1,38 @@
 # GlareTracker — Project Status & Specification
 
-> **Last Updated:** 2026-10-14
+> **Last Updated:** 2026-10-27
 > **Python Version:** 3.13 (current test environment; 3.11 previously verified)
 > **Platform:** Windows 10/11
 > **UI Framework:** PyQt5
 > **3D Engine:** PyQtGraph GLViewWidget (OpenGL)
 > **Source Version:** 1.2.0
-> **Reviewed Baseline:** `bd0f101` (`master`, clean before this documentation update)
+> **Reviewed Baseline:** `22517d7` plus the stereo-calibration working tree
 
 ---
 
 ## 0. Current Status Snapshot
+
+### Active development priority — 2026-10-27
+
+The operator now has **two road cameras plus one driver camera**. The single-road
+setup detected a light using a sunglass lens. Both stereo feeds opened, but stereo
+operation was unreliable and observed accuracy was poor; no measured accuracy
+result is available. The earlier camera-availability blocker is historical.
+
+Next: rigid road-camera mounting, chessboard calibration, and stationary-light
+range checks in Driver Position Fixed mode. The app now exposes paired raw-image
+capture and intrinsic/stereo fitting, preserves calibration sessions, gates fit
+quality, and binds active profiles to camera order and resolution. Uncalibrated
+stereo remains preview-only instead of using assumed baseline/focal length. Per-view
+candidate and match counts support tuning; irrelevant monocular/manual controls
+are hidden in stereo mode, not deleted from other workflows.
+
+**Verification:** 98 automated tests pass on Python 3.13. No new physical validation
+has been performed. Live camera-to-windshield transforms and all physical exit
+criteria remain outstanding. Follow
+[the stereo setup guide](docs/guides/STEREO_CHESSBOARD_SETUP_GUIDE.md), then resume
+[the validation plan](docs/plans/VALIDATION_PLAN.md). Earlier dated snapshots below
+are retained as history where explicitly labelled.
 
 GlareTracker is currently a **source-level visualization and tracking prototype**, not yet a validated end-to-end physical glare-suppression system. The source contains driver-eye tracking, manual/single-camera/stereo headlight input, ray-plane intersection, 2D/3D visualization, simulation controls, calibration/validation backends, timestamped research recording, and an experimental disabled-by-default secondary-display blocker. Installed-camera and stripped-panel physical validation are still pending.
 
@@ -30,12 +52,13 @@ GlareTracker is currently a **source-level visualization and tracking prototype*
 | Test workflow | Repeatable functional test checklist covering startup, eyes, calibration, geometry, simulation, road detection, end-to-end operation, and shutdown |
 | Guided demonstration calibration | Wizard captures stable IPD and lamp-size references, saves camera-specific profiles, enables IPD driver depth and apparent-size road range, and labels estimated versus assumed values |
 | Operating policy | Explicit Run/Standby/Stop states and four source modes now control camera ownership, manual inputs, calculations, previews, and movement simulation consistently |
-| Automated coverage | 70 tests cover geometry boundaries, mode/state policy, diagnostics/video recording, ground-truth analysis, rigid transforms, guarded extrinsic fitting, latency/stale rejection, LCD fail-safe behavior, camera assignment, detector robustness, binocular/multi-light geometry, stable source identity, tuning UI, calibration profiles, and bright-spot observations |
+| Automated coverage | 98 tests cover geometry boundaries, mode/state policy, diagnostics/video recording and soak verification, ground-truth analysis, rigid transforms, guarded extrinsic fitting, latency/stale rejection, LCD fail-safe behavior, camera assignment, detector robustness, binocular/multi-light geometry, stereo fitting/profile guards, stable source identity, tuning UI, calibration profiles, and bright-spot observations |
+| Recording soak gate | Strict verifier checks finalized duration, timestamp order, exact streams, sidecar/manifest/decode counts, frame gaps/FPS, drops and writer errors |
 
 ### Current blockers to the physical prototype
 
 1. Camera-to-windshield fitting, persistence, compatibility checks, and held-out validation tools now exist, but no installed camera has passed the physical target matrix and the profiles are not yet applied by the live pipelines.
-2. A guided one-point demonstration workflow exists, but full checkerboard intrinsic, stereo, and installed-extrinsic calibration are not yet exposed in the UI.
+2. Road-pair chessboard intrinsic/stereo calibration is now exposed in the UI, but has not yet been validated with the physical pair. Installed-extrinsic calibration is still not integrated into the live pipelines.
 3. Separate eye rays and windshield intersections are implemented, but their physical LCD coverage and accuracy have not yet been validated.
 4. An experimental secondary-display blocker is implemented, but the stripped panel's optics, mapping, latency, thermal behavior, and safe state are not physically validated.
 5. Timestamped CSV/video logging and pipeline timing exist, but there is no Kalman/predictive filtering or settings persistence; automated coverage still cannot validate physical-camera behavior or measurement accuracy.
@@ -90,9 +113,9 @@ measured rigid transform `p_windshield = R_wc * p_camera + t_wc`.
 - **Outdoor camera:** one camera provides a bearing only. Current single-camera mode
   projects that bearing onto a user-supplied distance; calibrated stereo is required
   to measure headlight range from a simultaneous frame pair.
-- **Current implementation limitation:** intrinsic unprojection and guided one-point
-  depth/range profiles are selectable from the UI, but full intrinsic/stereo workflows
-  and the driver camera-to-windshield rotation/translation are not yet exposed. The
+- **Current implementation limitation:** guided one-point profiles and road-pair
+  chessboard intrinsic/stereo calibration are available in the UI, but installed
+  camera-to-windshield rotation/translation is not yet applied. The
   resulting coordinates remain approximations, not verified physical measurements.
 
 ---
@@ -223,7 +246,7 @@ dist/GlareTracker-v1.exe
 ---
 
 ### REQ-03: Camera Calibration System
-**Status: 🔧 PARTIAL** — backend plus guided demonstration workflow; full intrinsic/stereo/extrinsic wizard remains
+**Status: 🔧 PARTIAL** — road-pair chessboard and demonstration workflows available; physical validation and installed-extrinsic integration remain
 
 | Sub-requirement | Status | Implementation |
 |---|---|---|
@@ -235,7 +258,8 @@ dist/GlareTracker-v1.exe
 | Focal length estimation from HFOV | ✅ | `calibration.py` — `estimate_focal_length_from_fov()` |
 | Guided IPD driver-depth reference | ✅ | Wizard captures stable iris separation at a measured distance and saves a camera-specific focal-scale profile |
 | Guided monocular road reference | ✅ | Wizard captures one lamp at known range and saves an apparent-size range profile with threshold and resolution metadata |
-| Full intrinsic/stereo/extrinsic UI | ❌ | Checkerboard and installed-pose backends are not yet exposed as guided pages |
+| Road-pair intrinsic/stereo UI | ✅ | Paired chessboard capture, fit diagnostics, raw evidence and ordered-camera profiles; physically unvalidated |
+| Standalone driver intrinsics / installed-extrinsic UI | ❌ | Backends remain outside the guided road-pair workflow |
 
 **Key files:** `calibration.py`
 
@@ -253,8 +277,8 @@ dist/GlareTracker-v1.exe
 | Controlled-scene background rejection | ✅ | Operator captures the static scene without the test lamp; detection then requires a configurable bright change, suppressing windows and other stationary bright regions |
 | Camera-control readback | ✅ | UI reports requested versus camera-reported exposure and indicates when the driver rejects a manual setting |
 | Detected-camera role assignment | ✅ | Refreshable dropdowns list cameras that successfully return frames; driver and one/two headlight roles are assigned independently |
-| Stereo camera synchronization (grab/retrieve pattern) | ✅ | `HeadlightDetectorThread.run()` — `cap1.grab()` + `cap2.grab()` |
-| Stereo triangulation to 3D position (cm) | ✅ | Both calibrated (`cv2.undistortPoints` + disparity formula) and uncalibrated fallback |
+| Paired stereo capture (grab/retrieve pattern) | ✅ | Sequential grabs, NOT hardware-synchronized exposures |
+| Stereo triangulation to 3D position (cm) | ✅ | Compatible calibration required; rectified-point matching and disparity depth, otherwise previews only |
 | Manual low exposure to isolate light source | ✅ | `CAP_PROP_EXPOSURE = -8`, `CAP_PROP_AUTO_EXPOSURE = 0.25` |
 | MJPG compression for USB bandwidth | ✅ | `FOURCC = MJPG` on both cameras |
 | Side-by-side stereo feed display in UI | ✅ | `window.py` — `stereo_view` QLabel updated via `frame_ready` signal |
@@ -499,7 +523,7 @@ Main Thread (Qt Event Loop)
 └── HeadlightDetectorThread (QThread)
     ├── cv2.VideoCapture x2 (camera indices 1, 2)
     ├── detect_bright_spot() — threshold + weighted centroid
-    ├── Stereo triangulation (calibrated or uncalibrated fallback)
+    ├── Stereo triangulation (compatible calibration required; otherwise previews only)
     └── Emits: frame_ready, headlight_detected, headlight_lost
 ```
 

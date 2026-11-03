@@ -34,6 +34,7 @@ from glare_tracker.operating_modes import (
     OperatingMode, SessionState, calculations_enabled, cameras_enabled,
 )
 from glare_tracker.styles import DARK_STYLESHEET
+from glare_tracker.widgets.stereo_calibration import StereoCalibrationDialog
 from glare_tracker.tracking import TrackingController
 from glare_tracker.widgets import (
     ApplicationHeader, CameraFeedPanel, ConfigurationSidebar, ControlsPanel,
@@ -199,6 +200,7 @@ class MainWindow(QMainWindow):
         self.controls.spin_driver_camera.valueChanged.connect(self._driver_camera_changed)
         self.controls.btn_refresh_cameras.clicked.connect(
             self._refresh_available_cameras)
+        self.controls.btn_stereo_calibration.clicked.connect(self._open_stereo_calibration)
         self.controls.spin_single_depth.valueChanged.connect(self._update_single_projection)
         self.controls.spin_camera_hfov.valueChanged.connect(self._update_single_projection)
         self.controls.spin_brightness_threshold.valueChanged.connect(
@@ -811,6 +813,28 @@ class MainWindow(QMainWindow):
             self._stop_headlight_detection()
         self._refresh_calibration_controls()
 
+    def _open_stereo_calibration(self):
+        if (self._session_state is not SessionState.STOP
+                or self.cap_thread.isRunning()
+                or (self.headlight_thread is not None and self.headlight_thread.isRunning())
+                or (self._camera_discovery_thread is not None
+                    and self._camera_discovery_thread.isRunning())):
+            QMessageBox.information(
+                self, "Stop cameras first",
+                "Select Stop and wait for camera scanning to finish before calibrating.")
+            return
+        primary = self.controls.spin_headlight_camera.value()
+        secondary = self.controls.spin_headlight_camera_2.value()
+        if primary == secondary:
+            QMessageBox.warning(self, "Select two cameras", "Left and right must use different cameras.")
+            return
+        dialog = StereoCalibrationDialog(primary, secondary, self)
+        dialog.exec_()
+        if dialog.saved_path:
+            self.controls.stereo_status.setText(
+                f"Saved {dialog.saved_path.name}. Run to load; verify measured distances next.")
+        dialog.deleteLater()
+
     def _refresh_available_cameras(self):
         """Populate role dropdowns by probing cameras while the session is stopped."""
 
@@ -877,7 +901,8 @@ class MainWindow(QMainWindow):
         self._refresh_calibration_controls()
 
     def _start_headlight_detection(self):
-        self._stop_headlight_detection()
+        if not self._stop_headlight_detection():
+            return
         self._road_position_ready = False
         cam1 = self.controls.spin_headlight_camera.value()
         driver_cam = self.controls.spin_driver_camera.value()
@@ -923,6 +948,7 @@ class MainWindow(QMainWindow):
                     self.controls.check_road_range_calibration.isChecked()),
             )
         if isinstance(self.headlight_thread, HeadlightDetectorThread):
+            self.headlight_thread.stereo_diagnostics.connect(self.controls.stereo_status.setText)
             self.headlight_thread.stereo_frames_ready.connect(
                 self._update_stereo_frames)
         else:
@@ -950,12 +976,17 @@ class MainWindow(QMainWindow):
         self._refresh_calibration_controls()
 
     def _stop_headlight_detection(self):
-        if self.headlight_thread is not None:
-            self.headlight_thread.stop()
-            self.headlight_thread.deleteLater()
-            self.headlight_thread = None
         self._headlight_camera_available = False
         self._road_position_ready = False
+        if self.headlight_thread is not None:
+            self.headlight_thread.stop()
+            if self.headlight_thread.isRunning():
+                self.controls.stereo_status.setText(
+                    "Waiting for the road camera driver to release; try Stop again shortly.")
+                return False
+            self.headlight_thread.deleteLater()
+            self.headlight_thread = None
+        return True
 
     def _on_headlight_lost(self):
         self.diagnostics.record_event("road_lights_lost")
@@ -1241,7 +1272,8 @@ class MainWindow(QMainWindow):
                 return
         self.cap_thread.stop()
         self._stop_headlight_detection()
-        if self.cap_thread.isRunning():
+        if (self.cap_thread.isRunning()
+                or (self.headlight_thread is not None and self.headlight_thread.isRunning())):
             event.ignore()
             return
         event.accept()

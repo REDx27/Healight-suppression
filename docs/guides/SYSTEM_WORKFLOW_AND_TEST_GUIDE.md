@@ -8,6 +8,17 @@
 
 ## 1. What the final system is intended to do
 
+**2026-10-27 priority update:** the operator now has two road cameras plus the
+driver camera. Follow [Road Stereo Chessboard Setup](STEREO_CHESSBOARD_SETUP_GUIDE.md)
+first. The single-road-camera demonstration below is retained for comparison;
+it is not the current hardware limitation. Stereo now needs an ordered-camera,
+resolution-compatible chessboard profile before it produces metric coordinates.
+
+After the physical road-pair calibration/range check, use the
+[Timestamped Recording Soak Protocol](../protocols/TIMESTAMPED_RECORDING_SOAK_PROTOCOL.md)
+to finish the ordered Stage 2 gate. The verifier fully decodes each AVI and
+cross-checks its sidecar and manifest; a written protocol alone is not a pass.
+
 The final GlareTracker system should:
 
 1. Observe the driver's left and right eyes.
