@@ -24,9 +24,10 @@ status is maintained in `PROJECT_STATUS.md` and `docs/plans/VALIDATION_PLAN.md`.
 
 The operator confirmed **two road cameras plus the driver camera**. Single-road
 light detection worked with a sunglass lens; the second road-camera feed became
-live but stereo did not operate reliably. Accuracy is poor by observation, not yet
-quantified. Camera availability is therefore no longer the known blocker, though
-simultaneous operation of all three cameras remains to be validated.
+live but stereo initially did not operate reliably. Accuracy is poor by observation,
+not yet quantified. Camera availability is therefore no longer the known blocker.
+All three feeds have now operated together in a live bench session, although a formal
+recorded soak and repeatability test remain outstanding.
 
 The agreed next phase is rigid mounting, individual and stereo calibration,
 then stationary-light tuning with Driver Position Fixed. Only after this road-pair
@@ -78,6 +79,15 @@ local-contrast/adaptive-threshold/temporal-tracking pipeline instead of introduc
 untrained neural model. The calibration dialog now opens a verified A4 landscape board
 with 9 x 6 inner corners and exact 20.00 mm vector squares; the wizard is synchronized to
 2.0 cm and tries OpenCV's sector-based chessboard detector before its classic fallback.
+
+After that correction, the 2026-11-04 live bench retest successfully detected and
+associated one, two, and three stationary bright sources while both road feeds and the
+driver feed were live. The operator also moved the sources through the previously
+failing upper image region. This is important qualitative bring-up evidence that the
+detector, multi-source candidate list, camera-offset compensation, global pairing and
+stable-source path operate together on the real cameras. It is not yet a validation
+pass: no timestamped evidence set, repeated-position statistics, ground-truth source
+coordinates, calibrated depth, or intersection error measurements were collected.
 
 This is software preparation, not physical calibration completion. Ordinary USB
 grabs are sequential, not hardware-synchronized. Fit-set errors do not prove
@@ -933,7 +943,7 @@ should report the resulting blocked screen area as well as coverage success.
 | Single road-camera detection | Implemented | Multi-candidate bright-region detector, stable IDs, confidence/state records, and tunable previews |
 | Single road-camera range | Demonstration only | Assumed depth or calibrated same-lamp apparent-size estimate |
 | Stereo road pipeline | Partial | Multi-candidate epipolar matching and triangulation exist; physical accuracy pending |
-| Independent multiple-light detection | Implemented in software | Variable source list, stable IDs, timestamps, confidence and tracking states; physical multi-lamp validation pending |
+| Independent multiple-light detection | Live qualitative bring-up achieved | One, two, and three lights were automatically detected and associated on 2026-11-04; recorded repetitions, calibrated positions and accuracy validation remain pending |
 | Custom road-camera tuning | Implemented | Optional exposure/brightness/contrast/gain plus brightness, saliency, confidence, background-change, area, blur, cleanup, source-count, and ID-distance controls; a daylight phone-light preset provides a repeatable starting point |
 | Processing-stage previews | Implemented | Each road feed can show detection overlay, original, final candidate mask, background difference, multi-scale saliency, local contrast, strongest-channel intensity, or blurred intensity |
 | Broad-light and clutter rejection | Implemented in software | Six-scale eight-neighbor contrast suppresses broad illumination and long edges, while confidence ranks saturated core/halo sources above weaker clutter; synthetic screenshot-like coverage passes |
@@ -1359,7 +1369,9 @@ Tasks:
 
 **Goal:** triangulate one and then two independent simulated headlights.
 **State:** multi-object detection, stable identities, and stereo candidate matching are
-implemented in software; physical stereo and multi-lamp validation remain.
+implemented. A live uncalibrated bench retest associated up to three physical light
+sources across the tested image area. Calibrated triangulation, repeatability evidence
+and measured multi-lamp intersection accuracy remain open.
 
 Tasks:
 

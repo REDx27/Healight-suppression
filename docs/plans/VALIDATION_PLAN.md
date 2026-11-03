@@ -8,6 +8,12 @@
 Current software verification: **112 automated tests passed on Python 3.13** on
 2026-11-04. This does not satisfy any open physical exit criterion.
 
+Preliminary live evidence on 2026-11-04: after rough camera-offset compensation, the
+real road-camera pair automatically detected and associated one, two, and three
+stationary lights across the tested lower and upper image regions while the driver feed
+was active. This is an engineering observation only; no physical checklist item is
+closed until the calibrated, timestamped and repeated measurements are collected.
+
 ## Immediate prerequisite: road stereo bring-up (2026-10-27)
 
 The operator confirmed two road cameras plus the driver camera. Single-camera

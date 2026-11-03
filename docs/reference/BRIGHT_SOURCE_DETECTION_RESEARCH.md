@@ -14,6 +14,15 @@ The rough matcher now estimates the common vertical image offset from horizontal
 ordered candidates and scores residual row error. This is suitable for detector
 bring-up only. It does not estimate camera geometry or make uncalibrated depth valid.
 
+## Live outcome - 2026-11-04
+
+After vertical-offset compensation was added, the operator confirmed successful live
+detection and association of one, two, and three stationary lights. The lights also
+worked in the upper part of the shared view that had previously produced zero matches.
+The driver camera and both road feeds were active. This is qualitative confirmation of
+the selected detector and rough association design, not a calibrated accuracy result;
+repeatable logs, ground-truth positions and measured intersection errors remain open.
+
 ## Selected detector architecture
 
 For the current filtered, low-resolution USB feeds, retain and incrementally validate

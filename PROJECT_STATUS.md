@@ -40,6 +40,13 @@ before one-to-one assignment. The calibration dialog also provides a verified A4
 9 x 6 / 20 mm printable board and uses the sector-based OpenCV corner detector before
 the classic fallback.
 
+The following live retest successfully detected and associated one, two, and three
+stationary lights while the two road feeds and driver feed were active, including the
+upper image region that previously failed. This confirms qualitative real-camera
+multi-source bring-up. It does not establish metric accuracy: the session was not a
+recorded repeated trial, and stereo/chessboard plus camera-to-windshield calibration
+are still required before the coordinates or intersections can be validated.
+
 **Verification:** 112 automated tests pass on Python 3.13. No completed calibrated
 physical validation has been performed. Live camera-to-windshield transforms and all physical exit
 criteria remain outstanding. Follow
