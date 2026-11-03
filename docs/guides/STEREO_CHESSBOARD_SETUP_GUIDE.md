@@ -33,8 +33,11 @@ Use a flat black-and-white checkerboard with a white outer margin, firmly attach
 to a flat backing. The default is **10 columns × 7 rows of squares**, giving
 **9 × 6 inner corners**. Enter inner corners, not square counts.
 
-Measure the printed side of one square with a ruler; enter that size in centimetres.
-The default 2.5 cm is only a starting value, not an assumed property of your print.
+Use **Print A4 chessboard...** in the calibration window. In the PDF viewer select
+**Actual size / 100%**, A4 landscape, and disable **Fit to page**. The supplied board
+has 9 x 6 inner corners, 10 x 7 squares, and a designed square side of 2.0 cm.
+Measure several printed squares with a ruler and enter the measured average in
+centimetres; never assume the printer preserved the designed size.
 Measure across several squares and divide to reduce ruler error. Printer scaling
 changes metric depth, even when the fitted reprojection error is low.
 

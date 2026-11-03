@@ -33,7 +33,14 @@ automatically pairs and triangulates each valid source without fixed lamp positi
 Rough uncalibrated intersections remain labelled demonstrations and cannot provide
 trustworthy depth or physical LCD output.
 
-**Verification:** 110 automated tests pass on Python 3.13. No completed calibrated
+The upper-frame two-light failure was correspondence rather than candidate detection:
+both previews contained two candidates, but the uncalibrated cameras had a large
+vertical crop/tilt offset. Rough matching now estimates a common vertical translation
+before one-to-one assignment. The calibration dialog also provides a verified A4
+9 x 6 / 20 mm printable board and uses the sector-based OpenCV corner detector before
+the classic fallback.
+
+**Verification:** 112 automated tests pass on Python 3.13. No completed calibrated
 physical validation has been performed. Live camera-to-windshield transforms and all physical exit
 criteria remain outstanding. Follow
 [the stereo setup guide](docs/guides/STEREO_CHESSBOARD_SETUP_GUIDE.md), then resume
@@ -58,7 +65,7 @@ GlareTracker is currently a **source-level visualization and tracking prototype*
 | Test workflow | Repeatable functional test checklist covering startup, eyes, calibration, geometry, simulation, road detection, end-to-end operation, and shutdown |
 | Guided demonstration calibration | Wizard captures stable IPD and lamp-size references, saves camera-specific profiles, enables IPD driver depth and apparent-size road range, and labels estimated versus assumed values |
 | Operating policy | Explicit Run/Standby/Stop states and four source modes now control camera ownership, manual inputs, calculations, previews, and movement simulation consistently |
-| Automated coverage | 110 tests cover geometry boundaries, mode/state policy, diagnostics/video recording and soak verification, ground-truth analysis, rigid transforms, guarded extrinsic fitting, latency/stale rejection, LCD fail-safe behavior, camera assignment, detector robustness, automatic two-source stereo association, binocular/multi-light geometry, stereo fitting/profile guards, stable source identity, tuning UI, calibration profiles, and bright-spot observations |
+| Automated coverage | 112 tests cover geometry boundaries, mode/state policy, diagnostics/video recording and soak verification, ground-truth analysis, rigid transforms, guarded extrinsic fitting, latency/stale rejection, LCD fail-safe behavior, camera assignment, detector robustness, automatic two-source stereo association and camera-offset compensation, printable-board integration, binocular/multi-light geometry, stereo fitting/profile guards, stable source identity, tuning UI, calibration profiles, and bright-spot observations |
 | Recording soak gate | Strict verifier checks finalized duration, timestamp order, exact streams, sidecar/manifest/decode counts, frame gaps/FPS, drops and writer errors |
 
 ### Current blockers to the physical prototype

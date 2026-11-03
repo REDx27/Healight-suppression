@@ -979,6 +979,26 @@ def _match_uncalibrated_candidates(
     possible_pairs = []
     single_source_scene = (
         len(primary.observations) == 1 and len(secondary.observations) == 1)
+    # The uncalibrated cameras can have different vertical crop/tilt.  The
+    # earlier multi-source path compared absolute rows and therefore rejected
+    # two valid lamps when they moved toward the top of the frame, even though
+    # each detector still found both.  Estimate one shared vertical image
+    # translation from horizontally ordered candidates, then compare residual
+    # row error.  This is alignment-only; calibrated rectification remains
+    # mandatory for metric triangulation.
+    ordered_primary = sorted(
+        primary.observations, key=lambda observation: observation.center[0])
+    ordered_secondary = sorted(
+        secondary.observations, key=lambda observation: observation.center[0])
+    vertical_samples = (
+        [
+            (left.center[1] - right.center[1]) / max(1.0, height)
+            for left, right in zip(ordered_primary, ordered_secondary)
+        ]
+        if len(ordered_primary) == len(ordered_secondary)
+        else []
+    )
+    vertical_offset = float(np.median(vertical_samples)) if vertical_samples else 0.0
     primary_ranks = {
         index: rank for rank, (index, _) in enumerate(sorted(
             enumerate(primary.observations), key=lambda item: item[1].center[0]))}
@@ -989,15 +1009,19 @@ def _match_uncalibrated_candidates(
         1, len(primary.observations) - 1, len(secondary.observations) - 1))
     for left_index, left in enumerate(primary.observations):
         for right_index, right in enumerate(secondary.observations):
-            row_error = abs(
-                left.center[1] / max(1.0, height)
-                - right.center[1] / max(1.0, height)
-            )
+            row_delta = (
+                left.center[1] - right.center[1]
+            ) / max(1.0, height)
+            raw_row_error = abs(row_delta)
+            row_error = abs(row_delta - vertical_offset)
             size_ratio = max(left.diameter_px, right.diameter_px) / max(
                 1.0, min(left.diameter_px, right.diameter_px))
-            row_limit = 0.45 if single_source_scene else 0.15
+            row_limit = 0.18
+            raw_row_limit = 0.55 if single_source_scene else 0.65
             size_limit = 10.0 if single_source_scene else 6.0
-            if row_error <= row_limit and size_ratio <= size_limit:
+            if (row_error <= row_limit
+                    and raw_row_error <= raw_row_limit
+                    and size_ratio <= size_limit):
                 confidence = (left.confidence + right.confidence) / 2.0
                 rank_error = abs(
                     primary_ranks[left_index] - secondary_ranks[right_index]

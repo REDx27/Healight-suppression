@@ -225,6 +225,24 @@ def test_rough_uncalibrated_matching_pairs_two_lights_automatically():
     assert candidates[1].secondary_image_center == pytest.approx((230, 127))
 
 
+def test_rough_multi_light_matching_compensates_camera_vertical_offset():
+    left = SimpleNamespace(observations=[
+        observation(75, 45),
+        observation(245, 70),
+    ])
+    right = SimpleNamespace(observations=[
+        observation(230, 172),
+        observation(62, 147),
+    ])
+
+    candidates = detector._match_uncalibrated_candidates(
+        left, right, (240, 320, 3), 19.5)
+
+    assert len(candidates) == 2
+    assert candidates[0].secondary_image_center == pytest.approx((62, 147))
+    assert candidates[1].secondary_image_center == pytest.approx((230, 172))
+
+
 def test_calibrated_matching_triangulates_two_lights_automatically():
     left = SimpleNamespace(observations=[
         observation(282.5, 230),
@@ -278,6 +296,32 @@ def test_dialog_rejects_duplicate_poses_and_archives_profile(tmp_path, monkeypat
     assert dialog.saved_path.is_file()
     assert (dialog.session_dir / "report.json").is_file()
     assert (dialog.session_dir / "accepted_calib.npz").is_file()
+    dialog.close()
+
+
+def test_calibration_dialog_opens_verified_printable_board(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    board = wizard.printable_chessboard_path()
+    assert board.is_file()
+    assert board.read_bytes().startswith(b"%PDF-")
+    opened = []
+    monkeypatch.setattr(
+        wizard.QDesktopServices, "openUrl",
+        lambda url: opened.append(url.toLocalFile()) or True,
+    )
+    dialog = wizard.StereoCalibrationDialog(0, 2)
+    dialog.columns.setValue(7)
+    dialog.rows.setValue(5)
+    dialog.square.setValue(3.0)
+
+    dialog.print_board.click()
+
+    assert len(opened) == 1
+    assert os.path.normcase(os.path.normpath(opened[0])) == os.path.normcase(
+        os.path.normpath(str(board)))
+    assert dialog.pattern == (9, 6)
+    assert dialog.square.value() == pytest.approx(2.0)
+    assert "Actual size" in dialog.message.text()
     dialog.close()
 
 

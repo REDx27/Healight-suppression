@@ -311,6 +311,20 @@ def detect_checkerboard(
     Returns refined corner array (N, 1, 2) or None.
     """
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY) if len(frame.shape) == 3 else frame
+    if hasattr(cv2, "findChessboardCornersSB"):
+        flags = cv2.CALIB_CB_NORMALIZE_IMAGE
+        flags |= getattr(cv2, "CALIB_CB_EXHAUSTIVE", 0)
+        flags |= getattr(cv2, "CALIB_CB_ACCURACY", 0)
+        try:
+            found, corners = cv2.findChessboardCornersSB(
+                gray, pattern_size, flags=flags)
+            if found:
+                return corners.astype(np.float32)
+        except cv2.error:
+            pass
+
+    # Retain the classic detector as a compatibility fallback for older
+    # OpenCV builds and frames where the sector-based search does not finish.
     found, corners = cv2.findChessboardCorners(
         gray, pattern_size,
         cv2.CALIB_CB_ADAPTIVE_THRESH + cv2.CALIB_CB_NORMALIZE_IMAGE + cv2.CALIB_CB_FAST_CHECK,

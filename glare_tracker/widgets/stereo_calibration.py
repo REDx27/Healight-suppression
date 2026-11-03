@@ -2,12 +2,14 @@
 
 from datetime import datetime, timezone
 import json
+from pathlib import Path
+import sys
 from threading import Event
 
 import cv2
 import numpy as np
-from PyQt5.QtCore import QThread, Qt, pyqtSignal
-from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtCore import QThread, Qt, QUrl, pyqtSignal
+from PyQt5.QtGui import QDesktopServices, QImage, QPixmap
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QPushButton,
     QSpinBox, QDoubleSpinBox,
@@ -22,6 +24,13 @@ from glare_tracker.calibration import (
 
 
 MIN_SAMPLES = 15
+PRINTABLE_BOARD_NAME = "road_stereo_chessboard_A4_9x6_20mm.pdf"
+
+
+def printable_chessboard_path() -> Path:
+    """Locate the verified A4 board in source and packaged applications."""
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
+    return base / "output" / "pdf" / PRINTABLE_BOARD_NAME
 
 
 def _image(frame):
@@ -250,7 +259,7 @@ class StereoCalibrationDialog(QDialog):
         self.square = QDoubleSpinBox()
         self.square.setRange(0.1, 20)
         self.square.setDecimals(3)
-        self.square.setValue(2.5)
+        self.square.setValue(2.0)
         self.square.setSuffix(" cm")
         form.addRow("Inner corner columns:", self.columns)
         form.addRow("Inner corner rows:", self.rows)
@@ -270,22 +279,45 @@ class StereoCalibrationDialog(QDialog):
         layout.addWidget(self.counter)
         layout.addWidget(self.message)
         actions = QHBoxLayout()
+        self.print_board = QPushButton("Print A4 chessboard...")
         self.start = QPushButton("Start LEFT calibration")
         self.take = QPushButton("Capture LEFT view")
         self.fit = QPushButton("Fit LEFT intrinsics")
         self.save = QPushButton("Save stereo profile")
         close = QPushButton("Close")
-        for button in (self.start, self.take, self.fit, self.save, close):
+        for button in (
+                self.print_board, self.start, self.take, self.fit, self.save, close):
             actions.addWidget(button)
         layout.addLayout(actions)
         self.take.setEnabled(False)
         self.fit.setEnabled(False)
         self.save.setEnabled(False)
+        self.print_board.clicked.connect(self._open_printable_board)
         self.start.clicked.connect(self._start)
         self.take.clicked.connect(self._request_capture)
         self.fit.clicked.connect(self._fit)
         self.save.clicked.connect(self._save)
         close.clicked.connect(self.reject)
+
+    def _open_printable_board(self):
+        """Open the dimensioned PDF so the operator can print at actual size."""
+        board = printable_chessboard_path()
+        if not board.is_file():
+            self.message.setText(
+                f"Printable chessboard is missing: {board}. Reinstall or regenerate it.")
+            return
+        # Keep the calibration fields synchronized with the supplied pattern.
+        if self.columns.isEnabled():
+            self.columns.setValue(9)
+            self.rows.setValue(6)
+            self.square.setValue(2.0)
+        if QDesktopServices.openUrl(QUrl.fromLocalFile(str(board))):
+            self.message.setText(
+                "Opened the verified A4 landscape chessboard. Print at Actual size / "
+                "100% with Fit-to-page disabled, then measure several squares with a ruler.")
+        else:
+            self.message.setText(
+                f"Windows could not open {board}. Open it manually in a PDF viewer.")
 
     @property
     def pattern(self):

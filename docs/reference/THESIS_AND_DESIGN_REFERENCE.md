@@ -6,7 +6,7 @@
 **Consolidated through:** 2026-11-04
 **Prepared for:** Project teammate and later thesis development
 **Reviewed source baseline:** current guided-calibration and automatic multi-light working tree
-**Current automated verification:** 110 tests passed on Python 3.13
+**Current automated verification:** 112 tests passed on Python 3.13
 **Document status:** Long-form design and milestone reference; current execution
 status is maintained in `PROJECT_STATUS.md` and `docs/plans/VALIDATION_PLAN.md`.
 
@@ -69,6 +69,15 @@ daylight preset now keep four candidates, and synthetic checks cover automatic t
 matching in both rough and calibrated paths. Correct metric location still requires the
 chessboard profile; without intrinsics, baseline and rectification, image pixels do not
 contain enough information for trustworthy depth or windshield intersection values.
+
+A subsequent upper-frame test showed two candidates in both overlays but no paired
+source. The failure was the rough matcher's absolute-row gate: camera crop/tilt made the
+same lights occupy very different rows. Rough bring-up now estimates one shared vertical
+translation and matches residual geometry. Research retained the inspectable multi-scale
+local-contrast/adaptive-threshold/temporal-tracking pipeline instead of introducing an
+untrained neural model. The calibration dialog now opens a verified A4 landscape board
+with 9 x 6 inner corners and exact 20.00 mm vector squares; the wizard is synchronized to
+2.0 cm and tries OpenCV's sector-based chessboard detector before its classic fallback.
 
 This is software preparation, not physical calibration completion. Ordinary USB
 grabs are sequential, not hardware-synchronized. Fit-set errors do not prove
@@ -136,7 +145,7 @@ The current software includes:
 - guarded camera-to-windshield extrinsic fitting and analysis tools;
 - stale-sample rejection and fail-safe clearing;
 - disabled-by-default experimental secondary-display blocker output; and
-- 110 automated regression tests at the current milestone.
+- 112 automated regression tests at the current milestone.
 
 The current software does **not** yet provide a validated end-to-end glare-blocking
 system. The main missing items are physical evidence and live calibration integration:
@@ -977,7 +986,7 @@ The detector-era checkpoint contained twenty-seven tests covering:
 - immediate replacement of a stale false single-source track when the lamp appears at
   a different image position.
 
-The current Python 3.13 suite contains **110 passing tests**, including automatic
+The current Python 3.13 suite contains **112 passing tests**, including automatic
 two-source rough association and calibrated triangulation, plus synthetic stereo
 fitting with supplied individual intrinsics, startup prompt policy, staged workflow,
 profile compatibility, calibrated matching, and mocked capture/UI paths.
@@ -1761,4 +1770,4 @@ incorporated into this reference as follows:
 Conflicts were resolved using current source and automated tests first, followed by
 `PROJECT_STATUS.md`, maintained documentation, Git history, dated physical evidence,
 and finally the chat summaries. Historical 4-, 11-, 12-, and 27-test checkpoints remain
-development provenance; the authoritative current software result is 110 passing tests.
+development provenance; the authoritative current software result is 112 passing tests.
