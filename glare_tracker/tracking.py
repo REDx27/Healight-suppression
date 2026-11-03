@@ -61,6 +61,7 @@ class TrackingController:
         self._baseline_captured = False
         self._frame_times: list[float] = []
         self._live_light_sources: tuple[TrackedLightSource, ...] = ()
+        self._rough_preview_sources: tuple[TrackedLightSource, ...] = ()
 
         # Light movement simulation
         self._simulation_lights: list[tuple[float, float, float]] | None = None
@@ -149,6 +150,7 @@ class TrackingController:
     ):
         """Accept an arbitrary set of independently tracked bright sources."""
 
+        self._rough_preview_sources = ()
         self._live_light_sources = tuple(sources)
         self.on_params_changed(calculate=calculate)
 
@@ -156,6 +158,7 @@ class TrackingController:
         """Clear camera-owned lights so stale coordinates cannot remain active."""
 
         self._live_light_sources = ()
+        self._rough_preview_sources = ()
         if self._lcd_blocker is not None:
             self._lcd_blocker.clear_output()
         if getattr(self._controls, "is_auto_light", lambda: False)():
@@ -166,24 +169,20 @@ class TrackingController:
             self._readout.set_value("light_pos", "-- no tracked sources")
 
     def preview_uncalibrated_lights(self, sources: list[TrackedLightSource]):
-        """Show rough alignment results without enabling geometry or LCD output."""
+        """Render explicitly approximate intersections without LCD authority."""
         self._live_light_sources = ()
-        positions = [source.position for source in sources]
-        self._scene_3d.update_lights(positions)
-        self._scene_3d.update_intersections([])
-        self._windshield_2d.clear_glare()
+        self._rough_preview_sources = tuple(sources)
         if self._lcd_blocker is not None:
             self._lcd_blocker.clear_output()
-        if sources:
-            source = sources[0]
-            self._readout.set_value(
-                "light_pos",
-                f"ROUGH/UNCALIBRATED {source.stable_id}  "
-                f"X:{source.position[0]:.1f}  assumed Y:{source.position[1]:.1f}  "
-                f"Z:{source.position[2]:.1f}",
-                "#f59e0b",
-            )
-        self._readout.set_intersections([])
+        if self._controls.mode_policy().manual_driver:
+            eyes = (self._controls.get_manual_eye_pos(),)
+        elif self._last_eyes_cm:
+            eyes = self._last_eyes_cm
+        elif self._last_eye_cm:
+            eyes = (self._last_eye_cm,)
+        else:
+            eyes = ()
+        self._render_rough_intersections(eyes)
 
     def on_manual_eye(self, eye_cm: tuple[float, float, float]):
         """Apply a fixed/manual driver position to the geometry pipeline."""
@@ -201,6 +200,9 @@ class TrackingController:
         """Compute one ray per eye and light without collapsing either eye."""
         eyes = tuple(tuple(eye) for eye in eye_positions[:2])
         if not eyes:
+            return
+        if self._rough_preview_sources and not self._live_light_sources:
+            self._render_rough_intersections(eyes)
             return
         sources = self._active_light_sources()
         lights = [position for _, position, _, _ in sources]
@@ -277,6 +279,60 @@ class TrackingController:
             self._windshield_2d.update_glares(glare_points, has_out)
         else:
             self._windshield_2d.clear_glare()
+
+    def _render_rough_intersections(self, eyes):
+        """Render assumed-depth demo geometry, never research or physical output."""
+        sources = self._rough_preview_sources
+        positions = [source.position for source in sources]
+        self._scene_3d.update_lights(positions)
+        self._scene_3d.update_intersections([])
+        if not sources or not eyes:
+            self._windshield_2d.clear_glare()
+            self._readout.set_intersections([])
+            return
+
+        eyes = tuple(tuple(eye) for eye in eyes[:2])
+        ws_w, ws_h = self._controls.get_windshield_dims()
+        half_width = ws_w / 2.0
+        self._scene_3d.update_eyes(eyes)
+        self._scene_3d.update_eye_rays(eyes, positions)
+        intersections, visible, glare_points = [], [], []
+        for source in sources:
+            for eye_index, eye in enumerate(eyes, start=1):
+                label = f"~{source.stable_id}/E{eye_index} ROUGH"
+                point = compute_intersection(eye, source.position)
+                if point is None:
+                    intersections.append((label, None, False))
+                    continue
+                in_bounds = (
+                    -half_width <= point[0] <= half_width
+                    and 0.0 <= point[2] <= ws_h)
+                intersections.append((label, point, in_bounds))
+                glare_points.append((
+                    (point[0] + half_width) / ws_w,
+                    (ws_h - point[2]) / ws_h,
+                    in_bounds,
+                ))
+                if in_bounds:
+                    visible.append(point)
+        self._scene_3d.update_intersections(visible)
+        if glare_points:
+            self._windshield_2d.update_glares(
+                glare_points, any(not item[2] for item in glare_points))
+        else:
+            self._windshield_2d.clear_glare()
+        source = sources[0]
+        self._readout.set_value(
+            "light_pos",
+            f"ROUGH/UNCALIBRATED {source.stable_id}  "
+            f"X:{source.position[0]:.1f}  assumed Y:{source.position[1]:.1f}  "
+            f"Z:{source.position[2]:.1f}",
+            "#f59e0b",
+        )
+        self._readout.set_value("status", "ROUGH DEMO - NOT CALIBRATED", "#f59e0b")
+        self._readout.set_intersections(intersections)
+        if self._lcd_blocker is not None:
+            self._lcd_blocker.clear_output()
 
     # ── calibration ─────────────────────────────────────────────────
 

@@ -393,7 +393,7 @@ def test_camera_geometry_uses_complete_source_list_without_vehicle_offsets():
     ]
 
 
-def test_rough_uncalibrated_preview_never_reaches_geometry_or_lcd():
+def test_rough_uncalibrated_intersections_render_but_never_reach_lcd():
     scene, windshield, readout, lcd = _Scene(), _Windshield(), _Readout(), _LCD()
     tracker = TrackingController(
         scene, windshield, readout, _AutoControls(), lcd_blocker=lcd)
@@ -403,10 +403,11 @@ def test_rough_uncalibrated_preview_never_reaches_geometry_or_lcd():
     )
 
     tracker.preview_uncalibrated_lights([rough])
+    tracker.on_eyes_detected(-3.0, -50.0, 10.0, 3.0, -50.0, 10.0)
 
     assert scene.lights == (rough.position,)
-    assert scene.intersections == ()
-    assert windshield.glares == ()
-    assert lcd.cleared == 1
+    assert len(scene.intersections) == 2
+    assert len(windshield.glares) == 2
+    assert lcd.cleared >= 1
     assert lcd.updated == []
     assert tracker._live_light_sources == ()

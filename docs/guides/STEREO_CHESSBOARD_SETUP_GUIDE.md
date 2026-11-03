@@ -93,9 +93,10 @@ still necessary.
 
 Before calibration, the status may show **ROUGH UNCALIBRATED** when one candidate in
 each feed can be paired. This is an alignment/tuning aid only: its displayed depth is
-assumed, and it cannot produce windshield intersections, valid measurement records or
-LCD output. A feed showing vertical color bars is now marked invalid; replug that
-camera, select Stop, and Run again before continuing.
+assumed. It can render amber **ROUGH** demo intersections, but these are not valid
+measurement records and can never reach LCD output. A feed showing vertical color
+bars is marked invalid; replug that camera, select Stop, and Run again before
+continuing.
 
 Read the stereo diagnostics:
 

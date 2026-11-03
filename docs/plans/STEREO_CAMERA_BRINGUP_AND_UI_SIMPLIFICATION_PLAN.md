@@ -46,9 +46,10 @@ rejects frame-edge/elongated ceiling-light candidates.
 For pre-calibration setup only, missing/incompatible stereo profiles now permit a
 clearly labelled **ROUGH UNCALIBRATED** single-source match. It uses relaxed image-row
 pairing and an assumed depth solely to confirm that the same isolated light is visible
-in both feeds. Rough sources are kept out of metric geometry, windshield intersections,
-research validity flags and LCD output. Saturated vertical color-bar/test-pattern
-frames are marked invalid per stream rather than reported as an online camera.
+in both feeds. Rough sources may render amber, explicitly approximate demo
+intersections, but remain outside metric validity, research measurements and physical
+LCD output. Saturated vertical color-bar/test-pattern frames are marked invalid per
+stream rather than reported as an online camera.
 
 This checkpoint deliberately retains the proven checkerboard detector. ChArUco,
 held-out/per-view metrics, post-filter verification, photometric measurement and UI

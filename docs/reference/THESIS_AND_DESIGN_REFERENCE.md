@@ -54,8 +54,10 @@ ceiling fluorescent strip as an unsuitable point-source candidate.
 An explicitly non-metric **ROUGH UNCALIBRATED** matcher is available only for camera
 alignment and detector tuning before calibration. It pairs the controlled scene's
 single candidate across both views and shows an assumed-depth marker, but is isolated
-from windshield geometry, validity flags, diagnostic measurements and LCD output.
-Color-bar/test-pattern frames are rejected and reported against the affected feed.
+from validity flags, diagnostic measurements and LCD output. Amber rough intersections
+may be rendered for demonstration, remain explicitly labelled, and must not be reported
+as measured geometry. Color-bar/test-pattern frames are rejected and reported against
+the affected feed.
 
 This is software preparation, not physical calibration completion. Ordinary USB
 grabs are sequential, not hardware-synchronized. Fit-set errors do not prove
