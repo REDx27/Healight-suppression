@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import (
     QSpinBox, QDoubleSpinBox,
 )
 
-from glare_tracker.capture import open_video_capture, configure_video_capture
+from glare_tracker.capture import open_video_capture, configure_road_stereo_capture
 from glare_tracker.calibration import (
     _calibration_dir, calibrate_single, calibrate_stereo_with_intrinsics,
     detect_checkerboard, save_single_calibration, save_stereo_calibration,
@@ -80,7 +80,7 @@ class SingleBoardCapture(QThread):
             capture, backend = open_video_capture(self.index)
             if capture is None:
                 raise RuntimeError(f"Camera {self.index} unavailable; close other camera apps")
-            configure_video_capture(capture)
+            configure_road_stereo_capture(capture)
             self.status.emit(
                 f"{self.side.upper()} camera {self.index} opened using {backend}. "
                 "Move the board to a varied pose, then capture.")
@@ -130,7 +130,7 @@ class StereoBoardCapture(QThread):
                 if capture is None:
                     raise RuntimeError(f"Camera {index} unavailable; close other camera apps")
                 captures.append(capture)
-                configure_video_capture(capture)
+                configure_road_stereo_capture(capture)
                 self.status.emit(f"Camera {index} opened using {backend}")
             self.status.emit("Both feeds ready. Hold the board still, then capture a pair.")
             failures = 0

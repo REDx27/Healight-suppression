@@ -11,6 +11,7 @@ import pytest
 from PyQt5.QtWidgets import QApplication
 
 import glare_tracker.calibration as calibration
+import glare_tracker.capture as capture_module
 import glare_tracker.headlight_detector as detector
 import glare_tracker.widgets.stereo_calibration as wizard
 from glare_tracker.operating_modes import OperatingMode
@@ -34,6 +35,34 @@ def stereo_result():
 
 def observation(x, y=240):
     return SimpleNamespace(center=(x, y), confidence=0.9, diameter_px=10.)
+
+
+def test_verified_camera_open_falls_back_from_dead_backend(monkeypatch):
+    class FakeCapture:
+        def __init__(self, readable):
+            self.readable = readable
+            self.released = False
+
+        def isOpened(self):
+            return True
+
+        def read(self):
+            return self.readable, (
+                np.zeros((10, 10, 3), np.uint8) if self.readable else None)
+
+        def release(self):
+            self.released = True
+
+    dead, working = FakeCapture(False), FakeCapture(True)
+    captures = iter((dead, working))
+    monkeypatch.setattr(capture_module.cv2, "VideoCapture", lambda *args: next(captures))
+    monkeypatch.setattr(capture_module.QThread, "msleep", lambda value: None)
+
+    selected, backend = capture_module.open_video_capture(0, verify_frames=True)
+
+    assert selected is working
+    assert backend == "Media Foundation"
+    assert dead.released
 
 
 def test_ordered_profile_roundtrip(tmp_path, monkeypatch):
@@ -240,7 +269,8 @@ def test_runtime_previews_without_uncalibrated_depth(monkeypatch, profile_state)
             self.released = True
     captures = [Capture(), Capture()]
     monkeypatch.setattr(detector, "open_video_capture", lambda index: (captures[index - 1], "fake"))
-    monkeypatch.setattr(detector, "configure_video_capture", lambda cap: None)
+    monkeypatch.setattr(
+        detector, "configure_road_stereo_capture", lambda cap: (320, 240, 15.0))
     monkeypatch.setattr(detector, "_apply_camera_controls", lambda *args: {})
     processed = iter([SimpleNamespace(observations=[observation(332.5)]),
                       SimpleNamespace(observations=[observation(307.5)])])
@@ -267,7 +297,7 @@ def test_calibration_capture_reports_missing_camera_and_releases_first(monkeypat
     camera = SimpleNamespace(release=lambda: released.append(True))
     monkeypatch.setattr(wizard, "open_video_capture", lambda index: (
         (camera, "fake") if index == 1 else (None, "none")))
-    monkeypatch.setattr(wizard, "configure_video_capture", lambda cap: None)
+    monkeypatch.setattr(wizard, "configure_road_stereo_capture", lambda cap: None)
     worker = wizard.StereoBoardCapture((1, 2), (9, 6))
     worker.status.connect(errors.append)
     worker.run()
@@ -293,7 +323,7 @@ def test_calibration_button_wiring_and_busy_camera_guard(monkeypatch):
     window.controls.combo_operating_mode.setCurrentText(OperatingMode.DRIVER_FIXED.value)
     window.controls.combo_detection_setup.setCurrentText("Stereo Cameras")
     window.controls.btn_stereo_calibration.click()
-    assert opened == [(1, 2)]
+    assert opened == [(0, 2)]
     # A blocked camera backend must not be destroyed or reused by calibration.
     deleted = []
     busy = SimpleNamespace(stop=lambda: None, isRunning=lambda: True,

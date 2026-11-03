@@ -14,6 +14,13 @@ import cv2
 from PyQt5.QtCore import QThread, pyqtSignal
 
 
+# Measured stable shared mode for the current two-road-camera USB setup.
+# Calibration and live stereo must use the same capture profile.
+ROAD_STEREO_WIDTH = 320
+ROAD_STEREO_HEIGHT = 240
+ROAD_STEREO_FPS = 15
+
+
 @dataclass(frozen=True)
 class CameraDevice:
     """One OpenCV camera index confirmed by a successful frame read."""
@@ -38,7 +45,7 @@ class CameraDiscoveryThread(QThread):
         for camera_index in range(self.max_index):
             if self.isInterruptionRequested():
                 break
-            capture, backend_name = open_video_capture(camera_index)
+            capture, backend_name = open_video_capture(camera_index, verify_frames=True)
             if capture is None:
                 continue
             try:
@@ -60,7 +67,7 @@ class CameraDiscoveryThread(QThread):
         self.cameras_discovered.emit(devices)
 
 
-def open_video_capture(camera_index: int):
+def open_video_capture(camera_index: int, verify_frames: bool = False):
     """Open a camera using the first working backend.
 
     DirectShow is normally the most predictable option on Windows, but some
@@ -79,7 +86,15 @@ def open_video_capture(camera_index: int):
         capture = (cv2.VideoCapture(camera_index) if backend is None
                    else cv2.VideoCapture(camera_index, backend))
         if capture.isOpened():
-            return capture, backend_name
+            if not verify_frames:
+                return capture, backend_name
+            # UVC/DirectShow can report opened before the stream is ready, or
+            # return a dead handle. Require a frame before accepting a backend.
+            for _ in range(10):
+                ok, frame = capture.read()
+                if ok and frame is not None and frame.size:
+                    return capture, backend_name
+                QThread.msleep(50)
         try:
             capture.release()
         except cv2.error:
@@ -111,3 +126,13 @@ def configure_video_capture(
     actual_height = int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT)) or height
     actual_fps = float(capture.get(cv2.CAP_PROP_FPS)) or float(fps)
     return actual_width, actual_height, actual_fps
+
+
+def configure_road_stereo_capture(capture) -> tuple[int, int, float]:
+    """Apply the measured low-bandwidth profile shared by both road cameras."""
+    return configure_video_capture(
+        capture,
+        width=ROAD_STEREO_WIDTH,
+        height=ROAD_STEREO_HEIGHT,
+        fps=ROAD_STEREO_FPS,
+    )

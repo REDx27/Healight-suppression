@@ -24,7 +24,11 @@ from glare_tracker.calibration import (
     stereo_profile_name,
     stereo_profile_compatible,
 )
-from glare_tracker.capture import configure_video_capture, open_video_capture
+from glare_tracker.capture import (
+    configure_road_stereo_capture,
+    configure_video_capture,
+    open_video_capture,
+)
 from glare_tracker.light_sources import (
     LightCandidate,
     LightSourceTracker,
@@ -426,7 +430,17 @@ def process_bright_spots(
             continue
 
         x, y, w, h = cv2.boundingRect(contour)
-        minimum_aspect = 0.03 if is_peak_core else 0.2
+        frame_height, frame_width = gray.shape[:2]
+        touches_frame_edge = (
+            x <= 0 or y <= 0
+            or x + w >= frame_width or y + h >= frame_height
+        )
+        if touches_frame_edge:
+            # Edge-truncated blobs do not have a trustworthy centroid for
+            # stereo triangulation. This also rejects the ceiling strip seen
+            # during the live camera diagnosis.
+            continue
+        minimum_aspect = 0.03 if is_peak_core else 0.5
         maximum_aspect = 30.0 if is_peak_core else 5.0
         if h == 0 or not minimum_aspect <= (w / h) <= maximum_aspect:
             continue
@@ -1234,17 +1248,21 @@ class HeadlightDetectorThread(QThread):
                 self.headlight_lost.emit()
                 return
 
-            self.camera_status.emit(
-                f"Cameras {self.cam1_idx} ({backend1}) + "
-                f"{self.cam2_idx} ({backend2}) connected (stereo)", True)
-
             primary_report = None
+            modes = []
             for camera_number, cap in enumerate((cap1, cap2), start=1):
-                configure_video_capture(cap)
+                modes.append(configure_road_stereo_capture(cap))
                 report = _apply_camera_controls(
                     cap, self.detection_settings)
                 if camera_number == 1:
                     primary_report = report
+            if modes[0][:2] != modes[1][:2]:
+                raise RuntimeError(
+                    f"Road cameras negotiated different modes: {modes[0]} and {modes[1]}")
+            self.camera_status.emit(
+                f"Cameras {self.cam1_idx} ({backend1}) + "
+                f"{self.cam2_idx} ({backend2}) connected (stereo, "
+                f"{modes[0][0]}x{modes[0][1]} @ {modes[0][2]:.1f} FPS)", True)
             self.camera_controls_report.emit(primary_report)
             applied_settings_revision = self._settings_revision
 

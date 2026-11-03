@@ -290,6 +290,15 @@ def test_single_source_tracker_replaces_a_stale_false_candidate_immediately():
     assert second[0].state == "new"
 
 
+def test_bright_strip_spanning_frame_is_not_a_point_source():
+    frame = np.zeros((240, 320, 3), dtype=np.uint8)
+    cv2.rectangle(frame, (135, 0), (175, 239), (255, 255, 255), -1)
+
+    processed = process_bright_spots(frame, LightDetectionSettings())
+
+    assert processed.observations == ()
+
+
 class _Scene:
     def update_eyes(self, eyes):
         self.eyes = tuple(eyes)

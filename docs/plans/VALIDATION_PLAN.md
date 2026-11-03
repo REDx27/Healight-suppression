@@ -62,7 +62,7 @@ have passed.
 - [x] Run the complete automated regression suite.
 
 Exit evidence: `tests/test_geometry.py`; 15 focused tests pass and the current
-complete suite contains 101 passing tests on Python 3.13.
+complete suite contains 103 passing tests on Python 3.13.
 
 ## 2. Timestamped CSV/video logging
 

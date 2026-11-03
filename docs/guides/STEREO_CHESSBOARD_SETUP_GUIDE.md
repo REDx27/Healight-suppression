@@ -7,6 +7,9 @@ laboratory procedure, not a moving-vehicle test.
 ## 1. Fix the physical setup first
 
 - There are **two road cameras plus one driver camera**, confirmed by the operator.
+- On the 2026-11-03 live probe, the integrated driver camera was index **1** and the
+  external road cameras were indices **0** and **2**. Confirm the previews after every
+  reconnect because Windows can reorder them.
 - Mount the road cameras rigidly, side by side, with overlapping views. As you look
   toward the scene from behind the cameras, primary is LEFT and secondary is RIGHT.
   The supported matcher expects a horizontal left-to-right pair.
@@ -53,8 +56,10 @@ the [OpenCV calibration documentation](https://docs.opencv.org/4.5.2/d9/d0c/grou
    the cameras. Cover different tilts, distances and positions, including image edges
    and centre. Avoid nearly identical images, blur or obscured corners.
 5. The application saves only pairs where both boards are detected, rejects near
-   duplicates, and preserves the raw full-resolution images without display scaling
-   or mirroring. Both cameras must negotiate the same resolution (640×480 requested).
+   duplicates, and preserves raw capture images without display scaling or mirroring.
+   Both road cameras use the measured stable shared mode of **320 x 240 at 15 FPS**.
+   At 640 x 480, one stream opened and grabbed but returned no frames when both road
+   cameras shared the USB root hub.
 6. Fit each stage when enabled. The paired fit holds the accepted individual
    intrinsics fixed. A stereo candidate passes the software gates only if its
    matrices are finite, stereo RMS is at most 1.5 px, the 95th-percentile rectified
@@ -79,6 +84,12 @@ previews to confirm the same lamp is visible and not badly saturated. Then use
 Detection overlay, Threshold mask and other processing views to tune the existing
 brightness, exposure, area and confidence controls. Camera-driver settings may not
 be supported equally by both webcams; visually inspect both feeds.
+
+Use an isolated torch or phone light inside both views. Do not aim the road pair at
+the room's fluorescent tube: the live diagnosis showed both feeds dominated by a long
+saturated ceiling strip instead of a point-like test source. The detector now rejects
+edge-truncated and strongly elongated saliency candidates, but scene preparation is
+still necessary.
 
 Read the stereo diagnostics:
 

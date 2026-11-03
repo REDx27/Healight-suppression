@@ -207,8 +207,11 @@ class ControlsPanel(QWidget):
         self._configure_form(auto_layout)
         self.combo_detection_setup = QComboBox()
         self.combo_detection_setup.addItems(["Single Camera", "Stereo Cameras"])
-        self.spin_driver_camera = self._make_index_spin(0)
-        self.spin_headlight_camera = self._make_index_spin(1)
+        # Current installation observed live on 2026-11-03: the integrated
+        # driver camera enumerates as 1; the external road pair as 0 and 2.
+        # These remain operator-selectable because Windows may reorder indices.
+        self.spin_driver_camera = self._make_index_spin(1)
+        self.spin_headlight_camera = self._make_index_spin(0)
         self.spin_headlight_camera_2 = self._make_index_spin(2)
         self.spin_single_depth = self._make_spin(10.0, 5000.0, 120.0, " cm")
         self.spin_camera_hfov = self._make_spin(10.0, 170.0, 70.0, " deg")
