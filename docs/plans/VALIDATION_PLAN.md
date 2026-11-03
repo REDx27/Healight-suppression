@@ -30,6 +30,13 @@ eight stages in order. Do not interpret a calibration fit as a stage 3 or 4 pass
 
 Procedure: [STEREO_CHESSBOARD_SETUP_GUIDE.md](../guides/STEREO_CHESSBOARD_SETUP_GUIDE.md).
 
+The proposed replacement workflow—including startup consent, independent ChArUco
+intrinsics, post-sunglass verification, sparse bright-point correspondence and UI
+reduction—is specified in
+[STEREO_CAMERA_BRINGUP_AND_UI_SIMPLIFICATION_PLAN.md](STEREO_CAMERA_BRINGUP_AND_UI_SIMPLIFICATION_PLAN.md).
+That document is an implementation plan, not evidence that the physical items above
+have passed.
+
 ## Status summary
 
 | Stage | Validation workstream | Status | Completion evidence |

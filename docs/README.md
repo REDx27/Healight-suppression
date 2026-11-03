@@ -27,6 +27,9 @@ take precedence and the affected document should be corrected.
   validation plan and completion record.
 - [`FUNCTIONAL_TEST_PLAN.md`](plans/FUNCTIONAL_TEST_PLAN.md) — application-level
   pass/fail checklist.
+- [`STEREO_CAMERA_BRINGUP_AND_UI_SIMPLIFICATION_PLAN.md`](plans/STEREO_CAMERA_BRINGUP_AND_UI_SIMPLIFICATION_PLAN.md)
+  — proposed next development phase: guided individual/stereo calibration,
+  post-filter verification, sparse light matching and interface reduction.
 
 ### `protocols/`
 
