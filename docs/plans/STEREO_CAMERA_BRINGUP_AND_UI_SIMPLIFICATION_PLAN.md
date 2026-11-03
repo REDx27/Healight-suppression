@@ -1,7 +1,7 @@
 # Stereo Camera Bring-Up and UI Simplification Plan
 
 > Created: 2026-11-03  
-> Status: proposed plan; implementation has not started  
+> Status: implementation started; first guided chessboard slice complete
 > Applies to: two road-facing USB cameras plus the existing driver camera  
 > Safety: stationary laboratory prototype only; no public-road or moving-vehicle use
 
@@ -19,6 +19,24 @@ Build a guided, fail-closed road-stereo workflow that:
 7. produces no metric stereo position when correspondence or calibration is invalid;
 8. reduces the main interface to the controls needed for this physical workflow; and
 9. preserves raw calibration and validation evidence for the research record.
+
+### Implementation checkpoint - 2026-11-03
+
+The first runnable slice is implemented:
+
+- camera discovery offers **Calibrate now** or **Skip for now** once per launch when
+  the selected ordered road pair lacks a compatible profile;
+- Skip leaves metric stereo fail-closed while preserving previews and other modes;
+- the dialog enforces LEFT intrinsics, RIGHT intrinsics, then paired stereo geometry
+  using the two fixed individual results;
+- every stage rejects near-duplicate poses and archives raw images and reports;
+- the stereo fit gates RMS, rectified row error, baseline sign and finite matrices
+  before an active ordered profile can be saved; and
+- the Python 3.13 regression suite contains 101 passing tests.
+
+This checkpoint deliberately retains the proven checkerboard detector. ChArUco,
+held-out/per-view metrics, post-filter verification, photometric measurement and UI
+reduction remain the next slices; no physical calibration has been marked complete.
 
 The goal is not to make dissimilar camera internals physically identical. Software can
 rectify their geometry, select a common capture mode, compensate some brightness

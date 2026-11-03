@@ -444,6 +444,63 @@ def calibrate_stereo(
 
 # ── Coordinate helpers ──────────────────────────────────────────────
 
+def calibrate_stereo_with_intrinsics(
+    frames_cam1: list[np.ndarray],
+    frames_cam2: list[np.ndarray],
+    cam1: CalibrationResult,
+    cam2: CalibrationResult,
+    pattern_size: tuple[int, int] = DEFAULT_PATTERN_SIZE,
+    square_size_cm: float = DEFAULT_SQUARE_SIZE_CM,
+) -> Optional[StereoCalibrationResult]:
+    """Fit stereo geometry while holding explicit LEFT/RIGHT intrinsics fixed."""
+    if len(frames_cam1) != len(frames_cam2):
+        raise ValueError("Stereo samples must contain the same number of paired frames")
+    if not np.isfinite(square_size_cm) or square_size_cm <= 0:
+        raise ValueError("Measured square size must be positive and finite")
+    if len(pattern_size) != 2 or any(int(v) != v or v < 3 for v in pattern_size):
+        raise ValueError("Specify at least 3 inner corners in each direction")
+    sizes = {frame.shape[:2] for frame in frames_cam1 + frames_cam2}
+    if len(sizes) > 1:
+        raise ValueError("Both cameras and every sample must have the same resolution")
+    if not frames_cam1:
+        return None
+    image_size = (frames_cam1[0].shape[1], frames_cam1[0].shape[0])
+    if cam1.image_size != image_size or cam2.image_size != image_size:
+        raise ValueError("Individual calibrations must match the stereo capture resolution")
+
+    object_template = _build_object_points(pattern_size, square_size_cm)
+    object_points, image_points1, image_points2 = [], [], []
+    for left, right in zip(frames_cam1, frames_cam2):
+        corners1 = detect_checkerboard(left, pattern_size)
+        corners2 = detect_checkerboard(right, pattern_size)
+        if corners1 is not None and corners2 is not None:
+            object_points.append(object_template)
+            image_points1.append(corners1)
+            image_points2.append(corners2)
+    if len(object_points) < 8:
+        return None
+
+    matrix1, distortion1 = cam1.camera_matrix.copy(), cam1.dist_coeffs.copy()
+    matrix2, distortion2 = cam2.camera_matrix.copy(), cam2.dist_coeffs.copy()
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 1e-6)
+    rms, matrix1, distortion1, matrix2, distortion2, rotation, translation, essential, fundamental = cv2.stereoCalibrate(
+        object_points, image_points1, image_points2,
+        matrix1, distortion1, matrix2, distortion2,
+        image_size, criteria=criteria, flags=cv2.CALIB_FIX_INTRINSIC,
+    )
+    rect1, rect2, projection1, projection2, disparity_map, _, _ = cv2.stereoRectify(
+        matrix1, distortion1, matrix2, distortion2, image_size, rotation, translation,
+        flags=cv2.CALIB_ZERO_DISPARITY, alpha=0,
+    )
+    return StereoCalibrationResult(
+        cam1=CalibrationResult(matrix1, distortion1, image_size, cam1.rms_error),
+        cam2=CalibrationResult(matrix2, distortion2, image_size, cam2.rms_error),
+        R=rotation, T=translation, E=essential, F=fundamental,
+        R1=rect1, R2=rect2, P1=projection1, P2=projection2, Q=disparity_map,
+        rms_error=rms,
+    )
+
+
 def undistort_point(
     u: float, v: float, calib: CalibrationResult,
 ) -> tuple[float, float]:

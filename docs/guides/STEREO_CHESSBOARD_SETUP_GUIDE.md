@@ -1,6 +1,6 @@
 # Road Stereo Chessboard Setup Guide
 
-Updated: 2026-10-27. Current development priority: bring up the two road cameras
+Updated: 2026-11-03. Current development priority: bring up the two road cameras
 before adding live driver tracking back into the experiment. This is a stationary
 laboratory procedure, not a moving-vehicle test.
 
@@ -11,10 +11,12 @@ laboratory procedure, not a moving-vehicle test.
   toward the scene from behind the cameras, primary is LEFT and secondary is RIGHT.
   The supported matcher expects a horizontal left-to-right pair.
 - Measure and record optical-centre separation; do not assume the old 25 cm default.
-- Keep the final lenses/filters, resolution, focus and zoom unchanged. If a sunglass
-  lens will be used during detection, calibrate with it fixed in that same position.
-  Record which filter is on each camera. Illuminate the board sufficiently for both
-  cameras to see it; do not remove a filter just to make calibration easier.
+- Begin this initial guided pass **without the sunglass filters**, as instructed by
+  the dialog. After a passing stereo profile is saved, fix and label each filter
+  without moving either camera. That bare-camera result is provisional until the
+  planned post-filter geometric verification passes. If a filter changes effective
+  geometry beyond the declared limit, repeat full calibration through the filters
+  using a brighter or backlit target.
 - Lock focus/zoom using the device's supported controls or camera utility. The app
   does not currently lock autofocus. Changing focus, zoom, lens/filter placement or
   either mount requires recalibration. Exposure may be adjusted for board visibility,
@@ -42,23 +44,28 @@ the [OpenCV calibration documentation](https://docs.opencv.org/4.5.2/d9/d0c/grou
 2. Refresh the available cameras and wait for scanning to finish. Choose **Driver
    Position Fixed** and **Stereo Cameras**. Assign the left and right road feeds to
    Headlight camera and Headlight camera 2. Leave the driver camera assigned but idle.
-3. Click **Calibrate road stereo (chessboard)**. Confirm indices, inner-corner counts
-   and measured square size, then **Start capture**.
-4. Hold the complete board stationary in BOTH views and click **Capture pair**.
-   Move the board, not the cameras. Collect at least 15 accepted pairs with different
-   tilts, distances and positions, including image edges and centre. Avoid nearly
-   identical images, an always front-facing board, blur or obscured corners.
+3. After discovery, choose **Calibrate now** in the startup offer, or click
+   **Calibrate road stereo (chessboard)** later. Confirm indices, inner-corner counts
+   and measured square size.
+4. Complete the three stages in order: collect at least 15 varied LEFT-only views and
+   fit LEFT intrinsics; repeat independently for RIGHT; rigidly fix both cameras and
+   then collect at least 15 paired views visible in BOTH feeds. Move the board, not
+   the cameras. Cover different tilts, distances and positions, including image edges
+   and centre. Avoid nearly identical images, blur or obscured corners.
 5. The application saves only pairs where both boards are detected, rejects near
    duplicates, and preserves the raw full-resolution images without display scaling
    or mirroring. Both cameras must negotiate the same resolution (640×480 requested).
-6. Click **Stop capture and fit**. A candidate passes the software gates only if its
+6. Fit each stage when enabled. The paired fit holds the accepted individual
+   intrinsics fixed. A stereo candidate passes the software gates only if its
    matrices are finite, stereo RMS is at most 1.5 px, the 95th-percentile rectified
    vertical corner error is at most 2 px, and the horizontal baseline has the expected
    sign. These are initial engineering gates, not a proven physical accuracy limit.
 7. Compare the reported baseline with your ruler measurement. If inconsistent, do
    NOT save: check units, board size, camera order and pose diversity; capture again.
-8. Save an accepted profile, close the dialog, then select Run to load it. No active
-   profile is replaced until you explicitly click **Save profile**.
+8. Save an accepted profile, close the dialog, then install the dark filters without
+   moving the cameras. The current software warns that post-filter verification is
+   still required; do not collect final measurement evidence until that gate is
+   implemented and passed. No active profile is replaced until you explicitly save.
 
 Ordinary USB camera grabs are sequential, **not hardware-synchronized**. Keep the
 board and later test light still during initial tests. Timing for moving targets
@@ -98,8 +105,9 @@ resume the recording soak and the ordered ground-truth/extrinsic/physical protoc
 ## Evidence and limitations
 
 - Each attempt is preserved under `calibration/stereo_sessions/<UTC-session>/`:
-  `setup.json`, accepted raw `NNN_left.png` / `NNN_right.png`, `report.json` after
-  fitting, and `accepted_calib.npz` after saving. Abandoned attempts remain available.
+  `setup.json`, LEFT/RIGHT individual images and reports, paired raw
+  `NNN_left.png` / `NNN_right.png`, `report.json` after stereo fitting, and
+  `accepted_calib.npz` after saving. Abandoned attempts remain available.
 - The active profile is `calibration/stereo_<left-index>_<right-index>_calib.npz`.
   Legacy generic `stereo_calib.npz` files are not automatically applied. Recalibrate
   through this workflow; an unlabelled profile cannot establish camera identity.

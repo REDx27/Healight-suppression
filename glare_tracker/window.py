@@ -21,6 +21,9 @@ from glare_tracker import __version__
 from glare_tracker.calibration import (
     load_driver_depth_calibration,
     load_monocular_range_calibration,
+    load_stereo_calibration,
+    stereo_profile_compatible,
+    stereo_profile_name,
 )
 from glare_tracker.camera import VideoCaptureThread
 from glare_tracker.capture import CameraDiscoveryThread
@@ -41,6 +44,20 @@ from glare_tracker.widgets import (
     ReadoutPanel, Scene3DWidget, SceneWorkspace, Windshield2DWidget,
     GuidedCalibrationWizard, IconFactory,
 )
+
+
+def stereo_calibration_prompt_needed(devices, primary, secondary, profile):
+    """Return whether the selected ordered road pair needs guided calibration."""
+    available = {device.index: (device.width, device.height) for device in devices}
+    if primary == secondary or primary not in available or secondary not in available:
+        return False
+    # Discovery reports each device's current default mode, while the runtime
+    # requests a shared 640x480 mode.  Validate an existing profile against its
+    # own recorded resolution here; runtime compatibility is checked again
+    # against the frames actually negotiated by both cameras.
+    expected_size = profile.cam1.image_size if profile is not None else available[primary]
+    return not stereo_profile_compatible(
+        profile, primary, secondary, expected_size)
 
 
 class MainWindow(QMainWindow):
@@ -99,6 +116,8 @@ class MainWindow(QMainWindow):
         self.headlight_thread = None
         self._headlight_camera_available = False
         self._camera_discovery_thread = None
+        self._last_discovered_devices = []
+        self._stereo_calibration_prompted = False
 
         # ── layout ──
         self._build_layout()
@@ -862,6 +881,7 @@ class MainWindow(QMainWindow):
         self._camera_discovery_thread.start()
 
     def _on_cameras_discovered(self, devices):
+        self._last_discovered_devices = list(devices)
         self.controls.set_available_cameras(devices)
         if devices:
             noun = "camera" if len(devices) == 1 else "cameras"
@@ -881,6 +901,38 @@ class MainWindow(QMainWindow):
         if self._camera_discovery_thread is not None:
             self._camera_discovery_thread.deleteLater()
             self._camera_discovery_thread = None
+        QTimer.singleShot(0, self._offer_stereo_calibration)
+
+    def _offer_stereo_calibration(self):
+        """Offer calibration once per launch after camera discovery releases devices."""
+        if self._stereo_calibration_prompted or not self._last_discovered_devices:
+            return
+        primary = self.controls.spin_headlight_camera.value()
+        secondary = self.controls.spin_headlight_camera_2.value()
+        try:
+            profile = load_stereo_calibration(stereo_profile_name(primary, secondary))
+        except Exception:
+            profile = None
+        if not stereo_calibration_prompt_needed(
+                self._last_discovered_devices, primary, secondary, profile):
+            return
+        self._stereo_calibration_prompted = True
+        prompt = QMessageBox(self)
+        prompt.setIcon(QMessageBox.Information)
+        prompt.setWindowTitle("Calibrate road stereo cameras")
+        prompt.setText(
+            f"Road cameras {primary} (LEFT) and {secondary} (RIGHT) do not have a "
+            "compatible calibration profile.")
+        prompt.setInformativeText(
+            "Calibrate without the dark filters first. The guide will calibrate LEFT, "
+            "RIGHT, then the fixed stereo pair. You can skip this for now; metric stereo "
+            "depth will remain disabled until a valid profile is saved.")
+        calibrate = prompt.addButton("Calibrate now", QMessageBox.AcceptRole)
+        prompt.addButton("Skip for now", QMessageBox.RejectRole)
+        prompt.exec_()
+        if prompt.clickedButton() is calibrate:
+            self.controls.combo_detection_setup.setCurrentText("Stereo Cameras")
+            self._open_stereo_calibration()
 
     def _driver_camera_changed(self):
         was_running = self.cap_thread.isRunning()

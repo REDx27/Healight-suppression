@@ -3,10 +3,10 @@
 **Project:** Low-Cost Active Windshield Glare Suppression System
 **Software:** GlareTracker v1.2 development source
 **Original milestone snapshot:** 2026-10-05
-**Consolidated through:** 2026-10-27
+**Consolidated through:** 2026-11-03
 **Prepared for:** Project teammate and later thesis development
-**Reviewed source baseline:** commit `22517d7` plus the current stereo-calibration working tree
-**Current automated verification:** 98 tests passed on Python 3.13
+**Reviewed source baseline:** commit `e990901` plus the current guided-calibration working tree
+**Current automated verification:** 101 tests passed on Python 3.13
 **Document status:** Long-form design and milestone reference; current execution
 status is maintained in `PROJECT_STATUS.md` and `docs/plans/VALIDATION_PLAN.md`.
 
@@ -20,7 +20,7 @@ status is maintained in `PROJECT_STATUS.md` and `docs/plans/VALIDATION_PLAN.md`.
 
 ## Document purpose
 
-### Latest development decision — 2026-10-27
+### Latest development decision — 2026-11-03
 
 The operator confirmed **two road cameras plus the driver camera**. Single-road
 light detection worked with a sunglass lens; the second road-camera feed became
@@ -28,15 +28,19 @@ live but stereo did not operate reliably. Accuracy is poor by observation, not y
 quantified. Camera availability is therefore no longer the known blocker, though
 simultaneous operation of all three cameras remains to be validated.
 
-The agreed next phase is rigid mounting, chessboard intrinsic/stereo calibration,
+The agreed next phase is rigid mounting, individual and stereo calibration,
 then stationary-light tuning with Driver Position Fixed. Only after this road-pair
 bring-up should live driver tracking and the remaining physical validation stages
 resume. The new UI captures paired raw images, fits and gates calibration, archives
 evidence, and saves ordered-camera/resolution-bound profiles. Stereo without a
 compatible profile is preview-only; the assumed 900 px focal length / 25 cm baseline
 fallback is removed. Per-camera candidate and match counts make tuning observable.
-Unrelated monocular/manual controls are hidden in stereo mode; their workflows are
-preserved for regression and comparison.
+The first guided implementation now offers Calibrate/Skip after discovery and enforces
+LEFT individual calibration, RIGHT individual calibration, then paired stereo fitting
+with fixed intrinsics. Unrelated monocular/manual controls are hidden in stereo mode;
+their workflows are preserved for regression and comparison. This first slice retains
+the checkerboard path; ChArUco, post-filter verification, photometric comparison and
+the broader interface reduction remain planned.
 
 This is software preparation, not physical calibration completion. Ordinary USB
 grabs are sequential, not hardware-synchronized. Fit-set errors do not prove
@@ -104,7 +108,7 @@ The current software includes:
 - guarded camera-to-windshield extrinsic fitting and analysis tools;
 - stale-sample rejection and fail-safe clearing;
 - disabled-by-default experimental secondary-display blocker output; and
-- 98 automated regression tests at the current milestone.
+- 101 automated regression tests at the current milestone.
 
 The current software does **not** yet provide a validated end-to-end glare-blocking
 system. The main missing items are physical evidence and live calibration integration:
@@ -904,7 +908,7 @@ should report the resulting blocked screen area as well as coverage success.
 | 2D windshield view | Implemented | Separate normalized glare points and bounds state |
 | Separate telemetry pane | Implemented | Eye coordinates and labeled light/eye intersections |
 | Guided driver/lamp calibration | Partial | Stable one-point demonstration profiles, not full metric installation |
-| Intrinsic/stereo chessboard workflow | Software implemented for road pair | Paired capture, fit gates and profile loading; physical validation and standalone driver intrinsic UI remain |
+| Intrinsic/stereo chessboard workflow | Software implemented for road pair | Startup Calibrate/Skip plus ordered LEFT, RIGHT and paired capture; fixed-intrinsic stereo gates and profile loading; physical/filter validation and standalone driver intrinsic UI remain |
 | Camera-to-windshield extrinsics | Software ready; physical integration pending | Rigid transforms, solvePnP fitting, held-out validation, compatibility guards, and a CLI exist; no installed profile has passed and the live pipelines do not yet apply one |
 | LCD blocker output | Experimental software implemented | Disabled-by-default secondary-display window renders feathered spots and clears to white; stripped-panel validation is pending |
 | Blocker merging and sizing | Planned | Needed for overlapping paths and real coverage |
@@ -944,8 +948,9 @@ The detector-era checkpoint contained twenty-seven tests covering:
 - immediate replacement of a stale false single-source track when the lamp appears at
   a different image position.
 
-The current Python 3.13 suite contains **98 passing tests**, including synthetic stereo
-fitting, profile compatibility, calibrated matching, and mocked capture/UI paths.
+The current Python 3.13 suite contains **101 passing tests**, including synthetic stereo
+fitting with supplied individual intrinsics, startup prompt policy, staged workflow,
+profile compatibility, calibrated matching, and mocked capture/UI paths.
 Earlier coverage adds geometry
 boundaries, timestamped telemetry/video, ground-truth analysis, rigid transforms,
 guarded extrinsic fitting, physical-intersection error decomposition, latency and stale
@@ -1010,9 +1015,10 @@ It is valid only for the same controlled lamp and capture behavior.
 
 Each camera needs images of a known checkerboard at different positions and angles.
 Intrinsic calibration estimates focal lengths, principal point, and lens distortion.
-The backend exists in `calibration.py`. The road-pair chessboard dialog now fits both
-cameras' intrinsics as part of stereo calibration. A standalone full intrinsic
-calibration UI for the driver camera remains outside this workflow.
+The backend exists in `calibration.py`. The road-pair chessboard dialog now captures
+and fits LEFT and RIGHT independently, archives both results, and only then enables
+the paired stereo stage. A standalone full intrinsic calibration UI for the driver
+camera remains outside this workflow.
 
 ### 10.5 Stereo calibration
 
@@ -1296,13 +1302,14 @@ binocular-preserving driver-eye filter, and report raw versus filtered measureme
 ### Stage 5 - Complete calibration chain
 
 **Goal:** express all positions in verified LCD-relative centimetres.
-**State:** intrinsic/stereo backends and guarded extrinsic tools exist; installed
-physical validation, operator workflow, and live-profile application remain missing.
+**State:** the road-pair operator workflow and guarded intrinsic/stereo backends exist;
+installed physical/filter validation, ChArUco/held-out metrics, extrinsic integration,
+and complete live-profile application remain missing.
 
 Tasks:
 
-1. expose single-camera checkerboard calibration;
-2. expose road stereo calibration;
+1. replace or augment the initial checkerboard stages with ChArUco and held-out metrics;
+2. implement post-filter geometric and photometric verification;
 3. collect fit and held-out windshield targets for each installed camera;
 4. pass the predeclared centimetre limits and repeatability/remount checks;
 5. apply only device-, resolution-, intrinsic-, and mount-compatible profiles in the
@@ -1724,4 +1731,4 @@ incorporated into this reference as follows:
 Conflicts were resolved using current source and automated tests first, followed by
 `PROJECT_STATUS.md`, maintained documentation, Git history, dated physical evidence,
 and finally the chat summaries. Historical 4-, 11-, 12-, and 27-test checkpoints remain
-development provenance; the authoritative current software result is 98 passing tests.
+development provenance; the authoritative current software result is 101 passing tests.

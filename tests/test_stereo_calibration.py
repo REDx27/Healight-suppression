@@ -14,6 +14,7 @@ import glare_tracker.calibration as calibration
 import glare_tracker.headlight_detector as detector
 import glare_tracker.widgets.stereo_calibration as wizard
 from glare_tracker.operating_modes import OperatingMode
+from glare_tracker.capture import CameraDevice
 from glare_tracker.widgets.controls import ControlsPanel
 
 
@@ -108,6 +109,44 @@ def test_synthetic_chessboard_fit_recovers_baseline(monkeypatch):
     assert not wizard.calibration_quality(result, pairs, (9, 6))["passed"]
 
 
+def test_staged_stereo_fit_uses_supplied_intrinsics(monkeypatch):
+    truth = stereo_result()
+    objects = calibration._build_object_points((9, 6), 2.5)
+    pairs, corners = [], {}
+    for i in range(12):
+        rotation = np.array([0.04 * (i % 4 - 1), 0.07 * (i // 4 - 1), 0.02 * i])
+        translation = np.array([-8. + i % 3 * 2, -6. + i % 4, 70. + i * 5])
+        pair = []
+        for side in range(2):
+            frame = np.full((480, 640, 3), i * 2 + side, np.uint8)
+            image_points, _ = cv2.projectPoints(
+                objects, rotation, translation + np.array([-10. * side, 0., 0.]),
+                truth.cam1.camera_matrix, truth.cam1.dist_coeffs)
+            corners[i * 2 + side] = image_points.astype(np.float32)
+            pair.append(frame)
+        pairs.append(tuple(pair))
+    monkeypatch.setattr(
+        calibration, "detect_checkerboard",
+        lambda frame, pattern: corners[int(frame[0, 0, 0])])
+    result = calibration.calibrate_stereo_with_intrinsics(
+        [pair[0] for pair in pairs], [pair[1] for pair in pairs],
+        truth.cam1, truth.cam2)
+    assert result.baseline_cm == pytest.approx(10., abs=0.02)
+    assert np.array_equal(result.cam1.camera_matrix, truth.cam1.camera_matrix)
+    assert np.array_equal(result.cam2.camera_matrix, truth.cam2.camera_matrix)
+
+
+def test_startup_prompt_only_for_missing_or_incompatible_pair():
+    from glare_tracker.window import stereo_calibration_prompt_needed
+    devices = [CameraDevice(1, 640, 480, "fake"), CameraDevice(2, 640, 480, "fake")]
+    assert stereo_calibration_prompt_needed(devices, 1, 2, None)
+    assert not stereo_calibration_prompt_needed(devices, 1, 2, stereo_result())
+    assert not stereo_calibration_prompt_needed(devices, 1, 1, None)
+    assert not stereo_calibration_prompt_needed(devices, 1, 3, None)
+    mismatched = [devices[0], CameraDevice(2, 1280, 720, "fake")]
+    assert not stereo_calibration_prompt_needed(mismatched, 1, 2, stereo_result())
+
+
 def test_calibrated_matching_and_rejection():
     left = SimpleNamespace(observations=[observation(332.5)])
     right = SimpleNamespace(observations=[observation(307.5)])
@@ -143,6 +182,23 @@ def test_dialog_rejects_duplicate_poses_and_archives_profile(tmp_path, monkeypat
     assert dialog.saved_path.is_file()
     assert (dialog.session_dir / "report.json").is_file()
     assert (dialog.session_dir / "accepted_calib.npz").is_file()
+    dialog.close()
+
+
+def test_dialog_advances_left_right_stereo_and_archives_intrinsics(tmp_path, monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(calibration, "_calibration_dir", lambda: tmp_path)
+    dialog = wizard.StereoCalibrationDialog(1, 2)
+    dialog.session_dir = tmp_path / "stereo_sessions" / "staged"
+    dialog.session_dir.mkdir(parents=True)
+    individual = stereo_result().cam1
+    dialog._single_fit_done(individual)
+    assert dialog.stage == "right"
+    assert (dialog.session_dir / "left_intrinsic_calib.npz").is_file()
+    dialog._single_fit_done(individual)
+    assert dialog.stage == "stereo"
+    assert (dialog.session_dir / "right_intrinsic_calib.npz").is_file()
+    assert dialog.start.text() == "Start STEREO calibration"
     dialog.close()
 
 
