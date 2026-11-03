@@ -9,6 +9,7 @@ from __future__ import annotations
 import sys
 import time
 from dataclasses import dataclass, replace
+from functools import lru_cache
 from typing import Optional
 
 import cv2
@@ -59,7 +60,7 @@ class LightDetectionSettings:
     max_area_px: float = 50000.0
     blur_size: int = 3
     morphology_iterations: int = 1
-    max_sources: int = 1
+    max_sources: int = 4
     match_distance_px: float = 80.0
     require_local_contrast: bool = True
     local_contrast_threshold: int = 8
@@ -824,6 +825,48 @@ def _warning_frame(frame: np.ndarray, text: str) -> np.ndarray:
     return preview
 
 
+def _optimal_stereo_pairs(possible_pairs):
+    """Return a maximum-cardinality, minimum-cost one-to-one assignment.
+
+    A greedy matcher can consume the best partner for a later source and lose
+    an otherwise valid second light.  The detector exposes at most eight
+    candidates per image, so an exact bit-mask assignment is small enough to
+    run per frame and makes the result independent of contour ordering.
+
+    Each input item is ``(cost, primary_index, secondary_index, *metadata)``.
+    """
+    if not possible_pairs:
+        return []
+
+    by_primary = {}
+    for pair in possible_pairs:
+        by_primary.setdefault(int(pair[1]), []).append(pair)
+    primary_indices = tuple(sorted(by_primary))
+
+    @lru_cache(maxsize=None)
+    def solve(primary_offset, used_secondary_mask):
+        if primary_offset >= len(primary_indices):
+            return 0, 0.0, ()
+
+        # A candidate may be clutter or may have no trustworthy partner.
+        best = solve(primary_offset + 1, used_secondary_mask)
+        primary_index = primary_indices[primary_offset]
+        for pair in by_primary[primary_index]:
+            secondary_index = int(pair[2])
+            bit = 1 << secondary_index
+            if used_secondary_mask & bit:
+                continue
+            count, cost, selected = solve(
+                primary_offset + 1, used_secondary_mask | bit)
+            option = (count + 1, cost + float(pair[0]), (pair,) + selected)
+            if option[0] > best[0] or (
+                    option[0] == best[0] and option[1] < best[1]):
+                best = option
+        return best
+
+    return list(solve(0, 0)[2])
+
+
 def _match_stereo_candidates(
     primary: DetectionFrame,
     secondary: DetectionFrame,
@@ -849,34 +892,42 @@ def _match_stereo_candidates(
             output.append(tuple(float(value) for value in rectified))
 
     possible_pairs = []
+    primary_ranks = {
+        index: rank for rank, (index, _) in enumerate(sorted(
+            enumerate(projected_primary), key=lambda item: item[1][0]))}
+    secondary_ranks = {
+        index: rank for rank, (index, _) in enumerate(sorted(
+            enumerate(projected_secondary), key=lambda item: item[1][0]))}
+    rank_scale = float(max(1, len(projected_primary) - 1, len(projected_secondary) - 1))
     for primary_index, (x1, y1) in enumerate(projected_primary):
         for secondary_index, (x2, y2) in enumerate(projected_secondary):
             row_error = abs(y1 - y2)
             disparity = x1 - x2
             if row_error <= 3.0 and disparity > 0.1:
+                first = primary.observations[primary_index]
+                second = secondary.observations[secondary_index]
                 confidence = (
-                    primary.observations[primary_index].confidence
-                    + secondary.observations[secondary_index].confidence
+                    first.confidence + second.confidence
                 ) / 2.0
+                size_ratio = max(first.diameter_px, second.diameter_px) / max(
+                    1.0, min(first.diameter_px, second.diameter_px))
+                rank_error = abs(
+                    primary_ranks[primary_index] - secondary_ranks[secondary_index]
+                ) / rank_scale
                 possible_pairs.append((
-                    row_error - 4.0 * confidence,
+                    row_error
+                    + 1.5 * abs(np.log(size_ratio))
+                    + 4.0 * rank_error
+                    - 2.0 * confidence,
                     primary_index,
                     secondary_index,
                     disparity,
                     row_error,
                 ))
 
-    used_primary = set()
-    used_secondary = set()
     candidates = []
     for _, primary_index, secondary_index, disparity, row_error in sorted(
-            possible_pairs):
-        if (primary_index in used_primary
-                or secondary_index in used_secondary):
-            continue
-        used_primary.add(primary_index)
-        used_secondary.add(secondary_index)
-
+            _optimal_stereo_pairs(possible_pairs), key=lambda pair: pair[1]):
         x1, y1 = projected_primary[primary_index]
         focal = float(calibration.P1[0, 0])
         cx = float(calibration.P1[0, 2])
@@ -928,6 +979,14 @@ def _match_uncalibrated_candidates(
     possible_pairs = []
     single_source_scene = (
         len(primary.observations) == 1 and len(secondary.observations) == 1)
+    primary_ranks = {
+        index: rank for rank, (index, _) in enumerate(sorted(
+            enumerate(primary.observations), key=lambda item: item[1].center[0]))}
+    secondary_ranks = {
+        index: rank for rank, (index, _) in enumerate(sorted(
+            enumerate(secondary.observations), key=lambda item: item[1].center[0]))}
+    rank_scale = float(max(
+        1, len(primary.observations) - 1, len(secondary.observations) - 1))
     for left_index, left in enumerate(primary.observations):
         for right_index, right in enumerate(secondary.observations):
             row_error = abs(
@@ -940,18 +999,21 @@ def _match_uncalibrated_candidates(
             size_limit = 10.0 if single_source_scene else 6.0
             if row_error <= row_limit and size_ratio <= size_limit:
                 confidence = (left.confidence + right.confidence) / 2.0
+                rank_error = abs(
+                    primary_ranks[left_index] - secondary_ranks[right_index]
+                ) / rank_scale
                 possible_pairs.append((
-                    row_error + 0.02 * abs(np.log(size_ratio)) - 0.05 * confidence,
+                    row_error
+                    + 0.08 * abs(np.log(size_ratio))
+                    + 0.50 * rank_error
+                    - 0.05 * confidence,
                     left_index, right_index,
                 ))
 
-    used_left, used_right, candidates = set(), set(), []
+    candidates = []
     focal_px = width / (2.0 * np.tan(np.deg2rad(70.0) / 2.0))
-    for _, left_index, right_index in sorted(possible_pairs):
-        if left_index in used_left or right_index in used_right:
-            continue
-        used_left.add(left_index)
-        used_right.add(right_index)
+    for _, left_index, right_index in sorted(
+            _optimal_stereo_pairs(possible_pairs), key=lambda pair: pair[1]):
         left = primary.observations[left_index]
         right = secondary.observations[right_index]
         x_cm = (left.center[0] - width / 2.0) * assumed_depth_cm / focal_px

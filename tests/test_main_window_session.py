@@ -83,7 +83,7 @@ def test_custom_detection_panel_and_feed_preview_controls():
     window = MainWindow()
 
     settings = window.controls.get_light_detection_settings()
-    assert settings.max_sources == 1
+    assert settings.max_sources == 4
     assert settings.brightness_threshold == 200
     assert settings.blur_size == 3
     assert settings.local_contrast_threshold == 8
@@ -101,7 +101,7 @@ def test_custom_detection_panel_and_feed_preview_controls():
     assert preset.local_contrast_threshold == 8
     assert preset.max_area_px == 50000
     assert preset.minimum_confidence == 0.25
-    assert preset.max_sources == 1
+    assert preset.max_sources == 4
     assert preset.background_rejection is False
     assert window.camera_feeds.headlight.preview_combo.currentText() == (
         "Detection overlay")

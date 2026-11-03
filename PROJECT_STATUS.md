@@ -1,18 +1,18 @@
 # GlareTracker — Project Status & Specification
 
-> **Last Updated:** 2026-10-27
+> **Last Updated:** 2026-11-04
 > **Python Version:** 3.13 (current test environment; 3.11 previously verified)
 > **Platform:** Windows 10/11
 > **UI Framework:** PyQt5
 > **3D Engine:** PyQtGraph GLViewWidget (OpenGL)
 > **Source Version:** 1.2.0
-> **Reviewed Baseline:** `22517d7` plus the stereo-calibration working tree
+> **Reviewed Baseline:** current guided-calibration and automatic multi-light working tree
 
 ---
 
 ## 0. Current Status Snapshot
 
-### Active development priority — 2026-10-27
+### Active development priority — 2026-11-04
 
 The operator now has **two road cameras plus one driver camera**. The single-road
 setup detected a light using a sunglass lens. Both stereo feeds opened, but stereo
@@ -23,12 +23,18 @@ Next: rigid road-camera mounting, chessboard calibration, and stationary-light
 range checks in Driver Position Fixed mode. The app now exposes paired raw-image
 capture and intrinsic/stereo fitting, preserves calibration sessions, gates fit
 quality, and binds active profiles to camera order and resolution. Uncalibrated
-stereo remains preview-only instead of using assumed baseline/focal length. Per-view
+metric stereo remains fail-closed; its optional assumed-depth display is visibly
+labelled as a rough demonstration. Per-view
 candidate and match counts support tuning; irrelevant monocular/manual controls
-are hidden in stereo mode, not deleted from other workflows.
+are hidden in stereo mode, not deleted from other workflows. The two-lamp bench
+attempt found that the startup configuration still limited detection to one source.
+The default is now four configurable candidates, and exact one-to-one stereo assignment
+automatically pairs and triangulates each valid source without fixed lamp positions.
+Rough uncalibrated intersections remain labelled demonstrations and cannot provide
+trustworthy depth or physical LCD output.
 
-**Verification:** 98 automated tests pass on Python 3.13. No new physical validation
-has been performed. Live camera-to-windshield transforms and all physical exit
+**Verification:** 110 automated tests pass on Python 3.13. No completed calibrated
+physical validation has been performed. Live camera-to-windshield transforms and all physical exit
 criteria remain outstanding. Follow
 [the stereo setup guide](docs/guides/STEREO_CHESSBOARD_SETUP_GUIDE.md), then resume
 [the validation plan](docs/plans/VALIDATION_PLAN.md). Earlier dated snapshots below
@@ -52,7 +58,7 @@ GlareTracker is currently a **source-level visualization and tracking prototype*
 | Test workflow | Repeatable functional test checklist covering startup, eyes, calibration, geometry, simulation, road detection, end-to-end operation, and shutdown |
 | Guided demonstration calibration | Wizard captures stable IPD and lamp-size references, saves camera-specific profiles, enables IPD driver depth and apparent-size road range, and labels estimated versus assumed values |
 | Operating policy | Explicit Run/Standby/Stop states and four source modes now control camera ownership, manual inputs, calculations, previews, and movement simulation consistently |
-| Automated coverage | 98 tests cover geometry boundaries, mode/state policy, diagnostics/video recording and soak verification, ground-truth analysis, rigid transforms, guarded extrinsic fitting, latency/stale rejection, LCD fail-safe behavior, camera assignment, detector robustness, binocular/multi-light geometry, stereo fitting/profile guards, stable source identity, tuning UI, calibration profiles, and bright-spot observations |
+| Automated coverage | 110 tests cover geometry boundaries, mode/state policy, diagnostics/video recording and soak verification, ground-truth analysis, rigid transforms, guarded extrinsic fitting, latency/stale rejection, LCD fail-safe behavior, camera assignment, detector robustness, automatic two-source stereo association, binocular/multi-light geometry, stereo fitting/profile guards, stable source identity, tuning UI, calibration profiles, and bright-spot observations |
 | Recording soak gate | Strict verifier checks finalized duration, timestamp order, exact streams, sidecar/manifest/decode counts, frame gaps/FPS, drops and writer errors |
 
 ### Current blockers to the physical prototype

@@ -5,8 +5,8 @@
 > test pass. Hardware-dependent stages remain open until measurements and
 > evidence files have been collected.
 
-Current software verification: **98 automated tests passed on Python 3.13** on
-2026-11-03. This does not satisfy any open physical exit criterion.
+Current software verification: **110 automated tests passed on Python 3.13** on
+2026-11-04. This does not satisfy any open physical exit criterion.
 
 ## Immediate prerequisite: road stereo bring-up (2026-10-27)
 
@@ -62,7 +62,7 @@ have passed.
 - [x] Run the complete automated regression suite.
 
 Exit evidence: `tests/test_geometry.py`; 15 focused tests pass and the current
-complete suite contains 107 passing tests on Python 3.13.
+complete suite contains 110 passing tests on Python 3.13.
 
 ## 2. Timestamped CSV/video logging
 

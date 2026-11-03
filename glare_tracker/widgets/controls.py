@@ -331,7 +331,7 @@ class ControlsPanel(QWidget):
         self.spin_morphology_iterations.setMinimumHeight(30)
         self.spin_max_light_sources = QSpinBox()
         self.spin_max_light_sources.setRange(1, 8)
-        self.spin_max_light_sources.setValue(1)
+        self.spin_max_light_sources.setValue(4)
         self.spin_max_light_sources.setMinimumHeight(30)
         self.spin_light_match_distance = self._make_spin(
             5.0, 500.0, 80.0, " px")
@@ -695,7 +695,7 @@ class ControlsPanel(QWidget):
         self.spin_min_source_confidence.setValue(25)
         self.combo_blur_size.setCurrentText("3 x 3")
         self.spin_morphology_iterations.setValue(1)
-        self.spin_max_light_sources.setValue(1)
+        self.spin_max_light_sources.setValue(4)
         self.spin_light_match_distance.setValue(80)
         self._update_detection_control_states()
 

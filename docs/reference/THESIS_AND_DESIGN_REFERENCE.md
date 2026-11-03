@@ -3,10 +3,10 @@
 **Project:** Low-Cost Active Windshield Glare Suppression System
 **Software:** GlareTracker v1.2 development source
 **Original milestone snapshot:** 2026-10-05
-**Consolidated through:** 2026-11-03
+**Consolidated through:** 2026-11-04
 **Prepared for:** Project teammate and later thesis development
-**Reviewed source baseline:** commit `e990901` plus the current guided-calibration working tree
-**Current automated verification:** 107 tests passed on Python 3.13
+**Reviewed source baseline:** current guided-calibration and automatic multi-light working tree
+**Current automated verification:** 110 tests passed on Python 3.13
 **Document status:** Long-form design and milestone reference; current execution
 status is maintained in `PROJECT_STATUS.md` and `docs/plans/VALIDATION_PLAN.md`.
 
@@ -20,7 +20,7 @@ status is maintained in `PROJECT_STATUS.md` and `docs/plans/VALIDATION_PLAN.md`.
 
 ## Document purpose
 
-### Latest development decision — 2026-11-03
+### Latest development decision — 2026-11-04
 
 The operator confirmed **two road cameras plus the driver camera**. Single-road
 light detection worked with a sunglass lens; the second road-camera feed became
@@ -52,12 +52,23 @@ measured mixed profile, verifies frames during discovery, and rejects the observ
 ceiling fluorescent strip as an unsuitable point-source candidate.
 
 An explicitly non-metric **ROUGH UNCALIBRATED** matcher is available only for camera
-alignment and detector tuning before calibration. It pairs the controlled scene's
-single candidate across both views and shows an assumed-depth marker, but is isolated
-from validity flags, diagnostic measurements and LCD output. Amber rough intersections
-may be rendered for demonstration, remain explicitly labelled, and must not be reported
-as measured geometry. Color-bar/test-pattern frames are rejected and reported against
-the affected feed.
+alignment and detector tuning before calibration. The automatic detector now retains
+up to four sources by default (operator-configurable up to eight), and an exact
+maximum-cardinality/minimum-cost assignment pairs the complete candidate sets without
+hard-coded lamp positions or car-headlight spacing. The same generic association is
+used before and after calibration; calibrated pairs are triangulated independently and
+receive stable source IDs. Rough mode instead shows assumed-depth markers and is
+isolated from validity flags, diagnostic measurements and LCD output. Amber rough
+intersections may be rendered for demonstration, remain explicitly labelled, and must
+not be reported as measured geometry. Color-bar/test-pattern frames are rejected and
+reported against the affected feed.
+
+The 2026-11-04 two-lamp bench attempt exposed the former one-source startup limit: a
+second valid observation could be discarded before stereo association. The default and
+daylight preset now keep four candidates, and synthetic checks cover automatic two-light
+matching in both rough and calibrated paths. Correct metric location still requires the
+chessboard profile; without intrinsics, baseline and rectification, image pixels do not
+contain enough information for trustworthy depth or windshield intersection values.
 
 This is software preparation, not physical calibration completion. Ordinary USB
 grabs are sequential, not hardware-synchronized. Fit-set errors do not prove
@@ -125,7 +136,7 @@ The current software includes:
 - guarded camera-to-windshield extrinsic fitting and analysis tools;
 - stale-sample rejection and fail-safe clearing;
 - disabled-by-default experimental secondary-display blocker output; and
-- 107 automated regression tests at the current milestone.
+- 110 automated regression tests at the current milestone.
 
 The current software does **not** yet provide a validated end-to-end glare-blocking
 system. The main missing items are physical evidence and live calibration integration:
@@ -809,10 +820,11 @@ away. Reliable triangulation requires:
 - a transform from the stereo rig into the LCD coordinate system.
 
 The current calibrated stereo code contains rectified-point matching (vertical error
-at most 3 px), positive-disparity depth and temporal smoothing. As of 2026-10-27,
-uncalibrated stereo produces previews only. Camera order and frame resolution must
-match the saved profile. The simplified rig-to-world mapping is still an approximation
-until installed camera-to-windshield transforms are integrated and measured.
+at most 3 px), exact one-to-one multi-source assignment, positive-disparity depth and
+temporal smoothing. Uncalibrated stereo produces labelled previews only. Camera order
+and frame resolution must match the saved profile. The simplified rig-to-world mapping
+is still an approximation until installed camera-to-windshield transforms are
+integrated and measured.
 
 ### 8.6 Ray-to-panel intersection
 
@@ -965,7 +977,8 @@ The detector-era checkpoint contained twenty-seven tests covering:
 - immediate replacement of a stale false single-source track when the lamp appears at
   a different image position.
 
-The current Python 3.13 suite contains **107 passing tests**, including synthetic stereo
+The current Python 3.13 suite contains **110 passing tests**, including automatic
+two-source rough association and calibrated triangulation, plus synthetic stereo
 fitting with supplied individual intrinsics, startup prompt policy, staged workflow,
 profile compatibility, calibrated matching, and mocked capture/UI paths.
 Earlier coverage adds geometry
@@ -1748,4 +1761,4 @@ incorporated into this reference as follows:
 Conflicts were resolved using current source and automated tests first, followed by
 `PROJECT_STATUS.md`, maintained documentation, Git history, dated physical evidence,
 and finally the chat summaries. Historical 4-, 11-, 12-, and 27-test checkpoints remain
-development provenance; the authoritative current software result is 107 passing tests.
+development provenance; the authoritative current software result is 110 passing tests.

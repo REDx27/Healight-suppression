@@ -50,6 +50,17 @@ def test_detector_returns_independent_bright_sources():
                for observation in observations)
 
 
+def test_default_detector_keeps_multiple_bright_sources():
+    frame = np.full((240, 320, 3), 30, dtype=np.uint8)
+    cv2.circle(frame, (85, 100), 9, (255, 255, 255), -1)
+    cv2.circle(frame, (235, 125), 9, (255, 255, 255), -1)
+
+    observations = detect_bright_spot_observations(
+        frame, LightDetectionSettings())
+
+    assert len(observations) == 2
+
+
 def test_original_preview_is_the_unmodified_camera_frame():
     frame = np.zeros((120, 160, 3), dtype=np.uint8)
     frame[:, :, 1] = 73
@@ -239,7 +250,9 @@ def test_startup_defaults_choose_lamp_instead_of_nose_like_highlight():
 
     processed = process_bright_spots(frame, LightDetectionSettings())
 
-    assert len(processed.observations) == 1
+    # Multi-source mode may retain weaker candidates for later stereo
+    # correspondence, but the true neutral lamp must rank first.
+    assert processed.observations
     source = processed.observations[0]
     assert source.detection_method == "peak core"
     assert source.center[0] == pytest.approx(95.0, abs=3.0)

@@ -203,6 +203,48 @@ def test_rough_uncalibrated_matching_is_visual_only_and_relaxed():
         left, right, (240, 320, 3), 19.5) == []
 
 
+def test_rough_uncalibrated_matching_pairs_two_lights_automatically():
+    left = SimpleNamespace(observations=[
+        observation(75, 105),
+        observation(245, 125),
+    ])
+    # Reverse confidence/detection order to ensure matching is geometric, not
+    # dependent on the list order returned by either detector.
+    right = SimpleNamespace(observations=[
+        observation(230, 127),
+        observation(62, 108),
+    ])
+
+    candidates = detector._match_uncalibrated_candidates(
+        left, right, (240, 320, 3), 19.5)
+
+    assert len(candidates) == 2
+    assert candidates[0].image_center == pytest.approx((75, 105))
+    assert candidates[0].secondary_image_center == pytest.approx((62, 108))
+    assert candidates[1].image_center == pytest.approx((245, 125))
+    assert candidates[1].secondary_image_center == pytest.approx((230, 127))
+
+
+def test_calibrated_matching_triangulates_two_lights_automatically():
+    left = SimpleNamespace(observations=[
+        observation(282.5, 230),
+        observation(372.5, 250),
+    ])
+    right = SimpleNamespace(observations=[
+        observation(347.5, 250),
+        observation(257.5, 230),
+    ])
+
+    candidates = detector._match_stereo_candidates(
+        left, right, stereo_result(), (480, 640, 3), 19.5)
+
+    assert len(candidates) == 2
+    assert candidates[0].secondary_image_center == pytest.approx((257.5, 230))
+    assert candidates[1].secondary_image_center == pytest.approx((347.5, 250))
+    assert all(candidate.position[1] == pytest.approx(200.0)
+               for candidate in candidates)
+
+
 def test_color_bar_test_pattern_is_rejected_but_scene_is_not():
     bars = np.zeros((240, 320, 3), np.uint8)
     colors = [(255, 255, 0), (0, 255, 0), (255, 0, 255), (0, 0, 255)]

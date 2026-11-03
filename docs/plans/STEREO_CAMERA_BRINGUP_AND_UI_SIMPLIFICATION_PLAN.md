@@ -32,7 +32,8 @@ The first runnable slice is implemented:
 - every stage rejects near-duplicate poses and archives raw images and reports;
 - the stereo fit gates RMS, rectified row error, baseline sign and finite matrices
   before an active ordered profile can be saved; and
-- the Python 3.13 regression suite contains 107 passing tests.
+- the Python 3.13 regression suite contains 110 passing tests, including automatic
+  two-light association in rough and calibrated stereo paths.
 
 Live diagnosis on 2026-11-03 found the immediate bring-up failure: indices 0 and 2
 are the external road pair, while index 1 is the integrated driver camera; the old
