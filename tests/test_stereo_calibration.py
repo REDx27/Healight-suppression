@@ -189,6 +189,31 @@ def test_calibrated_matching_and_rejection():
     assert detector._match_stereo_candidates(left, right, stereo_result(), *args) == []
 
 
+def test_rough_uncalibrated_matching_is_visual_only_and_relaxed():
+    left = SimpleNamespace(observations=[observation(200, 100)])
+    right = SimpleNamespace(observations=[observation(170, 112)])
+    candidates = detector._match_uncalibrated_candidates(
+        left, right, (240, 320, 3), 19.5)
+    assert len(candidates) == 1
+    assert candidates[0].position[1] == 120.0
+    assert candidates[0].confidence <= 0.45
+    right.observations = [observation(170, 239)]
+    left.observations.append(observation(250, 20))
+    assert detector._match_uncalibrated_candidates(
+        left, right, (240, 320, 3), 19.5) == []
+
+
+def test_color_bar_test_pattern_is_rejected_but_scene_is_not():
+    bars = np.zeros((240, 320, 3), np.uint8)
+    colors = [(255, 255, 0), (0, 255, 0), (255, 0, 255), (0, 0, 255)]
+    for index, color in enumerate(colors):
+        bars[:, index * 80:(index + 1) * 80] = color
+    scene = np.tile(np.arange(320, dtype=np.uint8), (240, 1))
+    scene = cv2.cvtColor(scene, cv2.COLOR_GRAY2BGR)
+    assert detector._is_color_bar_test_pattern(bars)
+    assert not detector._is_color_bar_test_pattern(scene)
+
+
 def test_dialog_rejects_duplicate_poses_and_archives_profile(tmp_path, monkeypatch):
     app = QApplication.instance() or QApplication([])
     monkeypatch.setattr(calibration, "_calibration_dir", lambda: tmp_path)
@@ -276,8 +301,9 @@ def test_runtime_previews_without_uncalibrated_depth(monkeypatch, profile_state)
                       SimpleNamespace(observations=[observation(307.5)])])
     monkeypatch.setattr(detector, "process_bright_spots", lambda *args: next(processed))
     monkeypatch.setattr(detector, "_preview_frame", lambda frame, *args, **kwargs: frame)
-    results, diagnostics, previews = [], [], []
+    results, rough_results, diagnostics, previews = [], [], [], []
     worker.lights_detected.connect(results.append)
+    worker.rough_lights_detected.connect(rough_results.append)
     worker.stereo_diagnostics.connect(diagnostics.append)
     def stop_after_preview(*images):
         previews.append(images)
@@ -287,8 +313,53 @@ def test_runtime_previews_without_uncalibrated_depth(monkeypatch, profile_state)
     assert loaded_names == ["stereo_1_2"]
     assert len(previews) == 1
     assert bool(results) == (profile_state == "valid")
+    assert bool(rough_results) == (profile_state != "valid")
     assert ("previews only" in diagnostics[0]) == (profile_state != "valid")
     assert all(cap.released for cap in captures)
+
+
+def test_runtime_marks_color_bar_stream_invalid(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(detector, "load_stereo_calibration", lambda name: None)
+    worker = detector.HeadlightDetectorThread(0, 2)
+    scene = np.full((240, 320, 3), 35, np.uint8)
+    bars = np.zeros_like(scene)
+    for index, color in enumerate(
+            ((255, 255, 0), (0, 255, 0), (255, 0, 255), (0, 0, 255))):
+        bars[:, index * 80:(index + 1) * 80] = color
+
+    class Capture:
+        def __init__(self, frame):
+            self.frame, self.released = frame, False
+        def grab(self):
+            return True
+        def retrieve(self):
+            return True, self.frame.copy()
+        def release(self):
+            self.released = True
+
+    captures = {0: Capture(scene), 2: Capture(bars)}
+    monkeypatch.setattr(
+        detector, "open_video_capture", lambda index: (captures[index], "fake"))
+    monkeypatch.setattr(
+        detector, "configure_road_stereo_capture", lambda cap: (320, 240, 15.0))
+    monkeypatch.setattr(detector, "_apply_camera_controls", lambda *args: {})
+    statuses, previews, metric, rough = [], [], [], []
+    worker.stereo_stream_status.connect(
+        lambda stream, message, valid: statuses.append((stream, message, valid)))
+    worker.lights_detected.connect(metric.append)
+    worker.rough_lights_detected.connect(rough.append)
+    def stop_after_preview(*images):
+        previews.append(images)
+        worker._running = False
+    worker.stereo_frames_ready.connect(stop_after_preview)
+
+    worker.run()
+
+    assert any(stream == 2 and not valid for stream, _, valid in statuses)
+    assert len(previews) == 1
+    assert metric == [] and rough == []
+    assert all(capture.released for capture in captures.values())
 
 
 def test_calibration_capture_reports_missing_camera_and_releases_first(monkeypatch):

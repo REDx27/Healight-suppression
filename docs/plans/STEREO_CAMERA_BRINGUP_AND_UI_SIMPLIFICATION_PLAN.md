@@ -32,7 +32,7 @@ The first runnable slice is implemented:
 - every stage rejects near-duplicate poses and archives raw images and reports;
 - the stereo fit gates RMS, rectified row error, baseline sign and finite matrices
   before an active ordered profile can be saved; and
-- the Python 3.13 regression suite contains 103 passing tests.
+- the Python 3.13 regression suite contains 107 passing tests.
 
 Live diagnosis on 2026-11-03 found the immediate bring-up failure: indices 0 and 2
 are the external road pair, while index 1 is the integrated driver camera; the old
@@ -42,6 +42,13 @@ default role assignment was wrong. The road pair could not retrieve simultaneous
 stayed at 640 x 480/30 FPS. The implementation now uses those measured profiles,
 verifies real frames during discovery, falls back from dead backend handles, and
 rejects frame-edge/elongated ceiling-light candidates.
+
+For pre-calibration setup only, missing/incompatible stereo profiles now permit a
+clearly labelled **ROUGH UNCALIBRATED** single-source match. It uses relaxed image-row
+pairing and an assumed depth solely to confirm that the same isolated light is visible
+in both feeds. Rough sources are kept out of metric geometry, windshield intersections,
+research validity flags and LCD output. Saturated vertical color-bar/test-pattern
+frames are marked invalid per stream rather than reported as an online camera.
 
 This checkpoint deliberately retains the proven checkerboard detector. ChArUco,
 held-out/per-view metrics, post-filter verification, photometric measurement and UI

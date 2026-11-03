@@ -583,6 +583,23 @@ class MainWindow(QMainWindow):
                 self.camera_feeds.headlight_secondary.set_placeholder(
                     "Camera not detected")
 
+    def _on_stereo_stream_status(self, stream_number, message, available):
+        card = (
+            self.camera_feeds.headlight
+            if stream_number == 1 else self.camera_feeds.headlight_secondary)
+        card.set_status(message, "active" if available else "error")
+
+    def _on_rough_stereo_lights(self, sources):
+        """Display alignment-only matches without geometry or LCD authority."""
+        if not sources or not cameras_enabled(self._session_state):
+            return
+        self._road_position_ready = False
+        self.camera_feeds.headlight.set_status(
+            "ROUGH uncalibrated match - visual alignment only", "warning")
+        self.camera_feeds.headlight_secondary.set_status(
+            "ROUGH uncalibrated match - visual alignment only", "warning")
+        self.tracker.preview_uncalibrated_lights(list(sources))
+
     def _on_auto_lights(self, sources):
         """Consume real independent lights without vehicle-offset modeling."""
 
@@ -1003,6 +1020,10 @@ class MainWindow(QMainWindow):
             self.headlight_thread.stereo_diagnostics.connect(self.controls.stereo_status.setText)
             self.headlight_thread.stereo_frames_ready.connect(
                 self._update_stereo_frames)
+            self.headlight_thread.rough_lights_detected.connect(
+                self._on_rough_stereo_lights)
+            self.headlight_thread.stereo_stream_status.connect(
+                self._on_stereo_stream_status)
         else:
             self.headlight_thread.frame_ready.connect(self._update_headlight_frame)
         self.headlight_thread.lights_detected.connect(self._on_auto_lights)
@@ -1048,6 +1069,9 @@ class MainWindow(QMainWindow):
                 and self._headlight_camera_available):
             self.camera_feeds.headlight.set_status(
                 "Camera connected - no bright light detected", "warning")
+            if self.controls.is_stereo_detection():
+                self.camera_feeds.headlight_secondary.set_status(
+                    "Camera connected - no paired bright light detected", "warning")
 
     def _update_single_projection(self):
         if isinstance(self.headlight_thread, MonocularHeadlightDetectorThread):

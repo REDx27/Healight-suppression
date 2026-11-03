@@ -6,7 +6,7 @@
 **Consolidated through:** 2026-11-03
 **Prepared for:** Project teammate and later thesis development
 **Reviewed source baseline:** commit `e990901` plus the current guided-calibration working tree
-**Current automated verification:** 103 tests passed on Python 3.13
+**Current automated verification:** 107 tests passed on Python 3.13
 **Document status:** Long-form design and milestone reference; current execution
 status is maintained in `PROJECT_STATUS.md` and `docs/plans/VALIDATION_PLAN.md`.
 
@@ -50,6 +50,12 @@ cameras delivered every tested frame; all three cameras also delivered every tes
 frame when the driver remained at 640 x 480/30 FPS. The software now applies this
 measured mixed profile, verifies frames during discovery, and rejects the observed
 ceiling fluorescent strip as an unsuitable point-source candidate.
+
+An explicitly non-metric **ROUGH UNCALIBRATED** matcher is available only for camera
+alignment and detector tuning before calibration. It pairs the controlled scene's
+single candidate across both views and shows an assumed-depth marker, but is isolated
+from windshield geometry, validity flags, diagnostic measurements and LCD output.
+Color-bar/test-pattern frames are rejected and reported against the affected feed.
 
 This is software preparation, not physical calibration completion. Ordinary USB
 grabs are sequential, not hardware-synchronized. Fit-set errors do not prove
@@ -117,7 +123,7 @@ The current software includes:
 - guarded camera-to-windshield extrinsic fitting and analysis tools;
 - stale-sample rejection and fail-safe clearing;
 - disabled-by-default experimental secondary-display blocker output; and
-- 103 automated regression tests at the current milestone.
+- 107 automated regression tests at the current milestone.
 
 The current software does **not** yet provide a validated end-to-end glare-blocking
 system. The main missing items are physical evidence and live calibration integration:
@@ -957,7 +963,7 @@ The detector-era checkpoint contained twenty-seven tests covering:
 - immediate replacement of a stale false single-source track when the lamp appears at
   a different image position.
 
-The current Python 3.13 suite contains **103 passing tests**, including synthetic stereo
+The current Python 3.13 suite contains **107 passing tests**, including synthetic stereo
 fitting with supplied individual intrinsics, startup prompt policy, staged workflow,
 profile compatibility, calibrated matching, and mocked capture/UI paths.
 Earlier coverage adds geometry
@@ -1740,4 +1746,4 @@ incorporated into this reference as follows:
 Conflicts were resolved using current source and automated tests first, followed by
 `PROJECT_STATUS.md`, maintained documentation, Git history, dated physical evidence,
 and finally the chat summaries. Historical 4-, 11-, 12-, and 27-test checkpoints remain
-development provenance; the authoritative current software result is 103 passing tests.
+development provenance; the authoritative current software result is 107 passing tests.

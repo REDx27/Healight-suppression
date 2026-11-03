@@ -91,6 +91,12 @@ saturated ceiling strip instead of a point-like test source. The detector now re
 edge-truncated and strongly elongated saliency candidates, but scene preparation is
 still necessary.
 
+Before calibration, the status may show **ROUGH UNCALIBRATED** when one candidate in
+each feed can be paired. This is an alignment/tuning aid only: its displayed depth is
+assumed, and it cannot produce windshield intersections, valid measurement records or
+LCD output. A feed showing vertical color bars is now marked invalid; replug that
+camera, select Stop, and Run again before continuing.
+
 Read the stereo diagnostics:
 
 - **Calibration required / previews only:** profile missing, wrong camera order,

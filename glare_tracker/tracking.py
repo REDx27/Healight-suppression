@@ -165,6 +165,26 @@ class TrackingController:
             self._readout.set_intersections([])
             self._readout.set_value("light_pos", "-- no tracked sources")
 
+    def preview_uncalibrated_lights(self, sources: list[TrackedLightSource]):
+        """Show rough alignment results without enabling geometry or LCD output."""
+        self._live_light_sources = ()
+        positions = [source.position for source in sources]
+        self._scene_3d.update_lights(positions)
+        self._scene_3d.update_intersections([])
+        self._windshield_2d.clear_glare()
+        if self._lcd_blocker is not None:
+            self._lcd_blocker.clear_output()
+        if sources:
+            source = sources[0]
+            self._readout.set_value(
+                "light_pos",
+                f"ROUGH/UNCALIBRATED {source.stable_id}  "
+                f"X:{source.position[0]:.1f}  assumed Y:{source.position[1]:.1f}  "
+                f"Z:{source.position[2]:.1f}",
+                "#f59e0b",
+            )
+        self._readout.set_intersections([])
+
     def on_manual_eye(self, eye_cm: tuple[float, float, float]):
         """Apply a fixed/manual driver position to the geometry pipeline."""
         self._last_observed_eye_cm = eye_cm

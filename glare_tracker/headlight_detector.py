@@ -797,6 +797,33 @@ def _safe_release(capture):
         pass
 
 
+def _is_color_bar_test_pattern(frame: np.ndarray) -> bool:
+    """Detect the saturated vertical color bars returned by a failed UVC stream."""
+    if frame is None or frame.size == 0 or len(frame.shape) != 3:
+        return False
+    sample = cv2.resize(frame, (64, 48), interpolation=cv2.INTER_AREA)
+    column_colors = sample.astype(np.float32).mean(axis=0)
+    vertical_variation = float(np.mean(np.std(sample.astype(np.float32), axis=0)))
+    jumps = np.linalg.norm(np.diff(column_colors, axis=0), axis=1)
+    channel_range = sample.max(axis=2).astype(np.int16) - sample.min(axis=2).astype(np.int16)
+    saturated_color_fraction = float(np.mean(channel_range >= 140))
+    return bool(
+        vertical_variation <= 18.0
+        and int(np.count_nonzero(jumps >= 70.0)) >= 3
+        and saturated_color_fraction >= 0.45
+    )
+
+
+def _warning_frame(frame: np.ndarray, text: str) -> np.ndarray:
+    preview = frame.copy()
+    cv2.rectangle(preview, (0, 0), (preview.shape[1], 34), (0, 0, 150), -1)
+    cv2.putText(
+        preview, text, (8, 23), cv2.FONT_HERSHEY_SIMPLEX,
+        0.52, (255, 255, 255), 1, cv2.LINE_AA,
+    )
+    return preview
+
+
 def _match_stereo_candidates(
     primary: DetectionFrame,
     secondary: DetectionFrame,
@@ -880,6 +907,62 @@ def _match_stereo_candidates(
             secondary_image_center=second.center,
             diameter_px=(first.diameter_px + second.diameter_px) / 2.0,
             confidence=confidence,
+            timestamp=time.time(),
+        ))
+    return candidates
+
+
+def _match_uncalibrated_candidates(
+    primary: DetectionFrame,
+    secondary: DetectionFrame,
+    frame_shape: tuple[int, ...],
+    camera_height_cm: float,
+    assumed_depth_cm: float = 120.0,
+) -> list[LightCandidate]:
+    """Roughly pair visible blobs for UI preview without claiming stereo depth.
+
+    This path exists only so an operator can align and tune an uncalibrated pair.
+    Its assumed coordinates must never be used as measurement evidence or LCD output.
+    """
+    height, width = frame_shape[:2]
+    possible_pairs = []
+    single_source_scene = (
+        len(primary.observations) == 1 and len(secondary.observations) == 1)
+    for left_index, left in enumerate(primary.observations):
+        for right_index, right in enumerate(secondary.observations):
+            row_error = abs(
+                left.center[1] / max(1.0, height)
+                - right.center[1] / max(1.0, height)
+            )
+            size_ratio = max(left.diameter_px, right.diameter_px) / max(
+                1.0, min(left.diameter_px, right.diameter_px))
+            row_limit = 0.45 if single_source_scene else 0.15
+            size_limit = 10.0 if single_source_scene else 6.0
+            if row_error <= row_limit and size_ratio <= size_limit:
+                confidence = (left.confidence + right.confidence) / 2.0
+                possible_pairs.append((
+                    row_error + 0.02 * abs(np.log(size_ratio)) - 0.05 * confidence,
+                    left_index, right_index,
+                ))
+
+    used_left, used_right, candidates = set(), set(), []
+    focal_px = width / (2.0 * np.tan(np.deg2rad(70.0) / 2.0))
+    for _, left_index, right_index in sorted(possible_pairs):
+        if left_index in used_left or right_index in used_right:
+            continue
+        used_left.add(left_index)
+        used_right.add(right_index)
+        left = primary.observations[left_index]
+        right = secondary.observations[right_index]
+        x_cm = (left.center[0] - width / 2.0) * assumed_depth_cm / focal_px
+        z_cm = camera_height_cm - (
+            left.center[1] - height / 2.0) * assumed_depth_cm / focal_px
+        candidates.append(LightCandidate(
+            position=(float(x_cm), float(assumed_depth_cm), float(z_cm)),
+            image_center=left.center,
+            secondary_image_center=right.center,
+            diameter_px=(left.diameter_px + right.diameter_px) / 2.0,
+            confidence=min(0.45, (left.confidence + right.confidence) * 0.225),
             timestamp=time.time(),
         ))
     return candidates
@@ -1157,8 +1240,10 @@ class HeadlightDetectorThread(QThread):
     stereo_diagnostics = pyqtSignal(str)
     headlight_detected = pyqtSignal(float, float, float)
     lights_detected = pyqtSignal(object)
+    rough_lights_detected = pyqtSignal(object)
     headlight_lost = pyqtSignal()
     camera_status = pyqtSignal(str, bool)
+    stereo_stream_status = pyqtSignal(int, str, bool)
     camera_controls_report = pyqtSignal(object)
     background_status = pyqtSignal(str)
     pipeline_timing = pyqtSignal(object)
@@ -1263,6 +1348,10 @@ class HeadlightDetectorThread(QThread):
                 f"Cameras {self.cam1_idx} ({backend1}) + "
                 f"{self.cam2_idx} ({backend2}) connected (stereo, "
                 f"{modes[0][0]}x{modes[0][1]} @ {modes[0][2]:.1f} FPS)", True)
+            self.stereo_stream_status.emit(
+                1, f"Camera {self.cam1_idx} streaming", True)
+            self.stereo_stream_status.emit(
+                2, f"Camera {self.cam2_idx} streaming", True)
             self.camera_controls_report.emit(primary_report)
             applied_settings_revision = self._settings_revision
 
@@ -1270,6 +1359,7 @@ class HeadlightDetectorThread(QThread):
             frame_number = 0
             last_diagnostics = 0.0
             read_failures = 0
+            stream_healthy = [True, True]
             while self._running:
                 # Sequential grabs reduce readout delay but do not synchronize exposure.
                 capture_started_ns = time.monotonic_ns()
@@ -1299,6 +1389,43 @@ class HeadlightDetectorThread(QThread):
                         raise RuntimeError("Repeated stereo read failures; reconnect and Run again")
                     self.msleep(30)
                     continue
+                health_issues = [
+                    _is_color_bar_test_pattern(frame1),
+                    _is_color_bar_test_pattern(frame2),
+                ]
+                if any(health_issues):
+                    self._source_tracker.clear()
+                    if not lost_announced:
+                        self.headlight_lost.emit()
+                        lost_announced = True
+                    for stream_index, invalid in enumerate(health_issues, start=1):
+                        if invalid and stream_healthy[stream_index - 1]:
+                            camera_index = self.cam1_idx if stream_index == 1 else self.cam2_idx
+                            self.stereo_stream_status.emit(
+                                stream_index,
+                                f"Camera {camera_index} returned color bars/test pattern; "
+                                "replug it, then Stop and Run",
+                                False,
+                            )
+                            stream_healthy[stream_index - 1] = False
+                    shown1 = (
+                        _warning_frame(frame1, "INVALID CAMERA TEST PATTERN")
+                        if health_issues[0] else frame1)
+                    shown2 = (
+                        _warning_frame(frame2, "INVALID CAMERA TEST PATTERN")
+                        if health_issues[1] else frame2)
+                    self.stereo_frames_ready.emit(
+                        _to_qimage(shown1), _to_qimage(shown2))
+                    self.stereo_diagnostics.emit(
+                        "Invalid camera stream (color bars/test pattern); no detection")
+                    self.msleep(60)
+                    continue
+                for stream_index, healthy in enumerate(stream_healthy, start=1):
+                    if not healthy:
+                        camera_index = self.cam1_idx if stream_index == 1 else self.cam2_idx
+                        self.stereo_stream_status.emit(
+                            stream_index, f"Camera {camera_index} stream recovered", True)
+                        stream_healthy[stream_index - 1] = True
                 read_failures = 0
                 frame_number += 1
 
@@ -1332,19 +1459,19 @@ class HeadlightDetectorThread(QThread):
                     and stereo_profile_compatible(
                         self._calib, self.cam1_idx, self.cam2_idx,
                         (frame1.shape[1], frame1.shape[0])))
-                if not compatible:
-                    self._source_tracker.clear()
-                candidates = _match_stereo_candidates(
-                    processed1,
-                    processed2,
-                    self._calib if compatible else None,
-                    frame1.shape,
-                    self.camera_height_cm,
+                candidates = (
+                    _match_stereo_candidates(
+                        processed1, processed2, self._calib,
+                        frame1.shape, self.camera_height_cm)
+                    if compatible else
+                    _match_uncalibrated_candidates(
+                        processed1, processed2, frame1.shape,
+                        self.camera_height_cm)
                 )
                 now = time.monotonic()
                 if now - last_diagnostics >= 0.5:
                     prefix = ("Calibrated" if compatible else
-                              "Calibration required (missing/incompatible profile); previews only")
+                              "ROUGH UNCALIBRATED (visual only; previews only for measurements)")
                     self.stereo_diagnostics.emit(
                         f"{prefix} | Left: {len(processed1.observations)} | "
                         f"Right: {len(processed2.observations)} | Matches: {len(candidates)}")
@@ -1363,7 +1490,8 @@ class HeadlightDetectorThread(QThread):
                         - primary_capture_complete_ns
                     ),
                     "detection_complete_ns": detection_complete_ns,
-                    "observation_valid": bool(sources),
+                    "observation_valid": bool(sources) and compatible,
+                    "rough_preview_valid": bool(sources) and not compatible,
                 })
                 if not sources:
                     if not lost_announced:
@@ -1371,8 +1499,11 @@ class HeadlightDetectorThread(QThread):
                         lost_announced = True
                 else:
                     lost_announced = False
-                    self.lights_detected.emit(sources)
-                    self.headlight_detected.emit(*sources[0].position)
+                    if compatible:
+                        self.lights_detected.emit(sources)
+                        self.headlight_detected.emit(*sources[0].position)
+                    else:
+                        self.rough_lights_detected.emit(sources)
 
                 preview1 = _preview_frame(
                     frame1,

@@ -338,6 +338,18 @@ class _Readout:
         self.intersections = tuple(intersections)
 
 
+class _LCD:
+    def __init__(self):
+        self.cleared = 0
+        self.updated = []
+
+    def clear_output(self):
+        self.cleared += 1
+
+    def update_intersections(self, intersections):
+        self.updated.append(tuple(intersections))
+
+
 class _AutoControls:
     def is_auto_light(self):
         return True
@@ -379,3 +391,22 @@ def test_camera_geometry_uses_complete_source_list_without_vehicle_offsets():
     assert [entry[0] for entry in readout.intersections] == [
         "L7/E1", "L7/E2", "L9/E1", "L9/E2",
     ]
+
+
+def test_rough_uncalibrated_preview_never_reaches_geometry_or_lcd():
+    scene, windshield, readout, lcd = _Scene(), _Windshield(), _Readout(), _LCD()
+    tracker = TrackingController(
+        scene, windshield, readout, _AutoControls(), lcd_blocker=lcd)
+    rough = TrackedLightSource(
+        "L1", (5.0, 120.0, 12.0), 1.0, 0.3, "new",
+        (160.0, 120.0), 10.0, (150.0, 122.0),
+    )
+
+    tracker.preview_uncalibrated_lights([rough])
+
+    assert scene.lights == (rough.position,)
+    assert scene.intersections == ()
+    assert windshield.glares == ()
+    assert lcd.cleared == 1
+    assert lcd.updated == []
+    assert tracker._live_light_sources == ()
