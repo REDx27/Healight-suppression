@@ -399,6 +399,8 @@ def test_failed_stereo_fit_names_reversed_order_and_row_error(tmp_path):
 def test_stereo_panel_hides_unrelated_controls():
     app = QApplication.instance() or QApplication([])
     panel = ControlsPanel()
+    assert panel.combo_detection_setup.currentText() == "Stereo Cameras"
+    assert panel.combo_detection_setup.isHidden()
     panel.combo_operating_mode.setCurrentText(OperatingMode.DRIVER_FIXED.value)
     panel.combo_detection_setup.setCurrentText("Stereo Cameras")
     assert not panel.btn_stereo_calibration.isHidden()
@@ -406,9 +408,33 @@ def test_stereo_panel_hides_unrelated_controls():
     assert panel.spin_camera_hfov.isHidden()
     assert panel.movement_group.isHidden()
     assert panel.light_group.isHidden()
+    assert panel.spin_min_light_area.isHidden()
+    assert not panel.btn_stable_stereo_preset.isHidden()
+    panel.check_show_advanced_detection.setChecked(True)
+    assert not panel.spin_min_light_area.isHidden()
     panel.combo_detection_setup.setCurrentText("Single Camera")
     assert panel.btn_stereo_calibration.isHidden()
     assert not panel.spin_single_depth.isHidden()
+    panel.close()
+
+
+def test_stereo_detection_presets_preserve_stable_and_balanced_choices():
+    app = QApplication.instance() or QApplication([])
+    panel = ControlsPanel()
+
+    panel.load_stable_stereo_preset()
+    stable = panel.get_light_detection_settings()
+    assert stable.min_area_px == 656
+    assert stable.blur_size == 9
+    assert stable.morphology_iterations == 5
+    assert stable.match_distance_px == 221
+
+    panel.load_balanced_stereo_preset()
+    balanced = panel.get_light_detection_settings()
+    assert balanced.min_area_px == 60
+    assert balanced.blur_size == 5
+    assert balanced.morphology_iterations == 2
+    assert balanced.match_distance_px == 110
     panel.close()
 
 
@@ -439,8 +465,12 @@ def test_runtime_previews_without_uncalibrated_depth(monkeypatch, profile_state)
         lambda cap: ((320, 240, 15.0) if cap is captures[0]
                      else (352, 240, 15.0)))
     monkeypatch.setattr(detector, "_apply_camera_controls", lambda *args: {})
-    processed = iter([SimpleNamespace(observations=[observation(332.5)]),
-                      SimpleNamespace(observations=[observation(307.5)])])
+    processed = iter([
+        SimpleNamespace(observations=[observation(332.5)]),
+        SimpleNamespace(observations=[observation(307.5)]),
+        SimpleNamespace(observations=[observation(332.5)]),
+        SimpleNamespace(observations=[observation(307.5)]),
+    ])
     monkeypatch.setattr(detector, "process_bright_spots", lambda *args: next(processed))
     monkeypatch.setattr(detector, "_preview_frame", lambda frame, *args, **kwargs: frame)
     results, rough_results, diagnostics, previews = [], [], [], []
@@ -449,11 +479,12 @@ def test_runtime_previews_without_uncalibrated_depth(monkeypatch, profile_state)
     worker.stereo_diagnostics.connect(diagnostics.append)
     def stop_after_preview(*images):
         previews.append(images)
-        worker._running = False
+        if len(previews) == 2:
+            worker._running = False
     worker.stereo_frames_ready.connect(stop_after_preview)
     worker.run()
     assert loaded_names == ["stereo_1_2"]
-    assert len(previews) == 1
+    assert len(previews) == 2
     assert bool(results) == (profile_state == "valid")
     assert bool(rough_results) == (profile_state != "valid")
     assert ("previews only" in diagnostics[0]) == (profile_state != "valid")

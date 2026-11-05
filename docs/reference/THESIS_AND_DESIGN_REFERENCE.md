@@ -5,8 +5,8 @@
 **Original milestone snapshot:** 2026-10-05
 **Consolidated through:** 2026-11-05
 **Prepared for:** Project teammate and later thesis development
-**Reviewed source baseline:** current guided-calibration and automatic multi-light working tree
-**Current automated verification:** 118 tests passed on Python 3.13
+**Reviewed source baseline:** calibrated stereo milestone plus focused interface/tracker cleanup
+**Current automated verification:** 120 tests passed on Python 3.13
 **Document status:** Long-form design and milestone reference; current execution
 status is maintained in `PROJECT_STATUS.md` and `docs/plans/VALIDATION_PLAN.md`.
 
@@ -72,6 +72,24 @@ detector-accuracy result: aggressive spatial filtering can suppress noise while 
 erasing smaller or edge-of-overlap sources. One-camera dropout limited the observed
 windshield-intersection region, and camera-to-windshield extrinsics remain unapplied.
 
+The calibrated milestone was preserved and pushed as commit `3118d4f` before the next
+software changes. The cleanup that follows separates the proven high-suppression values
+from a coverage-oriented experiment. **Current Rig - Smooth** reproduces the operator's
+exact settings above. **Balanced Stereo Coverage** uses confidence 30%, saliency 4,
+adaptive ceiling 200, minimum area 60 px, 5 x 5 blur, two cleanup passes, four sources,
+and 110 px identity distance. The second profile is a hypothesis to be bench-tested,
+not a new accuracy result.
+
+Stereo temporal association now requires two consecutive observations before publishing
+a new light, applies stronger smoothing, bridges at most five missing frames, and uses
+both left and right image positions when maintaining an identity. This is intended to
+reject one-frame clutter and reduce depth jumps caused by a wrong right-camera partner.
+Detailed detector controls are collapsed by default, the active build starts in stereo,
+camera roles are labelled LEFT/RIGHT, and legacy monocular depth controls remain in code
+but are removed from the normal workflow. Diagnostics now distinguish a missing LEFT or
+RIGHT observation from a general no-pair condition. These changes passed 120 automated
+tests, but their physical improvement still requires a recorded comparison on the rig.
+
 The operator confirmed **two road cameras plus the driver camera**. Single-road
 light detection worked with a sunglass lens; the second road-camera feed became
 live but stereo initially did not operate reliably. Accuracy is poor by observation,
@@ -79,10 +97,11 @@ not yet quantified. Camera availability is therefore no longer the known blocker
 All three feeds have now operated together in a live bench session, although a formal
 recorded soak and repeatability test remain outstanding.
 
-The agreed next phase is rigid mounting, individual and stereo calibration,
-then stationary-light tuning with Driver Position Fixed. Only after this road-pair
-bring-up should live driver tracking and the remaining physical validation stages
-resume. The new UI captures paired raw images, fits and gates calibration, archives
+The immediate next phase is a controlled A/B bench comparison of the Smooth and Balanced
+profiles with Driver Position Fixed, followed by shared-field-of-view measurement and
+camera-to-windshield extrinsic calibration. Only after this road-pair validation should
+live driver tracking and the remaining physical validation stages resume. The UI captures
+paired raw images, fits and gates calibration, archives
 evidence, and saves ordered-camera/resolution-bound profiles. Stereo without a
 compatible profile is preview-only; the assumed 900 px focal length / 25 cm baseline
 fallback is removed. Per-camera candidate and match counts make tuning observable.
@@ -531,12 +550,19 @@ Repository history provides the following useful implementation anchors:
 | `074b2d0` | Ribbon controls and responsive navigation |
 | `8078b0f` | Rejected semantic/rainbow theme experiment |
 | `bd0f101` | Cohesive simulation-studio theme |
-| `782d7ca` | Stabilized camera tracking and documented v1.2 baseline; pushed to `origin/master` |
-| `26aed1c` | Operating modes and guided demonstration calibration; current local `master` |
+| `782d7ca` | Stabilized camera tracking and documented v1.2 baseline |
+| `26aed1c` | Operating modes and guided demonstration calibration |
+| `22517d7` | Multi-source tracking and research validation framework |
+| `9ed237d` | Guided road-stereo calibration workflow |
+| `fd648de` | Live qualitative three-light detection milestone |
+| `72da09b` | Replacement stereo-camera startup correction |
+| `c0d925e` | Visual stereo-calibration guidance |
+| `1782643` | Persisted and locked corrected camera roles |
+| `3118d4f` | Saved calibrated stereo tracking milestone; pushed to `origin/master` |
 
-The current working tree contains substantial later validation, logging, extrinsic,
-LCD, detector, and documentation work that has not yet been committed. A commit hash
-therefore identifies a historical checkpoint, not the complete present state.
+The current cleanup/optimization changes follow the preserved `3118d4f` milestone. A
+commit hash identifies a reproducible checkpoint; machine-local calibration profiles and
+physical evidence must still be archived separately with each experiment.
 
 ---
 
@@ -861,7 +887,11 @@ background-difference, threshold, and peak-core images. Contours from the accept
 masks become candidates with centre, diameter, area, confidence, bounds, and detection
 method. Confidence and area gates remove weak candidates, while a temporal
 `LightSourceTracker` assigns stable IDs, smooths positions, briefly tolerates dropout,
-and replaces stale clutter when a new dominant source appears elsewhere.
+and replaces stale clutter when a new dominant source appears elsewhere. In calibrated
+stereo operation a source is published only after two observations, and association
+uses displacement in both camera images. A candidate whose left position is plausible
+but whose right position belongs to a different lamp therefore cannot immediately
+corrupt the existing track's disparity-derived depth.
 
 This architecture separates vehicle interpretation from optical detection. A
 motorcycle-like test can request one source, while a multi-lamp experiment can request
@@ -889,8 +919,9 @@ away. Reliable triangulation requires:
 - a transform from the stereo rig into the LCD coordinate system.
 
 The current calibrated stereo code contains rectified-point matching (vertical error
-at most 3 px), exact one-to-one multi-source assignment, positive-disparity depth and
-temporal smoothing. Uncalibrated stereo produces labelled previews only. Camera order
+at most 3 px), exact one-to-one multi-source assignment, positive-disparity depth,
+two-frame track confirmation and binocular temporal association. Uncalibrated stereo
+produces labelled previews only. Camera order
 and frame resolution must match the saved profile. The simplified rig-to-world mapping
 is still an approximation until installed camera-to-windshield transforms are
 integrated and measured.
@@ -992,9 +1023,9 @@ should report the resulting blocked screen area as well as coverage success.
 | Manual light position | Implemented | X/Y/Z input and simulated movement paths |
 | Single road-camera detection | Implemented | Multi-candidate bright-region detector, stable IDs, confidence/state records, and tunable previews |
 | Single road-camera range | Demonstration only | Assumed depth or calibrated same-lamp apparent-size estimate |
-| Stereo road pipeline | Partial | Multi-candidate epipolar matching and triangulation exist; physical accuracy pending |
+| Stereo road pipeline | Calibrated qualitative bring-up | Saved 2-LEFT/1-RIGHT profile passes fit gates and baseline plausibility; held-out physical accuracy and camera-to-windshield mapping remain pending |
 | Independent multiple-light detection | Live qualitative bring-up achieved | One, two, and three lights were automatically detected and associated on 2026-11-04; recorded repetitions, calibrated positions and accuracy validation remain pending |
-| Custom road-camera tuning | Implemented | Optional exposure/brightness/contrast/gain plus brightness, saliency, confidence, background-change, area, blur, cleanup, source-count, and ID-distance controls; a daylight phone-light preset provides a repeatable starting point |
+| Road-camera tuning | Implemented; physical A/B test pending | Normal UI provides exact Smooth and proposed Balanced presets plus a compact summary; detailed camera/detector controls are collapsed under advanced tuning |
 | Processing-stage previews | Implemented | Each road feed can show detection overlay, original, final candidate mask, background difference, multi-scale saliency, local contrast, strongest-channel intensity, or blurred intensity |
 | Broad-light and clutter rejection | Implemented in software | Six-scale eight-neighbor contrast suppresses broad illumination and long edges, while confidence ranks saturated core/halo sources above weaker clutter; synthetic screenshot-like coverage passes |
 | Controlled-scene background rejection | Implemented | Captured reference frame removes stationary bright regions such as a nearby window while retaining newly introduced test lights |

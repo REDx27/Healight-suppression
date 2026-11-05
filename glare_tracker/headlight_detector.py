@@ -1357,10 +1357,13 @@ class HeadlightDetectorThread(QThread):
         self._background_gray_2: Optional[np.ndarray] = None
         self._capture_background_requested = False
         self._source_tracker = LightSourceTracker(
-            smoothing_alpha=0.24,
-            hold_frames=4,
+            # Confirm new stereo lights over two frames. This removes brief
+            # clutter without forcing spatial filters to erase small lamps.
+            smoothing_alpha=0.18,
+            hold_frames=5,
             match_distance_px=self.detection_settings.match_distance_px,
             max_sources=self.detection_settings.max_sources,
+            confirmation_hits=2,
         )
         self._calib: Optional[StereoCalibrationResult] = None
 
@@ -1571,9 +1574,21 @@ class HeadlightDetectorThread(QThread):
                 if now - last_diagnostics >= 0.5:
                     prefix = ("Calibrated" if compatible else
                               "ROUGH UNCALIBRATED (visual only; previews only for measurements)")
+                    left_count = len(processed1.observations)
+                    right_count = len(processed2.observations)
+                    if left_count and not right_count:
+                        pairing_note = "RIGHT source missing / outside shared view"
+                    elif right_count and not left_count:
+                        pairing_note = "LEFT source missing / outside shared view"
+                    elif left_count and right_count and not candidates:
+                        pairing_note = "No valid stereo pair"
+                    elif candidates:
+                        pairing_note = "paired"
+                    else:
+                        pairing_note = "searching"
                     self.stereo_diagnostics.emit(
-                        f"{prefix} | Left: {len(processed1.observations)} | "
-                        f"Right: {len(processed2.observations)} | Matches: {len(candidates)}")
+                        f"{prefix} | Left: {left_count} | Right: {right_count} | "
+                        f"Matches: {len(candidates)} | {pairing_note}")
                     last_diagnostics = now
                 sources = self._source_tracker.update(candidates)
                 detection_complete_ns = time.monotonic_ns()

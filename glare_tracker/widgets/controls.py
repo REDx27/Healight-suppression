@@ -209,6 +209,7 @@ class ControlsPanel(QWidget):
         self._configure_form(auto_layout)
         self.combo_detection_setup = QComboBox()
         self.combo_detection_setup.addItems(["Single Camera", "Stereo Cameras"])
+        self.combo_detection_setup.setCurrentText("Stereo Cameras")
         # Current replacement-camera installation: DirectShow enumerates the
         # integrated laptop camera first and the identical USB pair next.
         # Discovery corrects this automatically by device name if indices move.
@@ -244,8 +245,8 @@ class ControlsPanel(QWidget):
         auto_layout.addRow("Setup:", self.combo_detection_setup)
         auto_layout.addRow(self.check_lock_driver_camera)
         auto_layout.addRow("Driver camera:", self.spin_driver_camera)
-        auto_layout.addRow("Headlight camera:", self.spin_headlight_camera)
-        auto_layout.addRow("Headlight camera 2:", self.spin_headlight_camera_2)
+        auto_layout.addRow("Road LEFT camera:", self.spin_headlight_camera)
+        auto_layout.addRow("Road RIGHT camera:", self.spin_headlight_camera_2)
         auto_layout.addRow("Assumed depth:", self.spin_single_depth)
         auto_layout.addRow("Camera HFOV:", self.spin_camera_hfov)
         auto_layout.addRow(self.btn_refresh_cameras)
@@ -261,7 +262,7 @@ class ControlsPanel(QWidget):
         # Camera-driver controls and software image-processing controls are
         # intentionally grouped together so the operator can tune a new lamp
         # while watching the selectable processing previews above the feed.
-        self.light_detection_group = QGroupBox("Custom Light Detection")
+        self.light_detection_group = QGroupBox("Light Detection")
         self.light_detection_group.setProperty("section", "light")
         detection_layout = QFormLayout(self.light_detection_group)
         detection_layout.setSpacing(6)
@@ -320,6 +321,24 @@ class ControlsPanel(QWidget):
             "Load Daylight Phone-Light Preset")
         self.btn_daylight_phone_preset.setMinimumHeight(34)
 
+        self.btn_stable_stereo_preset = QPushButton(
+            "Current Rig - Smooth Preset")
+        self.btn_stable_stereo_preset.setMinimumHeight(34)
+        self.btn_stable_stereo_preset.setToolTip(
+            "Load the exact values that produced stable tracking on the current rig. "
+            "This favors stability over distant-light coverage.")
+        self.btn_balanced_stereo_preset = QPushButton(
+            "Balanced Stereo Coverage Preset")
+        self.btn_balanced_stereo_preset.setMinimumHeight(34)
+        self.btn_balanced_stereo_preset.setToolTip(
+            "Use moderate spatial filtering with temporal confirmation so smaller "
+            "lights remain detectable.")
+        self.check_show_advanced_detection = QCheckBox(
+            "Show advanced detector tuning")
+        self.detection_summary = QLabel()
+        self.detection_summary.setObjectName("mutedText")
+        self.detection_summary.setWordWrap(True)
+
         self.check_adaptive_threshold = QCheckBox(
             "Adapt threshold to scene")
         self.check_adaptive_threshold.setChecked(True)
@@ -356,6 +375,10 @@ class ControlsPanel(QWidget):
         self.detection_note.setObjectName("mutedText")
         self.detection_note.setWordWrap(True)
 
+        detection_layout.addRow(self.btn_stable_stereo_preset)
+        detection_layout.addRow(self.btn_balanced_stereo_preset)
+        detection_layout.addRow(self.check_show_advanced_detection)
+        detection_layout.addRow(self.detection_summary)
         detection_layout.addRow(self.check_apply_camera_controls)
         detection_layout.addRow(self.check_auto_exposure)
         detection_layout.addRow("Exposure:", self.spin_exposure)
@@ -408,6 +431,30 @@ class ControlsPanel(QWidget):
             self.reset_light_detection_defaults)
         self.btn_daylight_phone_preset.clicked.connect(
             self.load_daylight_phone_preset)
+        self.btn_stable_stereo_preset.clicked.connect(
+            self.load_stable_stereo_preset)
+        self.btn_balanced_stereo_preset.clicked.connect(
+            self.load_balanced_stereo_preset)
+        self.check_show_advanced_detection.toggled.connect(
+            self._update_detection_advanced_visibility)
+        for widget in (
+            self.spin_local_contrast_threshold,
+            self.spin_min_source_confidence,
+            self.spin_brightness_threshold,
+            self.spin_min_light_area,
+            self.spin_max_light_area,
+            self.spin_morphology_iterations,
+            self.spin_max_light_sources,
+            self.spin_light_match_distance,
+        ):
+            widget.valueChanged.connect(self._refresh_detection_summary)
+        for widget in (
+            self.check_adaptive_threshold,
+            self.check_local_contrast,
+        ):
+            widget.toggled.connect(self._refresh_detection_summary)
+        self.combo_blur_size.currentTextChanged.connect(
+            self._refresh_detection_summary)
 
         # ── Light movement ──
         movement_group = QGroupBox("Simulation")
@@ -502,6 +549,8 @@ class ControlsPanel(QWidget):
 
         layout.addStretch()
         self._update_detection_control_states()
+        self._update_detection_advanced_visibility()
+        self._refresh_detection_summary()
         self._update_mode_controls()
 
     # ── helpers ──────────────────────────────────────────────────────
@@ -554,12 +603,11 @@ class ControlsPanel(QWidget):
         road = policy.use_road_camera
         stereo = self.combo_detection_setup.currentText() == "Stereo Cameras"
         form = self.auto_camera_group.layout()
-        # Role assignments are always editable. Whether a role opens a camera
-        # is controlled by the selected operating mode.
-        for widget in (
-            self.combo_detection_setup,
-            self.spin_headlight_camera,
-        ):
+        # The active research build is calibrated stereo. The legacy
+        # single-camera path remains in code for regression/fallback use, but
+        # its setup/depth controls no longer clutter the normal workflow.
+        self._set_form_row_visible(form, self.combo_detection_setup, False)
+        for widget in (self.spin_headlight_camera,):
             self._set_form_row_visible(form, widget, True)
             widget.setEnabled(True)
         for widget in (
@@ -647,6 +695,54 @@ class ControlsPanel(QWidget):
                 "Camera controls ON — manual exposure and image controls are "
                 "requested. Camera readback appears here.")
 
+        self._refresh_detection_summary()
+
+    def _update_detection_advanced_visibility(self):
+        """Keep normal calibrated-stereo operation compact and focused."""
+
+        visible = self.check_show_advanced_detection.isChecked()
+        form = self.light_detection_group.layout()
+        for widget in (
+            self.check_apply_camera_controls,
+            self.check_auto_exposure,
+            self.spin_exposure,
+            self.spin_camera_brightness,
+            self.spin_camera_contrast,
+            self.spin_camera_gain,
+            self.camera_control_feedback,
+            self.check_background_rejection,
+            self.spin_background_difference,
+            self.btn_capture_background,
+            self.btn_clear_background,
+            self.background_status,
+            self.check_local_contrast,
+            self.spin_local_contrast_threshold,
+            self.spin_min_source_confidence,
+            self.check_adaptive_threshold,
+            self.spin_brightness_threshold,
+            self.spin_min_light_area,
+            self.spin_max_light_area,
+            self.combo_blur_size,
+            self.spin_morphology_iterations,
+            self.spin_max_light_sources,
+            self.spin_light_match_distance,
+            self.btn_daylight_phone_preset,
+            self.btn_reset_light_detection,
+            self.detection_note,
+        ):
+            self._set_form_row_visible(form, widget, visible)
+
+    def _refresh_detection_summary(self):
+        if not hasattr(self, "detection_summary"):
+            return
+        settings = self.get_light_detection_settings()
+        self.detection_summary.setText(
+            f"Active: confidence {settings.minimum_confidence:.0%}, "
+            f"area {settings.min_area_px:.0f}-{settings.max_area_px:.0f} px, "
+            f"blur {settings.blur_size}x{settings.blur_size}, cleanup "
+            f"{settings.morphology_iterations}, up to {settings.max_sources} "
+            "sources. New stereo tracks are confirmed across frames.")
+
     def _minimum_light_area_changed(self, value):
         if value > self.spin_max_light_area.value():
             self.spin_max_light_area.setValue(value)
@@ -710,6 +806,42 @@ class ControlsPanel(QWidget):
         self.spin_morphology_iterations.setValue(1)
         self.spin_max_light_sources.setValue(4)
         self.spin_light_match_distance.setValue(80)
+        self._update_detection_control_states()
+
+    def load_stable_stereo_preset(self):
+        """Load the exact smooth settings validated on the current camera rig."""
+
+        self.check_apply_camera_controls.setChecked(False)
+        self.check_background_rejection.setChecked(False)
+        self.check_adaptive_threshold.setChecked(True)
+        self.spin_brightness_threshold.setValue(200)
+        self.check_local_contrast.setChecked(True)
+        self.spin_local_contrast_threshold.setValue(4)
+        self.spin_min_source_confidence.setValue(32)
+        self.spin_min_light_area.setValue(656)
+        self.spin_max_light_area.setValue(50000)
+        self.combo_blur_size.setCurrentText("9 x 9")
+        self.spin_morphology_iterations.setValue(5)
+        self.spin_max_light_sources.setValue(8)
+        self.spin_light_match_distance.setValue(221)
+        self._update_detection_control_states()
+
+    def load_balanced_stereo_preset(self):
+        """Favor shared-FOV coverage while temporal tracking removes flicker."""
+
+        self.check_apply_camera_controls.setChecked(False)
+        self.check_background_rejection.setChecked(False)
+        self.check_adaptive_threshold.setChecked(True)
+        self.spin_brightness_threshold.setValue(200)
+        self.check_local_contrast.setChecked(True)
+        self.spin_local_contrast_threshold.setValue(4)
+        self.spin_min_source_confidence.setValue(30)
+        self.spin_min_light_area.setValue(60)
+        self.spin_max_light_area.setValue(50000)
+        self.combo_blur_size.setCurrentText("5 x 5")
+        self.spin_morphology_iterations.setValue(2)
+        self.spin_max_light_sources.setValue(4)
+        self.spin_light_match_distance.setValue(110)
         self._update_detection_control_states()
 
     def get_light_detection_settings(self):

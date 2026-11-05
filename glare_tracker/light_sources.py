@@ -67,11 +67,13 @@ class LightSourceTracker:
         hold_frames: int = 4,
         match_distance_px: float = 80.0,
         max_sources: int = 4,
+        confirmation_hits: int = 1,
     ):
         self.smoothing_alpha = float(np.clip(smoothing_alpha, 0.01, 1.0))
         self.hold_frames = max(0, int(hold_frames))
         self.match_distance_px = max(1.0, float(match_distance_px))
         self.max_sources = max(1, int(max_sources))
+        self.confirmation_hits = max(1, int(confirmation_hits))
         self._tracks: dict[int, _MutableTrack] = {}
         self._next_track_number = 1
 
@@ -99,19 +101,31 @@ class LightSourceTracker:
         unmatched_tracks = set(self._tracks)
         unmatched_candidates = set(range(len(candidates)))
 
-        # Greedy nearest-neighbour matching is adequate for compact bright
-        # points in the controlled scene and, importantly, makes identity
-        # independent of contour brightness ordering.
+        # Use both rectified image positions for stereo tracks. Matching only
+        # the left image allowed a momentary right-camera mismatch to update a
+        # valid track with a wildly different disparity (and therefore depth).
+        # Monocular candidates continue to use the primary image position.
         possible_matches = []
         for track_number, track in self._tracks.items():
             for candidate_index, candidate in enumerate(candidates):
-                distance = float(np.linalg.norm(
+                primary_distance = float(np.linalg.norm(
                     track.image_center - np.asarray(candidate.image_center)
                 ))
-                if distance <= self.match_distance_px:
-                    possible_matches.append(
-                        (distance, track_number, candidate_index)
-                    )
+                if primary_distance > self.match_distance_px:
+                    continue
+                match_cost = primary_distance
+                if (track.secondary_image_center is not None
+                        and candidate.secondary_image_center is not None):
+                    secondary_distance = float(np.linalg.norm(
+                        track.secondary_image_center
+                        - np.asarray(candidate.secondary_image_center)
+                    ))
+                    if secondary_distance > self.match_distance_px:
+                        continue
+                    match_cost += secondary_distance
+                possible_matches.append(
+                    (match_cost, track_number, candidate_index)
+                )
 
         for _, track_number, candidate_index in sorted(possible_matches):
             if (track_number not in unmatched_tracks
@@ -183,6 +197,7 @@ class LightSourceTracker:
             for track in sorted(
                 self._tracks.values(), key=lambda item: item.track_number
             )
+            if track.hits >= self.confirmation_hits
         ]
 
     def _update_track(self, track: _MutableTrack, candidate: LightCandidate):

@@ -1,5 +1,6 @@
 """Regression coverage for generic multi-source light tracking and tuning."""
 
+from dataclasses import replace
 from types import SimpleNamespace
 
 import cv2
@@ -301,6 +302,43 @@ def test_single_source_tracker_replaces_a_stale_false_candidate_immediately():
     assert second[0].stable_id != first[0].stable_id
     assert second[0].image_center[0] == pytest.approx(240.0)
     assert second[0].state == "new"
+
+
+def test_stereo_tracker_confirms_tracks_and_uses_both_image_positions():
+    tracker = LightSourceTracker(
+        smoothing_alpha=1.0,
+        hold_frames=2,
+        match_distance_px=35.0,
+        max_sources=4,
+        confirmation_hits=2,
+    )
+    first = replace(
+        _candidate(80.0, confidence=0.9),
+        secondary_image_center=(50.0, 100.0),
+    )
+
+    assert tracker.update([first]) == []
+
+    confirmed = tracker.update([replace(
+        first,
+        image_center=(82.0, 100.0),
+        secondary_image_center=(52.0, 100.0),
+        timestamp=2.0,
+    )])
+    assert len(confirmed) == 1
+    stable_id = confirmed[0].stable_id
+
+    # A nearby primary observation paired to a different right-camera lamp
+    # must not corrupt the confirmed source's disparity and depth.
+    mismatched = tracker.update([replace(
+        first,
+        image_center=(84.0, 100.0),
+        secondary_image_center=(180.0, 100.0),
+        timestamp=3.0,
+    )])
+    held = next(source for source in mismatched if source.stable_id == stable_id)
+    assert held.state == "temporarily_lost"
+    assert held.secondary_image_center == pytest.approx((52.0, 100.0))
 
 
 def test_bright_strip_spanning_frame_is_not_a_point_source():
