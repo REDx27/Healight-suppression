@@ -10,7 +10,7 @@ import sys
 import time
 
 import numpy as np
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, QSettings
 from PyQt5.QtGui import QIcon, QImage
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QSplitter, QMessageBox,
@@ -60,6 +60,39 @@ def stereo_calibration_prompt_needed(devices, primary, secondary, profile):
         profile, primary, secondary, expected_size)
 
 
+def camera_roles_for_devices(
+    devices, preferred_driver=0, preferred_primary=1, preferred_secondary=2,
+    lock_integrated=True,
+):
+    """Choose unique driver/road roles, preferring the named integrated camera."""
+
+    available = [int(device.index) for device in devices]
+    if not available:
+        return preferred_driver, preferred_primary, preferred_secondary
+    named_integrated = [
+        int(device.index) for device in devices
+        if any(hint in (getattr(device, "name", "") or "").casefold()
+               for hint in ("integrated", "built-in", "internal"))
+    ]
+    if lock_integrated and named_integrated:
+        driver = named_integrated[0]
+    elif preferred_driver in available:
+        driver = preferred_driver
+    else:
+        driver = available[0]
+
+    road_candidates = [index for index in available if index != driver]
+    primary = (
+        preferred_primary if preferred_primary in road_candidates
+        else (road_candidates[0] if road_candidates else preferred_primary))
+    secondary_candidates = [index for index in road_candidates if index != primary]
+    secondary = (
+        preferred_secondary if preferred_secondary in secondary_candidates
+        else (secondary_candidates[0]
+              if secondary_candidates else preferred_secondary))
+    return driver, primary, secondary
+
+
 class MainWindow(QMainWindow):
     """Assembles all panels and wires signals to the tracking controller."""
 
@@ -70,12 +103,15 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(960, 640)
         self._set_initial_geometry()
         self.setStyleSheet(DARK_STYLESHEET)
+        self._camera_role_settings = QSettings(
+            "GlareTrackerResearch", "GlareTracker")
 
         # ── widgets ──
         self.windshield_2d = Windshield2DWidget()
         self.scene_3d = Scene3DWidget()
         self.readout = ReadoutPanel()
         self.controls = ControlsPanel()
+        self._load_camera_role_settings()
         self.header = ApplicationHeader(__version__)
         self.camera_feeds = CameraFeedPanel()
         self.workspace = SceneWorkspace(self.scene_3d, self.windshield_2d)
@@ -217,6 +253,14 @@ class MainWindow(QMainWindow):
         self.controls.spin_headlight_camera_2.valueChanged.connect(
             self._camera_setup_changed)
         self.controls.spin_driver_camera.valueChanged.connect(self._driver_camera_changed)
+        self.controls.spin_driver_camera.valueChanged.connect(
+            self._save_camera_role_settings)
+        self.controls.spin_headlight_camera.valueChanged.connect(
+            self._save_camera_role_settings)
+        self.controls.spin_headlight_camera_2.valueChanged.connect(
+            self._save_camera_role_settings)
+        self.controls.check_lock_driver_camera.toggled.connect(
+            self._driver_role_lock_changed)
         self.controls.btn_refresh_cameras.clicked.connect(
             self._refresh_available_cameras)
         self.controls.btn_stereo_calibration.clicked.connect(self._open_stereo_calibration)
@@ -861,6 +905,17 @@ class MainWindow(QMainWindow):
             return
         primary = self.controls.spin_headlight_camera.value()
         secondary = self.controls.spin_headlight_camera_2.value()
+        driver = self.controls.spin_driver_camera.value()
+        if (self.controls.check_lock_driver_camera.isChecked()
+                and driver in (primary, secondary)):
+            QMessageBox.warning(
+                self,
+                "Driver camera cannot calibrate road stereo",
+                f"Camera {driver} is locked as the integrated driver camera. "
+                "Refresh cameras so the two external USB cameras are assigned "
+                "to the road roles.",
+            )
+            return
         if primary == secondary:
             QMessageBox.warning(self, "Select two cameras", "Left and right must use different cameras.")
             return
@@ -902,15 +957,81 @@ class MainWindow(QMainWindow):
         self._last_discovered_devices = list(devices)
         self.controls.set_available_cameras(devices)
         if devices:
-            noun = "camera" if len(devices) == 1 else "cameras"
-            self.controls.set_camera_scan_status(
-                f"Found {len(devices)} available {noun}. Choose one for each role."
+            driver, primary, secondary = camera_roles_for_devices(
+                devices,
+                self.controls.spin_driver_camera.value(),
+                self.controls.spin_headlight_camera.value(),
+                self.controls.spin_headlight_camera_2.value(),
+                self.controls.check_lock_driver_camera.isChecked(),
             )
+            self.controls.spin_driver_camera.setValue(driver)
+            self.controls.spin_headlight_camera.setValue(primary)
+            self.controls.spin_headlight_camera_2.setValue(secondary)
+            self._save_camera_role_settings()
+            noun = "camera" if len(devices) == 1 else "cameras"
+            if self.controls.check_lock_driver_camera.isChecked():
+                self.controls.set_camera_scan_status(
+                    f"Found {len(devices)} available {noun}. Locked driver: "
+                    f"camera {driver}; road stereo: cameras {primary} and {secondary}."
+                )
+            else:
+                self.controls.set_camera_scan_status(
+                    f"Found {len(devices)} available {noun}. Choose one for each role."
+                )
         else:
             self.controls.set_camera_scan_status(
                 "No cameras were available. Close other camera applications "
                 "and select Refresh Available Cameras."
             )
+
+    def _load_camera_role_settings(self):
+        """Restore machine-local camera roles before any capture thread starts."""
+
+        if QApplication.platformName().lower() == "offscreen":
+            return
+        settings = self._camera_role_settings
+        self.controls.spin_driver_camera.setValue(
+            settings.value("camera_roles/driver", 0, type=int))
+        self.controls.spin_headlight_camera.setValue(
+            settings.value("camera_roles/road_left", 1, type=int))
+        self.controls.spin_headlight_camera_2.setValue(
+            settings.value("camera_roles/road_right", 2, type=int))
+        locked = settings.value(
+            "camera_roles/lock_integrated_driver", True, type=bool)
+        self.controls.check_lock_driver_camera.setChecked(locked)
+        self.controls.spin_driver_camera.setEnabled(not locked)
+
+    def _save_camera_role_settings(self, *_):
+        """Persist camera roles for this Windows user and installation."""
+
+        if QApplication.platformName().lower() == "offscreen":
+            return
+        settings = self._camera_role_settings
+        settings.setValue(
+            "camera_roles/driver", self.controls.spin_driver_camera.value())
+        settings.setValue(
+            "camera_roles/road_left", self.controls.spin_headlight_camera.value())
+        settings.setValue(
+            "camera_roles/road_right", self.controls.spin_headlight_camera_2.value())
+        settings.setValue(
+            "camera_roles/lock_integrated_driver",
+            self.controls.check_lock_driver_camera.isChecked())
+        settings.sync()
+
+    def _driver_role_lock_changed(self, locked):
+        self.controls.spin_driver_camera.setEnabled(not locked)
+        if locked and self._last_discovered_devices:
+            driver, primary, secondary = camera_roles_for_devices(
+                self._last_discovered_devices,
+                self.controls.spin_driver_camera.value(),
+                self.controls.spin_headlight_camera.value(),
+                self.controls.spin_headlight_camera_2.value(),
+                True,
+            )
+            self.controls.spin_driver_camera.setValue(driver)
+            self.controls.spin_headlight_camera.setValue(primary)
+            self.controls.spin_headlight_camera_2.setValue(secondary)
+        self._save_camera_role_settings()
 
     def _camera_discovery_finished(self):
         self.controls.btn_refresh_cameras.setEnabled(True)

@@ -45,7 +45,9 @@ class CameraSelector(QComboBox):
         for device in devices:
             camera_index = int(device.index)
             label = (
-                f"Camera {camera_index} — {device.width}×{device.height} "
+                f"Camera {camera_index}"
+                + (f" — {device.name}" if getattr(device, "name", "") else "")
+                + f" — {device.width}×{device.height} "
                 f"({device.backend})"
             )
             self.addItem(label, camera_index)
@@ -207,12 +209,18 @@ class ControlsPanel(QWidget):
         self._configure_form(auto_layout)
         self.combo_detection_setup = QComboBox()
         self.combo_detection_setup.addItems(["Single Camera", "Stereo Cameras"])
-        # Current installation observed live on 2026-11-03: the integrated
-        # driver camera enumerates as 1; the external road pair as 0 and 2.
-        # These remain operator-selectable because Windows may reorder indices.
-        self.spin_driver_camera = self._make_index_spin(1)
-        self.spin_headlight_camera = self._make_index_spin(0)
+        # Current replacement-camera installation: DirectShow enumerates the
+        # integrated laptop camera first and the identical USB pair next.
+        # Discovery corrects this automatically by device name if indices move.
+        self.spin_driver_camera = self._make_index_spin(0)
+        self.spin_headlight_camera = self._make_index_spin(1)
         self.spin_headlight_camera_2 = self._make_index_spin(2)
+        self.check_lock_driver_camera = QCheckBox(
+            "Lock integrated camera as driver")
+        self.check_lock_driver_camera.setChecked(True)
+        self.check_lock_driver_camera.setToolTip(
+            "Discovery assigns the Integrated Camera only to the driver role "
+            "and excludes it from road-stereo calibration.")
         self.spin_single_depth = self._make_spin(10.0, 5000.0, 120.0, " cm")
         self.spin_camera_hfov = self._make_spin(10.0, 170.0, 70.0, " deg")
         self.spin_brightness_threshold = QSpinBox()
@@ -234,6 +242,7 @@ class ControlsPanel(QWidget):
         self.auto_note.setWordWrap(True)
         self.auto_note.setObjectName("mutedText")
         auto_layout.addRow("Setup:", self.combo_detection_setup)
+        auto_layout.addRow(self.check_lock_driver_camera)
         auto_layout.addRow("Driver camera:", self.spin_driver_camera)
         auto_layout.addRow("Headlight camera:", self.spin_headlight_camera)
         auto_layout.addRow("Headlight camera 2:", self.spin_headlight_camera_2)
@@ -537,6 +546,8 @@ class ControlsPanel(QWidget):
         self.auto_camera_group.setVisible(True)
         self.spin_driver_camera.setEnabled(True)
         self._update_auto_controls()
+        self.spin_driver_camera.setEnabled(
+            not self.check_lock_driver_camera.isChecked())
 
     def _update_auto_controls(self):
         policy = self.mode_policy()
@@ -589,6 +600,8 @@ class ControlsPanel(QWidget):
             self.spin_headlight_camera_2,
         ):
             selector.set_available_cameras(devices)
+        self.spin_driver_camera.setEnabled(
+            bool(devices) and not self.check_lock_driver_camera.isChecked())
 
     def set_camera_scan_status(self, text):
         self.camera_scan_status.setText(text)

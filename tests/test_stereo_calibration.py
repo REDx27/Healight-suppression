@@ -546,7 +546,7 @@ def test_calibration_button_wiring_and_busy_camera_guard(monkeypatch):
     window.controls.combo_operating_mode.setCurrentText(OperatingMode.DRIVER_FIXED.value)
     window.controls.combo_detection_setup.setCurrentText("Stereo Cameras")
     window.controls.btn_stereo_calibration.click()
-    assert opened == [(0, 2)]
+    assert opened == [(1, 2)]
     # A blocked camera backend must not be destroyed or reused by calibration.
     deleted = []
     busy = SimpleNamespace(stop=lambda: None, isRunning=lambda: True,
@@ -559,4 +559,38 @@ def test_calibration_button_wiring_and_busy_camera_guard(monkeypatch):
     assert len(messages) == 1
     assert len(opened) == 1
     window.headlight_thread = None
+    window.close()
+
+
+def test_locked_driver_camera_is_excluded_from_stereo_calibration(monkeypatch):
+    import glare_tracker.window as window_module
+    app = QApplication.instance() or QApplication([])
+    opened, warnings = [], []
+
+    class Dialog:
+        saved_path = None
+        def __init__(self, primary, secondary, parent):
+            opened.append((primary, secondary))
+        def exec_(self):
+            pass
+        def deleteLater(self):
+            pass
+
+    monkeypatch.setattr(window_module, "StereoCalibrationDialog", Dialog)
+    monkeypatch.setattr(
+        window_module.QMessageBox, "warning",
+        lambda *args: warnings.append(args),
+    )
+    window = window_module.MainWindow()
+    window.controls.combo_operating_mode.setCurrentText(
+        OperatingMode.DRIVER_FIXED.value)
+    window.controls.combo_detection_setup.setCurrentText("Stereo Cameras")
+    window.controls.spin_headlight_camera.setValue(
+        window.controls.spin_driver_camera.value())
+
+    window.controls.btn_stereo_calibration.click()
+
+    assert opened == []
+    assert warnings and warnings[-1][1] == (
+        "Driver camera cannot calibrate road stereo")
     window.close()

@@ -8,12 +8,32 @@ from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QSizePolicy
 
 from glare_tracker.operating_modes import OperatingMode, SessionState
-from glare_tracker.capture import CameraDevice
-from glare_tracker.window import MainWindow
+from glare_tracker.capture import CameraDevice, parse_directshow_camera_names
+from glare_tracker.window import MainWindow, camera_roles_for_devices
 
 
 def _application():
     return QApplication.instance() or QApplication([])
+
+
+def test_directshow_names_and_locked_integrated_driver_roles():
+    output = """
+[dshow @ 1] "Integrated Camera" (video)
+[dshow @ 1] "USB Camera" (video)
+[dshow @ 1] "USB Camera" (video)
+[dshow @ 1] "Microphone Array" (audio)
+"""
+    assert parse_directshow_camera_names(output) == [
+        "Integrated Camera", "USB Camera", "USB Camera"]
+    devices = [
+        CameraDevice(0, 640, 480, "DirectShow", "USB Camera"),
+        CameraDevice(1, 640, 480, "DirectShow", "USB Camera"),
+        CameraDevice(2, 640, 480, "DirectShow", "Integrated Camera"),
+    ]
+    assert camera_roles_for_devices(
+        devices, preferred_driver=0, preferred_primary=2,
+        preferred_secondary=1, lock_integrated=True,
+    ) == (2, 0, 1)
 
 
 def test_manual_session_run_standby_stop_policy():
@@ -144,4 +164,25 @@ def test_available_camera_dropdowns_assign_roles_with_fixed_driver():
     assert policy.use_driver_camera is False
     assert policy.use_road_camera is True
     assert not window.cap_thread.isRunning()
+    window.close()
+
+
+def test_named_camera_labels_and_new_installation_defaults():
+    app = _application()
+    window = MainWindow()
+    devices = [
+        CameraDevice(0, 640, 480, "DirectShow", "Integrated Camera"),
+        CameraDevice(1, 640, 480, "DirectShow", "USB Camera"),
+        CameraDevice(2, 640, 480, "DirectShow", "USB Camera"),
+    ]
+    window._on_cameras_discovered(devices)
+    app.processEvents()
+
+    assert window.controls.check_lock_driver_camera.isChecked()
+    assert not window.controls.spin_driver_camera.isEnabled()
+    assert window.controls.spin_driver_camera.value() == 0
+    assert window.controls.spin_headlight_camera.value() == 1
+    assert window.controls.spin_headlight_camera_2.value() == 2
+    assert "Integrated Camera" in window.controls.spin_driver_camera.currentText()
+    assert "USB Camera" in window.controls.spin_headlight_camera.currentText()
     window.close()

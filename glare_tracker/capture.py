@@ -9,16 +9,17 @@ from __future__ import annotations
 
 import sys
 from dataclasses import dataclass
+import re
+import subprocess
 
 import cv2
 from PyQt5.QtCore import QThread, pyqtSignal
 
 
-# Measured stable shared mode for the current two-road-camera USB setup.
-# The replacement cameras do not share a 320-wide mode: one negotiates
-# 320x240 while the other selects 352x240.  Both delivered every probed frame
-# together at 640x480/15 FPS (with the driver camera at 640x480/30 FPS).
-# Calibration and live stereo must use this same capture profile.
+# Conservative shared mode for the identical external road-camera pair.
+# The previous temporary 320x240 profile is no longer used. Calibration and
+# live stereo must use the same resolution; 15 FPS keeps three-camera USB
+# bandwidth conservative while retaining full VGA calibration detail.
 ROAD_STEREO_WIDTH = 640
 ROAD_STEREO_HEIGHT = 480
 ROAD_STEREO_FPS = 15
@@ -32,6 +33,36 @@ class CameraDevice:
     width: int
     height: int
     backend: str
+    name: str = ""
+
+
+def parse_directshow_camera_names(output: str) -> list[str]:
+    """Return DirectShow video-device names in enumeration order."""
+
+    return re.findall(r'\]\s+"([^"]+)"\s+\(video\)', output or "")
+
+
+def directshow_camera_names(timeout_seconds: float = 5.0) -> list[str]:
+    """Best-effort Windows names matching OpenCV CAP_DSHOW index order."""
+
+    if not sys.platform.startswith("win"):
+        return []
+    try:
+        completed = subprocess.run(
+            [
+                "ffmpeg", "-hide_banner", "-list_devices", "true",
+                "-f", "dshow", "-i", "dummy",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=max(1.0, float(timeout_seconds)),
+            check=False,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return parse_directshow_camera_names(
+        f"{completed.stdout or ''}\n{completed.stderr or ''}")
 
 
 class CameraDiscoveryThread(QThread):
@@ -45,6 +76,7 @@ class CameraDiscoveryThread(QThread):
 
     def run(self):
         devices = []
+        names = directshow_camera_names()
         for camera_index in range(self.max_index):
             if self.isInterruptionRequested():
                 break
@@ -61,6 +93,8 @@ class CameraDiscoveryThread(QThread):
                     width=int(width),
                     height=int(height),
                     backend=backend_name,
+                    name=(names[camera_index]
+                          if camera_index < len(names) else ""),
                 ))
             finally:
                 try:

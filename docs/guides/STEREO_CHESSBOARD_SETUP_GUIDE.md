@@ -7,9 +7,10 @@ laboratory procedure, not a moving-vehicle test.
 ## 1. Fix the physical setup first
 
 - There are **two road cameras plus one driver camera**, confirmed by the operator.
-- On the 2026-11-03 live probe, the integrated driver camera was index **1** and the
-  external road cameras were indices **0** and **2**. Confirm the previews after every
-  reconnect because Windows can reorder them.
+- For the current replacement hardware, DirectShow identifies the integrated driver
+  camera as index **0** and the identical external road cameras as indices **1** and
+  **2**. The app now labels the names and locks the integrated device to the driver
+  role. Confirm the labels after reconnecting because Windows can reorder indices.
 - Mount the road cameras rigidly, side by side, with overlapping views. As you look
   toward the scene from behind the cameras, primary is LEFT and secondary is RIGHT.
   The supported matcher expects a horizontal left-to-right pair.
@@ -65,11 +66,10 @@ the [OpenCV calibration documentation](https://docs.opencv.org/4.5.2/d9/d0c/grou
 5. The application saves only pairs where both boards are detected, rejects near
    duplicates, and preserves raw capture images without display scaling or mirroring.
    Both replacement road cameras use the live-verified shared mode of
-   **640 x 480 at 15 FPS**. On 2026-11-05, the previous 320 x 240 request produced
-   unequal actual widths (320 for camera 0 and 352 for camera 2), which cannot be
-   calibrated as one stereo pair. A simultaneous three-camera probe delivered all
-   sampled frames with both road cameras at 640 x 480/15 FPS and the driver camera at
-   640 x 480/30 FPS. The older 320 x 240 result applies only to the replaced pair.
+   **640 x 480 at 15 FPS**. A simultaneous probe of the real external pair, cameras
+   1 and 2, delivered all 92 sampled frames from each at that mode. The earlier
+   320-versus-352 mismatch came from accidentally combining the integrated camera
+   with one external camera; it was not a mode difference between the identical pair.
 6. Fit each stage when enabled. The paired fit holds the accepted individual
    intrinsics fixed. A stereo candidate passes the software gates only if its
    matrices are finite, stereo RMS is at most 1.5 px, the 95th-percentile rectified

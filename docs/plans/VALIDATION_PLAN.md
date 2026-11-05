@@ -5,17 +5,18 @@
 > test pass. Hardware-dependent stages remain open until measurements and
 > evidence files have been collected.
 
-Current software verification: **114 automated tests passed on Python 3.13** on
+Current software verification: **117 automated tests passed on Python 3.13** on
 2026-11-05. This does not satisfy any open physical exit criterion.
 
-Replacement-camera bring-up on 2026-11-05 found that a 320 x 240 request produced
-different actual road-frame widths (320 and 352). Both replacement road cameras then
-delivered all sampled frames together at 640 x 480/15 FPS while the driver camera ran
-at 640 x 480/30 FPS. Software startup and calibration now use this verified mode and
-validate retrieved frame sizes. The interrupted first checkerboard attempt is not a
-calibration pass; repeat all three stages and require the explicit saved-profile alert.
+Corrected replacement-camera bring-up on 2026-11-05 identified integrated camera 0
+and identical USB road cameras 1 and 2. The former 0/2 road defaults accidentally
+mixed the laptop and one external camera. The real external pair each delivered all
+92 sampled frames at 640 x 480/15 FPS. Discovery now labels DirectShow names, locks
+the integrated device to the persistent driver role, excludes it from road calibration,
+and validates retrieved frame sizes. Repeat all three calibration stages and require
+the explicit saved-profile alert.
 
-The 2026-11-05 retry with the replacement cameras was also rejected because the
+The 2026-11-05 retry is rejected because it used the wrong mixed camera pair and the
 printed checkerboard was held as loose, visibly curved paper. RIGHT RMS reached
 2.801 px and LEFT's marginal 1.469 px fit produced implausible distortion. Neither
 result closes the calibration prerequisite. The next attempt must use the print glued

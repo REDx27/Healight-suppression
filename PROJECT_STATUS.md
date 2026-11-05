@@ -14,26 +14,26 @@
 
 ### Active development priority — 2026-11-05
 
-Two replacement low-cost road cameras are now connected at indices 0 and 2, with
-the integrated driver camera at index 1. Their supplied specifications claim SNR
+The current DirectShow enumeration is integrated driver camera **0** and the two
+identical external road cameras **1 and 2**. Their supplied specifications claim SNR
 greater than 48 dB at 30 FPS/220 lux, dynamic range greater than 72 dB, 5 cm-to-
 infinity focus, built-in compression, automatic brightness and colour compensation,
 and manual focus. These claims have not been independently verified; the operator
 also reports no accessible lens rotation, so the manual-focus claim must not be
 assumed in the experiment.
 
-The first calibration attempt did not complete or save a valid stereo profile. Live
-diagnosis found the cause: for the old 320 x 240 request, camera 0 returned 320 x 240
-while camera 2 negotiated 352 x 240. The app rejected the unequal frames, then showed
-both feeds offline. A three-camera probe subsequently delivered every sampled frame
-with both road cameras at **640 x 480/15 FPS** and the driver camera at
-**640 x 480/30 FPS**. The live and calibration paths now use that verified road mode.
-Runtime startup validates the dimensions of actual retrieved frames rather than
-failing on unreliable pre-stream property readback. Saving a passing calibration now
-shows an explicit completion alert and closes the dialog cleanly.
+The former 0/2 road-role defaults belonged to the previous camera set. Reusing them
+paired the integrated laptop camera with one external camera, explaining both the
+320-versus-352 width conflict and the visibly different zoom. A corrected live probe
+of external cameras 1 and 2 delivered all 92 sampled frames from each at
+**640 x 480/15 FPS**. Camera discovery now reads DirectShow names, locks the integrated
+camera to the persistent driver role, assigns the remaining devices to road stereo,
+and blocks calibration if the driver index enters the road pair. The old temporary
+320 x 240 road profile is removed; calibration and runtime share 640 x 480/15 FPS.
 
-The first 640 x 480 physical intrinsic attempt was rejected after inspection. The
-operator used a loose paper checkerboard that visibly curved between captures. RIGHT
+The first 640 x 480 physical intrinsic attempt was rejected after inspection. It used
+the wrong mixed laptop/external pair, and the operator also used a loose paper
+checkerboard that visibly curved between captures. RIGHT
 intrinsic RMS was 2.801 px, with several saved views above 4 px; LEFT narrowly passed
 at 1.469 px but produced implausible distortion and is also considered invalid. This
 is a target-planarity/capture-procedure failure, not evidence that stereo calibration
@@ -74,7 +74,7 @@ multi-source bring-up. It does not establish metric accuracy: the session was no
 recorded repeated trial, and stereo/chessboard plus camera-to-windshield calibration
 are still required before the coordinates or intersections can be validated.
 
-**Verification:** 114 automated tests pass on Python 3.13. No completed calibrated
+**Verification:** 117 automated tests pass on Python 3.13. No completed calibrated
 physical validation has been performed. Live camera-to-windshield transforms and all physical exit
 criteria remain outstanding. Follow
 [the stereo setup guide](docs/guides/STEREO_CHESSBOARD_SETUP_GUIDE.md), then resume

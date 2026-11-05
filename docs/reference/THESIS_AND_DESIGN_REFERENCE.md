@@ -6,7 +6,7 @@
 **Consolidated through:** 2026-11-05
 **Prepared for:** Project teammate and later thesis development
 **Reviewed source baseline:** current guided-calibration and automatic multi-light working tree
-**Current automated verification:** 114 tests passed on Python 3.13
+**Current automated verification:** 117 tests passed on Python 3.13
 **Document status:** Long-form design and milestone reference; current execution
 status is maintained in `PROJECT_STATUS.md` and `docs/plans/VALIDATION_PLAN.md`.
 
@@ -31,18 +31,18 @@ The claimed manual focus is especially uncertain because the operator cannot rot
 or otherwise adjust the lenses.
 
 The first rough checkerboard session did not complete: no success alert appeared and
-no accepted profile should be inferred. Direct diagnosis showed that the nominally
-identical cameras do not expose the same low-resolution mode. With a 320 x 240 request,
-camera 0 returned 320 x 240 while camera 2 returned 352 x 240. This unequal geometry
-caused the stereo worker to stop and both road cards to appear offline. A subsequent
-simultaneous probe delivered every sampled frame at 640 x 480/15 FPS from both road
-cameras while the integrated driver camera delivered 640 x 480/30 FPS. Calibration
-and live stereo now use the verified 640 x 480 road profile. Runtime compatibility is
-decided from retrieved frame dimensions rather than unreliable pre-stream UVC
-property readback, and a saved stereo profile produces an explicit completion alert.
+no accepted profile should be inferred. The actual current DirectShow order is
+integrated camera 0 followed by identical USB cameras 1 and 2. The previous 0/2 road
+defaults therefore mixed the laptop and one external camera. That role error—not a
+difference between the identical pair—caused the 320-versus-352 mode conflict and the
+apparent zoom mismatch. A corrected simultaneous probe of USB cameras 1 and 2 delivered
+all 92 sampled frames from each at 640 x 480/15 FPS. Discovery now reads DirectShow
+names, persists the roles, locks the integrated camera as driver, excludes it from road
+calibration, and uses the shared VGA profile in calibration and live stereo.
 
 Inspection of the first replacement-camera intrinsic dataset then identified a
-procedural failure: the A4 checkerboard was held as flexible paper and visibly curved
+combined assignment/procedural failure: the wrong mixed camera pair was selected, and
+the A4 checkerboard was held as flexible paper and visibly curved
 in multiple frames. The RIGHT fit was correctly rejected at 2.801 px RMS, with several
 individual views above 4 px. LEFT narrowly passed the initial numerical gate at
 1.469 px but returned implausible distortion coefficients and is not accepted as
@@ -74,13 +74,13 @@ their workflows are preserved for regression and comparison. This first slice re
 the checkerboard path; ChArUco, post-filter verification, photometric comparison and
 the broader interface reduction remain planned.
 
-The 2026-11-03 live camera diagnosis identified a concrete enumeration and bandwidth
-fault. Windows reported all three devices healthy, but the actual mapping was road
+The 2026-11-03 live camera diagnosis concerned the former, non-identical camera set.
+Windows reported all three devices healthy, and that historical mapping was road
 cameras 0 and 2 plus integrated driver camera 1. Two road streams at 640 x 480 could
 open and grab while one returned no retrievable frames. At 320 x 240/15 FPS both road
 cameras delivered every tested frame; all three cameras also delivered every tested
-frame when the driver remained at 640 x 480/30 FPS. The software now applies this
-measured mixed profile, verifies frames during discovery, and rejects the observed
+frame when the driver remained at 640 x 480/30 FPS. That 320 x 240 workaround is now
+retired with the former hardware. The software verifies frames during discovery and rejects the observed
 ceiling fluorescent strip as an unsuitable point-source candidate.
 
 An explicitly non-metric **ROUGH UNCALIBRATED** matcher is available only for camera
