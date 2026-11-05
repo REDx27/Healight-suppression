@@ -5,7 +5,7 @@
 > test pass. Hardware-dependent stages remain open until measurements and
 > evidence files have been collected.
 
-Current software verification: **117 automated tests passed on Python 3.13** on
+Current software verification: **118 automated tests passed on Python 3.13** on
 2026-11-05. This does not satisfy any open physical exit criterion.
 
 Corrected replacement-camera bring-up on 2026-11-05 identified integrated camera 0
@@ -21,6 +21,13 @@ printed checkerboard was held as loose, visibly curved paper. RIGHT RMS reached
 2.801 px and LEFT's marginal 1.469 px fit produced implausible distortion. Neither
 result closes the calibration prerequisite. The next attempt must use the print glued
 to a rigid flat backing and follow the in-app visual pose-coverage guide.
+
+The subsequent corrected-order fit passed its software gates (individual RMS 0.173
+and 0.162 px; stereo RMS 0.228 px; rectified-row p95 0.712 px; fitted baseline
+15.43 cm). Both feeds were 640 x 480; a roughly 4.5% fitted focal-length difference
+accounts for the visible scale difference. Keep the physical checklist open until the
+operator confirms baseline plausibility, saves the profile, and completes independent
+held-out distance measurements.
 
 Preliminary live evidence on 2026-11-04: after rough camera-offset compensation, the
 real road-camera pair automatically detected and associated one, two, and three

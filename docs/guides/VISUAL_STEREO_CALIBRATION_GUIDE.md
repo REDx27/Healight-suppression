@@ -56,8 +56,29 @@ Do not move, rotate, refocus, or swap them after this point. Capture at least 15
 paired poses with the same stationary flat board visible in both feeds, then fit
 the stereo geometry.
 
+![Rigid camera pair and stationary stereo target](../../assets/calibration/stereo_capture.svg)
+
+For every paired capture:
+
+1. Put the board on a wall, stand, table support, or tripod. Do not hold it by hand.
+2. Move the board to a new position and moderate tilt while keeping it completely
+   visible in both images.
+3. Stop touching it and wait about one second.
+4. Select **Capture pair** while the board and both cameras remain stationary.
+5. Cover the centre, edges, near and far regions of the overlapping view.
+
+Both images must have the same pixel resolution. They do not need identical apparent
+zoom or field of view: separate intrinsic calibration estimates each camera's focal
+length and distortion. A small scale difference is normal if the two views still have
+useful overlap.
+
 Compare the reported baseline with the ruler measurement. Select **Save stereo
 profile** only when the fit passes and the baseline is physically plausible.
+
+The software initially requires stereo RMS at most 1.5 px, rectified vertical-row
+error p95 at most 2.0 px, physically correct LEFT/RIGHT translation, and finite
+calibration matrices. A green **STEREO FIT PASSED — NOT SAVED YET** message means the
+fit passed but is not active until **Save stereo profile** is selected.
 
 ## 4. Know when calibration is complete
 

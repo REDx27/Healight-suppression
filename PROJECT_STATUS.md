@@ -41,6 +41,14 @@ or the replacement cameras are unusable. The calibration window now embeds an
 illustrated flat-target/pose/stage guide, displays a persistent rigid-board warning,
 and issues explicit LEFT-pass, RIGHT-pass, and final-profile-saved alerts.
 
+With the corrected physical order (camera 2 LEFT, camera 1 RIGHT), the next fit passed
+the software gates: LEFT intrinsic RMS 0.173 px, RIGHT intrinsic RMS 0.162 px, stereo
+RMS 0.228 px, rectified-row p95 0.712 px, and estimated baseline 15.43 cm. Both raw
+feeds are exactly 640 x 480; their fitted focal lengths differ by about 4.5%, explaining
+the small apparent zoom/FOV difference without a resolution mismatch. This is a
+passing fit candidate, not yet physical validation; the operator must compare the
+baseline with a ruler and save the profile before it becomes active.
+
 The operator now has **two road cameras plus one driver camera**. The single-road
 setup detected a light using a sunglass lens. Both stereo feeds opened, but stereo
 operation was unreliable and observed accuracy was poor; no measured accuracy
@@ -74,7 +82,7 @@ multi-source bring-up. It does not establish metric accuracy: the session was no
 recorded repeated trial, and stereo/chessboard plus camera-to-windshield calibration
 are still required before the coordinates or intersections can be validated.
 
-**Verification:** 117 automated tests pass on Python 3.13. No completed calibrated
+**Verification:** 118 automated tests pass on Python 3.13. No completed calibrated
 physical validation has been performed. Live camera-to-windshield transforms and all physical exit
 criteria remain outstanding. Follow
 [the stereo setup guide](docs/guides/STEREO_CHESSBOARD_SETUP_GUIDE.md), then resume

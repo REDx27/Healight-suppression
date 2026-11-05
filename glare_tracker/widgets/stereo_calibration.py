@@ -29,6 +29,7 @@ GUIDE_ASSETS = (
     "flat_board.svg",
     "pose_coverage.svg",
     "stereo_sequence.svg",
+    "stereo_capture.svg",
 )
 
 
@@ -112,6 +113,14 @@ class CalibrationVisualGuideDialog(QDialog):
             "Fit each camera independently first. Then rigidly mount the pair and capture "
             "the same stationary board in both feeds. Calibration is final only after the "
             "saved-profile success alert appears.",
+        ),
+        (
+            "4. Stereo stage: rigid cameras and a stationary board",
+            "stereo_capture.svg",
+            "Mount both cameras on one rigid bar, confirm physical LEFT/RIGHT order, "
+            "and measure optical-centre spacing. Put the board on a wall or stand. "
+            "After moving it, wait about one second before Capture pair; do not hold "
+            "or move it while the two USB frames are acquired.",
         ),
     )
 
@@ -366,10 +375,19 @@ class StereoCalibrationDialog(QDialog):
             previews.addWidget(label)
         layout.addLayout(previews)
         self.counter = QLabel(f"0 / {MIN_SAMPLES} minimum LEFT views")
+        self.frame_comparison = QLabel("")
+        self.frame_comparison.setWordWrap(True)
+        self.frame_comparison.setObjectName("mutedText")
+        self.fit_status = QLabel("Calibration stages not yet fitted")
+        self.fit_status.setWordWrap(True)
+        self.fit_status.setStyleSheet(
+            "background:#172431; color:#b9c9d6; border-radius:5px; padding:7px;")
         self.message = QLabel(
             "Measure the printed square, check LEFT/RIGHT indices, then start LEFT calibration.")
         self.message.setWordWrap(True)
         layout.addWidget(self.counter)
+        layout.addWidget(self.frame_comparison)
+        layout.addWidget(self.fit_status)
         layout.addWidget(self.message)
         resources = QHBoxLayout()
         self.visual_guide = QPushButton("Visual calibration guide...")
@@ -561,6 +579,10 @@ class StereoCalibrationDialog(QDialog):
 
     def _fit_failed(self, message):
         self.fit_worker = None
+        self.fit_status.setText("FIT FAILED — no calibration was saved")
+        self.fit_status.setStyleSheet(
+            "background:#461f27; color:#ffb5bf; border:1px solid #a94756; "
+            "border-radius:5px; padding:7px; font-weight:700;")
         self.message.setText(
             f"Fit failed: {message}. If any saved view used loose or curved paper, "
             "close this calibration and restart with a rigid flat board; adding more "
@@ -598,6 +620,23 @@ class StereoCalibrationDialog(QDialog):
             self.intro.setText(
                 "Step 3 of 3: both individual calibrations passed. Rigidly fix both cameras, "
                 "confirm LEFT/RIGHT order, and capture the same stationary board in BOTH feeds.")
+            left = self.intrinsics["left"]
+            right = self.intrinsics["right"]
+            focal_delta = abs(
+                left.focal_length_px - right.focal_length_px) / max(
+                    left.focal_length_px, right.focal_length_px) * 100.0
+            resolution_state = (
+                "MATCHED" if left.image_size == right.image_size else "MISMATCHED")
+            self.frame_comparison.setText(
+                f"Frame resolution {resolution_state}: LEFT {left.image_size[0]}×"
+                f"{left.image_size[1]}, RIGHT {right.image_size[0]}×"
+                f"{right.image_size[1]}. Fitted focal lengths differ by "
+                f"{focal_delta:.1f}%; a small apparent zoom/FOV difference is normal.")
+            self.fit_status.setText(
+                "INDIVIDUAL CALIBRATIONS PASSED — stereo fitting still required")
+            self.fit_status.setStyleSheet(
+                "background:#3a3212; color:#ffe49a; border:1px solid #a98a2e; "
+                "border-radius:5px; padding:7px; font-weight:700;")
         label = self.stage.upper()
         self.counter.setText(f"0 / {MIN_SAMPLES} minimum {label} "
                              + ("pairs" if self.stage == "stereo" else "views"))
@@ -642,6 +681,27 @@ class StereoCalibrationDialog(QDialog):
                if report["passed"] else
                "Not accepted. Check order, square size, focus, rigidity and pose variety."))
         self.save.setEnabled(report["passed"])
+        if report["passed"]:
+            self.fit_status.setText(
+                "STEREO FIT PASSED — NOT SAVED YET. Verify the measured baseline, "
+                "then click Save stereo profile.")
+            self.fit_status.setStyleSheet(
+                "background:#153a28; color:#c9ffda; border:1px solid #52d273; "
+                "border-radius:5px; padding:7px; font-weight:700;")
+        else:
+            reasons = []
+            if report["stereo_rms_px"] > report["max_rms_px"]:
+                reasons.append("stereo RMS above limit")
+            if report["fit_rectified_row_p95_px"] > report["max_row_p95_px"]:
+                reasons.append("rectified row error above limit")
+            if result.P2[0, 3] >= 0:
+                reasons.append("LEFT/RIGHT camera order appears reversed")
+            detail = ", ".join(reasons) or "fit-quality gate failed"
+            self.fit_status.setText(
+                f"STEREO FIT NOT ACCEPTED — {detail}. No profile was saved.")
+            self.fit_status.setStyleSheet(
+                "background:#461f27; color:#ffb5bf; border:1px solid #a94756; "
+                "border-radius:5px; padding:7px; font-weight:700;")
 
     def _save(self):
         if (not self.calibration_result or not self.report
@@ -656,6 +716,8 @@ class StereoCalibrationDialog(QDialog):
                 f"CALIBRATION COMPLETE. Saved {self.saved_path}. Apply the dark filters "
                 "without moving cameras, then perform the post-filter verification before "
                 "collecting measurements.")
+            self.fit_status.setText(
+                "CALIBRATION COMPLETE — STEREO PROFILE SAVED")
             self.save.setEnabled(False)
             QMessageBox.information(
                 self,

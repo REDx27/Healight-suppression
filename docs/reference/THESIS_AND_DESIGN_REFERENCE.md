@@ -6,7 +6,7 @@
 **Consolidated through:** 2026-11-05
 **Prepared for:** Project teammate and later thesis development
 **Reviewed source baseline:** current guided-calibration and automatic multi-light working tree
-**Current automated verification:** 117 tests passed on Python 3.13
+**Current automated verification:** 118 tests passed on Python 3.13
 **Document status:** Long-form design and milestone reference; current execution
 status is maintained in `PROJECT_STATUS.md` and `docs/plans/VALIDATION_PLAN.md`.
 
@@ -52,6 +52,15 @@ more views. The next trial uses a rigid backing and repeats both cameras from a 
 session. The application now includes three vector instruction figures, a persistent
 flat-board warning, and explicit success dialogs after LEFT intrinsics, RIGHT
 intrinsics, and final stereo-profile saving.
+
+After correcting the physical order to camera 2 LEFT and camera 1 RIGHT, a new fit
+passed the software gates: LEFT and RIGHT intrinsic RMS values were 0.173 and
+0.162 px, stereo RMS was 0.228 px, rectified-row p95 was 0.712 px, and fitted baseline
+was 15.43 cm. Both saved feeds are 640 x 480. Their fitted horizontal focal lengths
+are approximately 858 and 897 px, so the visible scale difference is an intrinsic
+FOV difference of about 4.5%, not a frame-size mismatch. This remains a fit-set result,
+not held-out accuracy evidence; it becomes the active profile only after baseline
+plausibility is checked and the operator explicitly saves it.
 
 The operator confirmed **two road cameras plus the driver camera**. Single-road
 light detection worked with a sunglass lens; the second road-camera feed became

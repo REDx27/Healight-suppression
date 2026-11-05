@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="430" viewBox="0 0 1000 430">
+  <rect width="1000" height="430" rx="24" fill="#0b1520"/>
+  <path d="M158 160 L475 70 L475 345 Z" fill="#ffd454" opacity="0.16" stroke="#ffd454" stroke-width="3"/>
+  <path d="M354 160 L525 70 L525 345 Z" fill="#52d273" opacity="0.16" stroke="#52d273" stroke-width="3"/>
+  <g transform="translate(90 132)">
+    <path d="M0 40 l35 -28 h70 l35 28 v65 H0z" fill="#68b7ff"/>
+    <circle cx="76" cy="61" r="29" fill="#071019" stroke="#e4f4ff" stroke-width="7"/>
+  </g>
+  <g transform="translate(286 132)">
+    <path d="M0 40 l35 -28 h70 l35 28 v65 H0z" fill="#68b7ff"/>
+    <circle cx="76" cy="61" r="29" fill="#071019" stroke="#e4f4ff" stroke-width="7"/>
+  </g>
+  <rect x="74" y="246" width="380" height="24" rx="12" fill="#52d273" stroke="#a8f7bd" stroke-width="3"/>
+  <circle cx="166" cy="285" r="8" fill="#ff6678"/><circle cx="362" cy="285" r="8" fill="#ff6678"/>
+  <path d="M166 285 H362" stroke="#ff6678" stroke-width="5"/>
+  <path d="M166 275 l-15 10 15 10 M362 275 l15 10 -15 10" fill="none" stroke="#ff6678" stroke-width="4"/>
+  <g transform="translate(594 82)">
+    <rect x="0" y="0" width="260" height="190" fill="#fff" stroke="#52d273" stroke-width="8"/>
+    <g fill="#111">
+      <path d="M30 25h25v25H30z M80 25h25v25H80z M130 25h25v25H130z M180 25h25v25H180z
+               M55 50h25v25H55z M105 50h25v25H105z M155 50h25v25H155z M205 50h25v25H205z
+               M30 75h25v25H30z M80 75h25v25H80z M130 75h25v25H130z M180 75h25v25H180z
+               M55 100h25v25H55z M105 100h25v25H105z M155 100h25v25H155z M205 100h25v25H205z
+               M30 125h25v25H30z M80 125h25v25H80z M130 125h25v25H130z M180 125h25v25H180z"/>
+    </g>
+    <rect x="116" y="190" width="28" height="92" fill="#9eb2c2"/>
+    <rect x="45" y="275" width="170" height="20" rx="10" fill="#9eb2c2"/>
+  </g>
+  <g transform="translate(810 285)" stroke="#ff6678" stroke-width="10" stroke-linecap="round">
+    <path d="M0 35 C35 -8 70 -5 105 28" fill="none"/>
+    <path d="M10 0 L105 92 M105 0 L10 92"/>
+  </g>
+  <circle cx="905" cy="380" r="20" fill="#ffd454"/><path d="M905 366 V383 L918 390" fill="none" stroke="#0b1520" stroke-width="5" stroke-linecap="round"/>
+</svg>

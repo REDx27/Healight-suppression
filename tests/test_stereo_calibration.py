@@ -297,7 +297,9 @@ def test_dialog_rejects_duplicate_poses_and_archives_profile(tmp_path, monkeypat
     assert len(list(dialog.session_dir.glob("*.png"))) == 30
     report = dict(passed=True, stereo_rms_px=0.2, fit_rectified_row_p95_px=0.1, baseline_cm=10.)
     dialog._fit_done(stereo_result(), report)
+    assert "PASSED — NOT SAVED YET" in dialog.fit_status.text()
     dialog._save()
+    assert "PROFILE SAVED" in dialog.fit_status.text()
     assert dialog.saved_path.is_file()
     assert (dialog.session_dir / "report.json").is_file()
     assert (dialog.session_dir / "accepted_calib.npz").is_file()
@@ -339,7 +341,7 @@ def test_visual_calibration_guide_assets_and_dialog():
         assert asset.is_file()
         assert asset.read_text(encoding="utf-8").lstrip().startswith("<svg")
     guide = wizard.CalibrationVisualGuideDialog()
-    images = [guide.findChild(QLabel, f"guideImage{index}") for index in range(1, 4)]
+    images = [guide.findChild(QLabel, f"guideImage{index}") for index in range(1, 5)]
     assert all(label is not None for label in images)
     assert all(label.pixmap() is not None and not label.pixmap().isNull()
                for label in images)
@@ -367,6 +369,30 @@ def test_dialog_advances_left_right_stereo_and_archives_intrinsics(tmp_path, mon
     assert (dialog.session_dir / "right_intrinsic_calib.npz").is_file()
     assert dialog.start.text() == "Start STEREO calibration"
     assert notices[-1][1] == "RIGHT intrinsic calibration passed"
+    assert "Frame resolution MATCHED" in dialog.frame_comparison.text()
+    dialog.close()
+
+
+def test_failed_stereo_fit_names_reversed_order_and_row_error(tmp_path):
+    app = QApplication.instance() or QApplication([])
+    dialog = wizard.StereoCalibrationDialog(2, 1)
+    dialog.session_dir = tmp_path
+    result = stereo_result()
+    result.P2[0, 3] = abs(result.P2[0, 3])
+    report = {
+        "passed": False,
+        "stereo_rms_px": 0.3,
+        "fit_rectified_row_p95_px": 2.2,
+        "baseline_cm": 15.0,
+        "max_rms_px": 1.5,
+        "max_row_p95_px": 2.0,
+    }
+
+    dialog._fit_done(result, report)
+
+    assert "row error above limit" in dialog.fit_status.text()
+    assert "order appears reversed" in dialog.fit_status.text()
+    assert not dialog.save.isEnabled()
     dialog.close()
 
 
