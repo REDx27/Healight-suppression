@@ -48,6 +48,9 @@ physical test has passed.
 
 ### `guides/`
 
+- [`VISUAL_STEREO_CALIBRATION_GUIDE.md`](guides/VISUAL_STEREO_CALIBRATION_GUIDE.md) —
+  illustrated flat-target, pose-coverage, stage-order, and success criteria for road
+  stereo calibration.
 - [`STEREO_CHESSBOARD_SETUP_GUIDE.md`](guides/STEREO_CHESSBOARD_SETUP_GUIDE.md) —
   current priority: mount, calibrate and tune the two road cameras.
 - [`SYSTEM_WORKFLOW_AND_TEST_GUIDE.md`](guides/SYSTEM_WORKFLOW_AND_TEST_GUIDE.md) —

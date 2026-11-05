@@ -8,7 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import cv2
 import numpy as np
 import pytest
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication, QLabel
 
 import glare_tracker.calibration as calibration
 import glare_tracker.capture as capture_module
@@ -301,7 +301,7 @@ def test_dialog_rejects_duplicate_poses_and_archives_profile(tmp_path, monkeypat
     assert dialog.saved_path.is_file()
     assert (dialog.session_dir / "report.json").is_file()
     assert (dialog.session_dir / "accepted_calib.npz").is_file()
-    assert notices and notices[0][1] == "Stereo calibration complete"
+    assert notices and notices[0][1] == "Stereo calibration complete — profile saved"
     assert dialog.result() == dialog.Accepted
     dialog.close()
 
@@ -332,9 +332,28 @@ def test_calibration_dialog_opens_verified_printable_board(monkeypatch):
     dialog.close()
 
 
+def test_visual_calibration_guide_assets_and_dialog():
+    app = QApplication.instance() or QApplication([])
+    for name in wizard.GUIDE_ASSETS:
+        asset = wizard.calibration_guide_asset_path(name)
+        assert asset.is_file()
+        assert asset.read_text(encoding="utf-8").lstrip().startswith("<svg")
+    guide = wizard.CalibrationVisualGuideDialog()
+    images = [guide.findChild(QLabel, f"guideImage{index}") for index in range(1, 4)]
+    assert all(label is not None for label in images)
+    assert all(label.pixmap() is not None and not label.pixmap().isNull()
+               for label in images)
+    guide.close()
+
+
 def test_dialog_advances_left_right_stereo_and_archives_intrinsics(tmp_path, monkeypatch):
     app = QApplication.instance() or QApplication([])
     monkeypatch.setattr(calibration, "_calibration_dir", lambda: tmp_path)
+    notices = []
+    monkeypatch.setattr(
+        wizard.QMessageBox, "information",
+        lambda *args: notices.append(args),
+    )
     dialog = wizard.StereoCalibrationDialog(1, 2)
     dialog.session_dir = tmp_path / "stereo_sessions" / "staged"
     dialog.session_dir.mkdir(parents=True)
@@ -342,10 +361,12 @@ def test_dialog_advances_left_right_stereo_and_archives_intrinsics(tmp_path, mon
     dialog._single_fit_done(individual)
     assert dialog.stage == "right"
     assert (dialog.session_dir / "left_intrinsic_calib.npz").is_file()
+    assert notices[-1][1] == "LEFT intrinsic calibration passed"
     dialog._single_fit_done(individual)
     assert dialog.stage == "stereo"
     assert (dialog.session_dir / "right_intrinsic_calib.npz").is_file()
     assert dialog.start.text() == "Start STEREO calibration"
+    assert notices[-1][1] == "RIGHT intrinsic calibration passed"
     dialog.close()
 
 

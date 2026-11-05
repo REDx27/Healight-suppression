@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420" viewBox="0 0 900 420">
+  <rect width="900" height="420" rx="24" fill="#0b1520"/>
+  <rect x="72" y="68" width="306" height="252" rx="8" fill="#d9e2ea" stroke="#52d273" stroke-width="9"/>
+  <rect x="86" y="82" width="278" height="224" fill="#fff"/>
+  <g transform="translate(116 102)" fill="#111">
+    <rect width="240" height="168" fill="#fff" stroke="#111" stroke-width="2"/>
+    <path d="M0 0h24v24H0z M48 0h24v24H48z M96 0h24v24H96z M144 0h24v24H144z M192 0h24v24H192z
+             M24 24h24v24H24z M72 24h24v24H72z M120 24h24v24H120z M168 24h24v24H168z M216 24h24v24H216z
+             M0 48h24v24H0z M48 48h24v24H48z M96 48h24v24H96z M144 48h24v24H144z M192 48h24v24H192z
+             M24 72h24v24H24z M72 72h24v24H72z M120 72h24v24H120z M168 72h24v24H168z M216 72h24v24H216z
+             M0 96h24v24H0z M48 96h24v24H48z M96 96h24v24H96z M144 96h24v24H144z M192 96h24v24H192z
+             M24 120h24v24H24z M72 120h24v24H72z M120 120h24v24H120z M168 120h24v24H168z M216 120h24v24H216z
+             M0 144h24v24H0z M48 144h24v24H48z M96 144h24v24H96z M144 144h24v24H144z M192 144h24v24H192z"/>
+  </g>
+  <path d="M72 345 H378" stroke="#52d273" stroke-width="8" stroke-linecap="round"/>
+  <path d="M520 100 C590 45 735 145 824 84 L802 308 C710 370 585 265 505 330 Z" fill="#fff" stroke="#ff6678" stroke-width="9"/>
+  <path d="M557 116 C622 84 723 147 787 102 L777 284 C711 318 623 253 545 296 Z" fill="#fff" stroke="#111" stroke-width="2"/>
+  <path d="M579 132 l34 -9 8 29 -34 8z M649 126 l34 5 -3 30 -35 -5z M716 139 l34 3 -2 30 -35 -4z
+           M600 170 l34 -5 5 30 -34 5z M671 172 l34 5 -3 30 -35 -5z M737 184 l33 -2 -1 30 -34 2z
+           M575 211 l35 -1 2 30 -35 1z M642 210 l35 7 -5 30 -35 -7z M711 224 l34 2 -2 30 -34 -3z" fill="#111"/>
+  <path d="M515 347 Q665 302 818 347" fill="none" stroke="#ff6678" stroke-width="8" stroke-linecap="round"/>
+  <path d="M520 70 L820 350 M820 70 L520 350" stroke="#ff6678" stroke-width="10" opacity="0.78"/>
+</svg>

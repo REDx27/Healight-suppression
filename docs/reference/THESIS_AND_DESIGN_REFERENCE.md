@@ -6,7 +6,7 @@
 **Consolidated through:** 2026-11-05
 **Prepared for:** Project teammate and later thesis development
 **Reviewed source baseline:** current guided-calibration and automatic multi-light working tree
-**Current automated verification:** 113 tests passed on Python 3.13
+**Current automated verification:** 114 tests passed on Python 3.13
 **Document status:** Long-form design and milestone reference; current execution
 status is maintained in `PROJECT_STATUS.md` and `docs/plans/VALIDATION_PLAN.md`.
 
@@ -40,6 +40,18 @@ cameras while the integrated driver camera delivered 640 x 480/30 FPS. Calibrati
 and live stereo now use the verified 640 x 480 road profile. Runtime compatibility is
 decided from retrieved frame dimensions rather than unreliable pre-stream UVC
 property readback, and a saved stereo profile produces an explicit completion alert.
+
+Inspection of the first replacement-camera intrinsic dataset then identified a
+procedural failure: the A4 checkerboard was held as flexible paper and visibly curved
+in multiple frames. The RIGHT fit was correctly rejected at 2.801 px RMS, with several
+individual views above 4 px. LEFT narrowly passed the initial numerical gate at
+1.469 px but returned implausible distortion coefficients and is not accepted as
+physical calibration evidence. Because planar chessboard calibration assumes every
+target corner lies on one plane, this dataset cannot be repaired merely by collecting
+more views. The next trial uses a rigid backing and repeats both cameras from a clean
+session. The application now includes three vector instruction figures, a persistent
+flat-board warning, and explicit success dialogs after LEFT intrinsics, RIGHT
+intrinsics, and final stereo-profile saving.
 
 The operator confirmed **two road cameras plus the driver camera**. Single-road
 light detection worked with a sunglass lens; the second road-camera feed became

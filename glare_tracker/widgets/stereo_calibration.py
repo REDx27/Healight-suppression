@@ -12,7 +12,7 @@ from PyQt5.QtCore import QThread, Qt, QUrl, pyqtSignal
 from PyQt5.QtGui import QDesktopServices, QImage, QPixmap
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QPushButton,
-    QSpinBox, QDoubleSpinBox, QMessageBox,
+    QSpinBox, QDoubleSpinBox, QMessageBox, QScrollArea, QWidget,
 )
 
 from glare_tracker.capture import open_video_capture, configure_road_stereo_capture
@@ -25,12 +25,27 @@ from glare_tracker.calibration import (
 
 MIN_SAMPLES = 15
 PRINTABLE_BOARD_NAME = "road_stereo_chessboard_A4_9x6_20mm.pdf"
+GUIDE_ASSETS = (
+    "flat_board.svg",
+    "pose_coverage.svg",
+    "stereo_sequence.svg",
+)
+
+
+def _resource_root() -> Path:
+    return Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
 
 
 def printable_chessboard_path() -> Path:
     """Locate the verified A4 board in source and packaged applications."""
-    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2]))
-    return base / "output" / "pdf" / PRINTABLE_BOARD_NAME
+    return _resource_root() / "output" / "pdf" / PRINTABLE_BOARD_NAME
+
+
+def calibration_guide_asset_path(name: str) -> Path:
+    """Locate one packaged visual calibration guide figure."""
+    if name not in GUIDE_ASSETS:
+        raise ValueError(f"Unknown calibration guide asset: {name}")
+    return _resource_root() / "assets" / "calibration" / name
 
 
 def _image(frame):
@@ -71,6 +86,76 @@ def calibration_quality(result, pairs, pattern, max_rms=1.5, max_row_error=2.0):
             "fit_rectified_row_p95_px": row_p95,
             "max_rms_px": max_rms, "max_row_p95_px": max_row_error,
             "note": "Fit-set diagnostics only; verify measured distances independently."}
+
+
+class CalibrationVisualGuideDialog(QDialog):
+    """Illustrated operator guide embedded in the calibration workflow."""
+
+    SECTIONS = (
+        (
+            "1. Use a rigid, perfectly flat target",
+            "flat_board.svg",
+            "Glue the print to foam board, thick card, wood, or acrylic. A loose or "
+            "curved sheet violates the calibration model and creates false distortion. "
+            "Keep fingers and tape outside the checkerboard.",
+        ),
+        (
+            "2. Capture 15–20 genuinely varied views",
+            "pose_coverage.svg",
+            "Cover the centre, edges and corners. Include near, far, horizontal-tilt "
+            "and vertical-tilt views. Keep the complete board visible and sharp; do not "
+            "save many almost identical poses.",
+        ),
+        (
+            "3. Complete LEFT, RIGHT, then the fixed stereo pair",
+            "stereo_sequence.svg",
+            "Fit each camera independently first. Then rigidly mount the pair and capture "
+            "the same stationary board in both feeds. Calibration is final only after the "
+            "saved-profile success alert appears.",
+        ),
+    )
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Visual road-stereo calibration guide")
+        self.resize(880, 760)
+        outer = QVBoxLayout(self)
+        warning = QLabel(
+            "<b>Most important:</b> the checkerboard must remain completely flat. "
+            "A detected board can still produce an invalid calibration if the paper bends.")
+        warning.setWordWrap(True)
+        warning.setStyleSheet(
+            "background:#3a2512; color:#ffd38a; border:1px solid #b87928; "
+            "border-radius:6px; padding:10px;")
+        outer.addWidget(warning)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        for position, (title, asset, instructions) in enumerate(self.SECTIONS, start=1):
+            heading = QLabel(f"<h2>{title}</h2>")
+            content_layout.addWidget(heading)
+            image_label = QLabel()
+            image_label.setObjectName(f"guideImage{position}")
+            image_label.setAlignment(Qt.AlignCenter)
+            pixmap = QPixmap(str(calibration_guide_asset_path(asset)))
+            if pixmap.isNull():
+                image_label.setText(f"Guide image unavailable: {asset}")
+            else:
+                image_label.setPixmap(pixmap.scaled(
+                    800, 390, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+            content_layout.addWidget(image_label)
+            details = QLabel(instructions)
+            details.setWordWrap(True)
+            details.setStyleSheet("font-size:14px; padding:4px 10px 14px 10px;")
+            content_layout.addWidget(details)
+        content_layout.addStretch(1)
+        scroll.setWidget(content)
+        outer.addWidget(scroll)
+        close = QPushButton("I understand — return to calibration")
+        close.clicked.connect(self.accept)
+        outer.addWidget(close)
 
 
 class SingleBoardCapture(QThread):
@@ -251,6 +336,14 @@ class StereoCalibrationDialog(QDialog):
             "10 x 7 squares means 9 x 6 INNER corners.")
         self.intro.setWordWrap(True)
         layout.addWidget(self.intro)
+        board_warning = QLabel(
+            "IMPORTANT: mount the printed sheet on a rigid, completely flat backing. "
+            "Do not calibrate with loose, curled, folded, or hand-bent paper.")
+        board_warning.setWordWrap(True)
+        board_warning.setStyleSheet(
+            "background:#3a2512; color:#ffd38a; border:1px solid #b87928; "
+            "border-radius:5px; padding:7px;")
+        layout.addWidget(board_warning)
         form = QFormLayout()
         self.columns, self.rows = QSpinBox(), QSpinBox()
         for spin, value in ((self.columns, 9), (self.rows, 6)):
@@ -278,26 +371,36 @@ class StereoCalibrationDialog(QDialog):
         self.message.setWordWrap(True)
         layout.addWidget(self.counter)
         layout.addWidget(self.message)
-        actions = QHBoxLayout()
+        resources = QHBoxLayout()
+        self.visual_guide = QPushButton("Visual calibration guide...")
         self.print_board = QPushButton("Print A4 chessboard...")
+        resources.addWidget(self.visual_guide)
+        resources.addWidget(self.print_board)
+        resources.addStretch(1)
+        layout.addLayout(resources)
+        actions = QHBoxLayout()
         self.start = QPushButton("Start LEFT calibration")
         self.take = QPushButton("Capture LEFT view")
         self.fit = QPushButton("Fit LEFT intrinsics")
         self.save = QPushButton("Save stereo profile")
         close = QPushButton("Close")
-        for button in (
-                self.print_board, self.start, self.take, self.fit, self.save, close):
+        for button in (self.start, self.take, self.fit, self.save, close):
             actions.addWidget(button)
         layout.addLayout(actions)
         self.take.setEnabled(False)
         self.fit.setEnabled(False)
         self.save.setEnabled(False)
+        self.visual_guide.clicked.connect(self._open_visual_guide)
         self.print_board.clicked.connect(self._open_printable_board)
         self.start.clicked.connect(self._start)
         self.take.clicked.connect(self._request_capture)
         self.fit.clicked.connect(self._fit)
         self.save.clicked.connect(self._save)
         close.clicked.connect(self.reject)
+
+    def _open_visual_guide(self):
+        guide = CalibrationVisualGuideDialog(self)
+        guide.exec_()
 
     def _open_printable_board(self):
         """Open the dimensioned PDF so the operator can print at actual size."""
@@ -458,7 +561,10 @@ class StereoCalibrationDialog(QDialog):
 
     def _fit_failed(self, message):
         self.fit_worker = None
-        self.message.setText(f"Fit failed: {message}. Capture more varied views and retry.")
+        self.message.setText(
+            f"Fit failed: {message}. If any saved view used loose or curved paper, "
+            "close this calibration and restart with a rigid flat board; adding more "
+            "views does not remove the invalid ones.")
         self.start.setText(f"Capture more {self.stage.upper()} views")
         self.start.setEnabled(True)
         count = len(self.pairs) if self.stage == "stereo" else len(self.individual_frames[self.stage])
@@ -501,6 +607,23 @@ class StereoCalibrationDialog(QDialog):
         self.start.setEnabled(True)
         self.message.setText(
             f"{completed.upper()} intrinsics passed. Continue to {label} calibration.")
+        if completed == "left":
+            next_step = (
+                f"LEFT camera calibration passed at {result.rms_error:.3f} px.\n\n"
+                f"Next: calibrate RIGHT camera {self.indices[1]} using the same rigid, "
+                "flat board. A different apparent zoom is acceptable because each camera "
+                "is calibrated independently.")
+        else:
+            next_step = (
+                f"RIGHT camera calibration passed at {result.rms_error:.3f} px.\n\n"
+                "Next: rigidly fix both cameras in their final LEFT/RIGHT positions. "
+                "Do not move or refocus them, then capture paired stereo views with the "
+                "flat board visible in both feeds.")
+        QMessageBox.information(
+            self,
+            f"{completed.upper()} intrinsic calibration passed",
+            next_step,
+        )
 
     def _fit_done(self, result, report):
         self.fit_worker = None
@@ -536,8 +659,8 @@ class StereoCalibrationDialog(QDialog):
             self.save.setEnabled(False)
             QMessageBox.information(
                 self,
-                "Stereo calibration complete",
-                "The road stereo profile was saved successfully.\n\n"
+                "Stereo calibration complete — profile saved",
+                "SUCCESS: The road stereo profile was saved successfully.\n\n"
                 "Do not move or refocus either camera. Apply the dark filters, close this "
                 "message, then use Standby to verify both feeds before measurements.",
             )

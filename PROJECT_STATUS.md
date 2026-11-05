@@ -32,6 +32,15 @@ Runtime startup validates the dimensions of actual retrieved frames rather than
 failing on unreliable pre-stream property readback. Saving a passing calibration now
 shows an explicit completion alert and closes the dialog cleanly.
 
+The first 640 x 480 physical intrinsic attempt was rejected after inspection. The
+operator used a loose paper checkerboard that visibly curved between captures. RIGHT
+intrinsic RMS was 2.801 px, with several saved views above 4 px; LEFT narrowly passed
+at 1.469 px but produced implausible distortion and is also considered invalid. This
+is a target-planarity/capture-procedure failure, not evidence that stereo calibration
+or the replacement cameras are unusable. The calibration window now embeds an
+illustrated flat-target/pose/stage guide, displays a persistent rigid-board warning,
+and issues explicit LEFT-pass, RIGHT-pass, and final-profile-saved alerts.
+
 The operator now has **two road cameras plus one driver camera**. The single-road
 setup detected a light using a sunglass lens. Both stereo feeds opened, but stereo
 operation was unreliable and observed accuracy was poor; no measured accuracy
@@ -65,7 +74,7 @@ multi-source bring-up. It does not establish metric accuracy: the session was no
 recorded repeated trial, and stereo/chessboard plus camera-to-windshield calibration
 are still required before the coordinates or intersections can be validated.
 
-**Verification:** 113 automated tests pass on Python 3.13. No completed calibrated
+**Verification:** 114 automated tests pass on Python 3.13. No completed calibrated
 physical validation has been performed. Live camera-to-windshield transforms and all physical exit
 criteria remain outstanding. Follow
 [the stereo setup guide](docs/guides/STEREO_CHESSBOARD_SETUP_GUIDE.md), then resume

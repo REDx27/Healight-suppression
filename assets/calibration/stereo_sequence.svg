@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="390" viewBox="0 0 1000 390">
+  <rect width="1000" height="390" rx="24" fill="#0b1520"/>
+  <g font-family="Segoe UI,Arial">
+    <g transform="translate(45 74)">
+      <rect width="260" height="230" rx="16" fill="#122434" stroke="#3b92d1" stroke-width="4"/>
+      <path d="M35 130 l38 -28 h60 l38 28 v48 H35z" fill="#68b7ff"/><circle cx="103" cy="142" r="24" fill="#071019" stroke="#d9f0ff" stroke-width="6"/>
+      <rect x="188" y="95" width="48" height="68" fill="#fff" stroke="#52d273" stroke-width="4"/>
+    </g>
+    <path d="M322 190 H356" stroke="#ffd454" stroke-width="8"/><path d="M356 190 l-17 -13 v26z" fill="#ffd454"/>
+    <g transform="translate(370 74)">
+      <rect width="260" height="230" rx="16" fill="#122434" stroke="#3b92d1" stroke-width="4"/>
+      <rect x="25" y="95" width="48" height="68" fill="#fff" stroke="#52d273" stroke-width="4"/>
+      <path d="M89 130 l38 -28 h60 l38 28 v48 H89z" fill="#68b7ff"/><circle cx="157" cy="142" r="24" fill="#071019" stroke="#d9f0ff" stroke-width="6"/>
+    </g>
+    <path d="M647 190 H681" stroke="#ffd454" stroke-width="8"/><path d="M681 190 l-17 -13 v26z" fill="#ffd454"/>
+    <g transform="translate(695 74)">
+      <rect width="260" height="230" rx="16" fill="#122434" stroke="#52d273" stroke-width="4"/>
+      <path d="M32 128 l28 -20 h45 l28 20 v39 H32z M127 128 l28 -20 h45 l28 20 v39 H127z" fill="#68b7ff"/>
+      <circle cx="82" cy="138" r="18" fill="#071019" stroke="#d9f0ff" stroke-width="5"/><circle cx="177" cy="138" r="18" fill="#071019" stroke="#d9f0ff" stroke-width="5"/>
+      <rect x="102" y="70" width="56" height="48" fill="#fff" stroke="#52d273" stroke-width="4"/>
+      <path d="M52 182 H208" stroke="#ff6678" stroke-width="7"/><circle cx="52" cy="182" r="8" fill="#ff6678"/><circle cx="208" cy="182" r="8" fill="#ff6678"/>
+    </g>
+  </g>
+</svg>

@@ -13,6 +13,7 @@ for package in ("mediapipe", "pyqtgraph"):
 
 datas.append(("../assets/glaretracker-icon.ico", "assets"))
 datas.append(("../assets/face_landmarker.task", "assets"))
+datas.append(("../assets/calibration", "assets/calibration"))
 datas.append((
     "../output/pdf/road_stereo_chessboard_A4_9x6_20mm.pdf",
     "output/pdf",

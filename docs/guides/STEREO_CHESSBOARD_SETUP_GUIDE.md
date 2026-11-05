@@ -29,6 +29,10 @@ laboratory procedure, not a moving-vehicle test.
 
 ## 2. Prepare the chessboard
 
+For illustrated examples of the required flat backing, pose coverage, and stage
+sequence, open the
+[Visual Road-Stereo Calibration Guide](VISUAL_STEREO_CALIBRATION_GUIDE.md).
+
 Use a flat black-and-white checkerboard with a white outer margin, firmly attached
 to a flat backing. The default is **10 columns × 7 rows of squares**, giving
 **9 × 6 inner corners**. Enter inner corners, not square counts.
