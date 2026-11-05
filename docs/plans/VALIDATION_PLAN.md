@@ -5,8 +5,15 @@
 > test pass. Hardware-dependent stages remain open until measurements and
 > evidence files have been collected.
 
-Current software verification: **112 automated tests passed on Python 3.13** on
-2026-11-04. This does not satisfy any open physical exit criterion.
+Current software verification: **113 automated tests passed on Python 3.13** on
+2026-11-05. This does not satisfy any open physical exit criterion.
+
+Replacement-camera bring-up on 2026-11-05 found that a 320 x 240 request produced
+different actual road-frame widths (320 and 352). Both replacement road cameras then
+delivered all sampled frames together at 640 x 480/15 FPS while the driver camera ran
+at 640 x 480/30 FPS. Software startup and calibration now use this verified mode and
+validate retrieved frame sizes. The interrupted first checkerboard attempt is not a
+calibration pass; repeat all three stages and require the explicit saved-profile alert.
 
 Preliminary live evidence on 2026-11-04: after rough camera-offset compensation, the
 real road-camera pair automatically detected and associated one, two, and three

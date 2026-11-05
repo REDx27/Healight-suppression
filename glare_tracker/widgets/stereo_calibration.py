@@ -12,7 +12,7 @@ from PyQt5.QtCore import QThread, Qt, QUrl, pyqtSignal
 from PyQt5.QtGui import QDesktopServices, QImage, QPixmap
 from PyQt5.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QPushButton,
-    QSpinBox, QDoubleSpinBox,
+    QSpinBox, QDoubleSpinBox, QMessageBox,
 )
 
 from glare_tracker.capture import open_video_capture, configure_road_stereo_capture
@@ -239,7 +239,7 @@ class StereoCalibrationDialog(QDialog):
         self.individual_corners = {"left": [], "right": []}
         self.intrinsics = {"left": None, "right": None}
         self.pairs, self.corner_pairs = [], []
-        self.result = self.report = self.session_dir = None
+        self.calibration_result = self.report = self.session_dir = None
         self.saved_path = None
         self.setWindowTitle("Road cameras - guided calibration")
         self.resize(900, 680)
@@ -504,7 +504,7 @@ class StereoCalibrationDialog(QDialog):
 
     def _fit_done(self, result, report):
         self.fit_worker = None
-        self.result, self.report = result, report
+        self.calibration_result, self.report = result, report
         try:
             (self.session_dir / "report.json").write_text(json.dumps(report, indent=2))
         except OSError as error:
@@ -521,17 +521,27 @@ class StereoCalibrationDialog(QDialog):
         self.save.setEnabled(report["passed"])
 
     def _save(self):
-        if not self.result or not self.report or not self.report["passed"]:
+        if (not self.calibration_result or not self.report
+                or not self.report["passed"]):
             return
         try:
             name = stereo_profile_name(*self.indices)
             archive_name = f"stereo_sessions/{self.session_dir.name}/accepted"
-            save_stereo_calibration(self.result, archive_name)
-            self.saved_path = save_stereo_calibration(self.result, name)
+            save_stereo_calibration(self.calibration_result, archive_name)
+            self.saved_path = save_stereo_calibration(self.calibration_result, name)
             self.message.setText(
-                f"Saved {self.saved_path}. Apply the dark filters without moving cameras, "
-                "then perform the post-filter verification before collecting measurements.")
+                f"CALIBRATION COMPLETE. Saved {self.saved_path}. Apply the dark filters "
+                "without moving cameras, then perform the post-filter verification before "
+                "collecting measurements.")
             self.save.setEnabled(False)
+            QMessageBox.information(
+                self,
+                "Stereo calibration complete",
+                "The road stereo profile was saved successfully.\n\n"
+                "Do not move or refocus either camera. Apply the dark filters, close this "
+                "message, then use Standby to verify both feeds before measurements.",
+            )
+            self.accept()
         except Exception as error:
             self.message.setText(f"Save failed: {error}")
 

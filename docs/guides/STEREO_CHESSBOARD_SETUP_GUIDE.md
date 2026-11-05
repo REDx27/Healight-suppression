@@ -1,6 +1,6 @@
 # Road Stereo Chessboard Setup Guide
 
-Updated: 2026-11-03. Current development priority: bring up the two road cameras
+Updated: 2026-11-05. Current development priority: calibrate the replacement road cameras
 before adding live driver tracking back into the experiment. This is a stationary
 laboratory procedure, not a moving-vehicle test.
 
@@ -60,9 +60,12 @@ the [OpenCV calibration documentation](https://docs.opencv.org/4.5.2/d9/d0c/grou
    and centre. Avoid nearly identical images, blur or obscured corners.
 5. The application saves only pairs where both boards are detected, rejects near
    duplicates, and preserves raw capture images without display scaling or mirroring.
-   Both road cameras use the measured stable shared mode of **320 x 240 at 15 FPS**.
-   At 640 x 480, one stream opened and grabbed but returned no frames when both road
-   cameras shared the USB root hub.
+   Both replacement road cameras use the live-verified shared mode of
+   **640 x 480 at 15 FPS**. On 2026-11-05, the previous 320 x 240 request produced
+   unequal actual widths (320 for camera 0 and 352 for camera 2), which cannot be
+   calibrated as one stereo pair. A simultaneous three-camera probe delivered all
+   sampled frames with both road cameras at 640 x 480/15 FPS and the driver camera at
+   640 x 480/30 FPS. The older 320 x 240 result applies only to the replaced pair.
 6. Fit each stage when enabled. The paired fit holds the accepted individual
    intrinsics fixed. A stereo candidate passes the software gates only if its
    matrices are finite, stereo RMS is at most 1.5 px, the 95th-percentile rectified
@@ -70,8 +73,10 @@ the [OpenCV calibration documentation](https://docs.opencv.org/4.5.2/d9/d0c/grou
    sign. These are initial engineering gates, not a proven physical accuracy limit.
 7. Compare the reported baseline with your ruler measurement. If inconsistent, do
    NOT save: check units, board size, camera order and pose diversity; capture again.
-8. Save an accepted profile, close the dialog, then install the dark filters without
-   moving the cameras. The current software warns that post-filter verification is
+8. Save an accepted profile. A **Stereo calibration complete** alert must appear; if it
+   does not, the profile was not accepted and the calibration is incomplete. The dialog
+   then closes automatically. Install the dark filters without moving the cameras. The
+   current software warns that post-filter verification is
    still required; do not collect final measurement evidence until that gate is
    implemented and passed. No active profile is replaced until you explicitly save.
 

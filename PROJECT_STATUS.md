@@ -1,6 +1,6 @@
 # GlareTracker — Project Status & Specification
 
-> **Last Updated:** 2026-11-04
+> **Last Updated:** 2026-11-05
 > **Python Version:** 3.13 (current test environment; 3.11 previously verified)
 > **Platform:** Windows 10/11
 > **UI Framework:** PyQt5
@@ -12,7 +12,25 @@
 
 ## 0. Current Status Snapshot
 
-### Active development priority — 2026-11-04
+### Active development priority — 2026-11-05
+
+Two replacement low-cost road cameras are now connected at indices 0 and 2, with
+the integrated driver camera at index 1. Their supplied specifications claim SNR
+greater than 48 dB at 30 FPS/220 lux, dynamic range greater than 72 dB, 5 cm-to-
+infinity focus, built-in compression, automatic brightness and colour compensation,
+and manual focus. These claims have not been independently verified; the operator
+also reports no accessible lens rotation, so the manual-focus claim must not be
+assumed in the experiment.
+
+The first calibration attempt did not complete or save a valid stereo profile. Live
+diagnosis found the cause: for the old 320 x 240 request, camera 0 returned 320 x 240
+while camera 2 negotiated 352 x 240. The app rejected the unequal frames, then showed
+both feeds offline. A three-camera probe subsequently delivered every sampled frame
+with both road cameras at **640 x 480/15 FPS** and the driver camera at
+**640 x 480/30 FPS**. The live and calibration paths now use that verified road mode.
+Runtime startup validates the dimensions of actual retrieved frames rather than
+failing on unreliable pre-stream property readback. Saving a passing calibration now
+shows an explicit completion alert and closes the dialog cleanly.
 
 The operator now has **two road cameras plus one driver camera**. The single-road
 setup detected a light using a sunglass lens. Both stereo feeds opened, but stereo
@@ -47,7 +65,7 @@ multi-source bring-up. It does not establish metric accuracy: the session was no
 recorded repeated trial, and stereo/chessboard plus camera-to-windshield calibration
 are still required before the coordinates or intersections can be validated.
 
-**Verification:** 112 automated tests pass on Python 3.13. No completed calibrated
+**Verification:** 113 automated tests pass on Python 3.13. No completed calibrated
 physical validation has been performed. Live camera-to-windshield transforms and all physical exit
 criteria remain outstanding. Follow
 [the stereo setup guide](docs/guides/STEREO_CHESSBOARD_SETUP_GUIDE.md), then resume

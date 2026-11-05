@@ -3,10 +3,10 @@
 **Project:** Low-Cost Active Windshield Glare Suppression System
 **Software:** GlareTracker v1.2 development source
 **Original milestone snapshot:** 2026-10-05
-**Consolidated through:** 2026-11-04
+**Consolidated through:** 2026-11-05
 **Prepared for:** Project teammate and later thesis development
 **Reviewed source baseline:** current guided-calibration and automatic multi-light working tree
-**Current automated verification:** 112 tests passed on Python 3.13
+**Current automated verification:** 113 tests passed on Python 3.13
 **Document status:** Long-form design and milestone reference; current execution
 status is maintained in `PROJECT_STATUS.md` and `docs/plans/VALIDATION_PLAN.md`.
 
@@ -20,7 +20,26 @@ status is maintained in `PROJECT_STATUS.md` and `docs/plans/VALIDATION_PLAN.md`.
 
 ## Document purpose
 
-### Latest development decision — 2026-11-04
+### Latest development decision — 2026-11-05
+
+The operator replaced the former road pair with two externally identical low-cost
+cameras. The product guide claims SNR greater than 48 dB at 30 FPS/220 lux, dynamic
+range greater than 72 dB, focus from 5 cm to infinity, built-in compression,
+automatic brightness and colour compensation, and manual focus. These supplier
+claims are recorded as unverified hardware metadata, not measured camera performance.
+The claimed manual focus is especially uncertain because the operator cannot rotate
+or otherwise adjust the lenses.
+
+The first rough checkerboard session did not complete: no success alert appeared and
+no accepted profile should be inferred. Direct diagnosis showed that the nominally
+identical cameras do not expose the same low-resolution mode. With a 320 x 240 request,
+camera 0 returned 320 x 240 while camera 2 returned 352 x 240. This unequal geometry
+caused the stereo worker to stop and both road cards to appear offline. A subsequent
+simultaneous probe delivered every sampled frame at 640 x 480/15 FPS from both road
+cameras while the integrated driver camera delivered 640 x 480/30 FPS. Calibration
+and live stereo now use the verified 640 x 480 road profile. Runtime compatibility is
+decided from retrieved frame dimensions rather than unreliable pre-stream UVC
+property readback, and a saved stereo profile produces an explicit completion alert.
 
 The operator confirmed **two road cameras plus the driver camera**. Single-road
 light detection worked with a sunglass lens; the second road-camera feed became

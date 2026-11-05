@@ -277,6 +277,11 @@ def test_color_bar_test_pattern_is_rejected_but_scene_is_not():
 def test_dialog_rejects_duplicate_poses_and_archives_profile(tmp_path, monkeypatch):
     app = QApplication.instance() or QApplication([])
     monkeypatch.setattr(calibration, "_calibration_dir", lambda: tmp_path)
+    notices = []
+    monkeypatch.setattr(
+        wizard.QMessageBox, "information",
+        lambda *args: notices.append(args),
+    )
     dialog = wizard.StereoCalibrationDialog(1, 2)
     dialog.session_dir = tmp_path / "stereo_sessions" / "test"
     dialog.session_dir.mkdir(parents=True)
@@ -296,6 +301,8 @@ def test_dialog_rejects_duplicate_poses_and_archives_profile(tmp_path, monkeypat
     assert dialog.saved_path.is_file()
     assert (dialog.session_dir / "report.json").is_file()
     assert (dialog.session_dir / "accepted_calib.npz").is_file()
+    assert notices and notices[0][1] == "Stereo calibration complete"
+    assert dialog.result() == dialog.Accepted
     dialog.close()
 
 
@@ -381,7 +388,9 @@ def test_runtime_previews_without_uncalibrated_depth(monkeypatch, profile_state)
     captures = [Capture(), Capture()]
     monkeypatch.setattr(detector, "open_video_capture", lambda index: (captures[index - 1], "fake"))
     monkeypatch.setattr(
-        detector, "configure_road_stereo_capture", lambda cap: (320, 240, 15.0))
+        detector, "configure_road_stereo_capture",
+        lambda cap: ((320, 240, 15.0) if cap is captures[0]
+                     else (352, 240, 15.0)))
     monkeypatch.setattr(detector, "_apply_camera_controls", lambda *args: {})
     processed = iter([SimpleNamespace(observations=[observation(332.5)]),
                       SimpleNamespace(observations=[observation(307.5)])])
@@ -402,6 +411,42 @@ def test_runtime_previews_without_uncalibrated_depth(monkeypatch, profile_state)
     assert bool(rough_results) == (profile_state != "valid")
     assert ("previews only" in diagnostics[0]) == (profile_state != "valid")
     assert all(cap.released for cap in captures)
+
+
+def test_runtime_rejects_actual_frame_size_mismatch(monkeypatch):
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(detector, "load_stereo_calibration", lambda name: None)
+    worker = detector.HeadlightDetectorThread(0, 2)
+
+    class Capture:
+        def __init__(self, shape):
+            self.frame = np.zeros(shape, np.uint8)
+            self.released = False
+        def grab(self):
+            return True
+        def retrieve(self):
+            return True, self.frame.copy()
+        def release(self):
+            self.released = True
+
+    captures = {
+        0: Capture((480, 640, 3)),
+        2: Capture((480, 704, 3)),
+    }
+    monkeypatch.setattr(
+        detector, "open_video_capture", lambda index: (captures[index], "fake"))
+    monkeypatch.setattr(
+        detector, "configure_road_stereo_capture", lambda cap: (640, 480, 15.0))
+    monkeypatch.setattr(detector, "_apply_camera_controls", lambda *args: {})
+    statuses = []
+    worker.camera_status.connect(
+        lambda message, valid: statuses.append((message, valid)))
+
+    worker.run()
+
+    assert statuses and statuses[-1][1] is False
+    assert "different frame sizes after streaming" in statuses[-1][0]
+    assert all(capture.released for capture in captures.values())
 
 
 def test_runtime_marks_color_bar_stream_invalid(monkeypatch):

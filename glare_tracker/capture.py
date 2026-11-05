@@ -15,9 +15,12 @@ from PyQt5.QtCore import QThread, pyqtSignal
 
 
 # Measured stable shared mode for the current two-road-camera USB setup.
-# Calibration and live stereo must use the same capture profile.
-ROAD_STEREO_WIDTH = 320
-ROAD_STEREO_HEIGHT = 240
+# The replacement cameras do not share a 320-wide mode: one negotiates
+# 320x240 while the other selects 352x240.  Both delivered every probed frame
+# together at 640x480/15 FPS (with the driver camera at 640x480/30 FPS).
+# Calibration and live stereo must use this same capture profile.
+ROAD_STEREO_WIDTH = 640
+ROAD_STEREO_HEIGHT = 480
 ROAD_STEREO_FPS = 15
 
 

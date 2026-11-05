@@ -1427,17 +1427,9 @@ class HeadlightDetectorThread(QThread):
                     cap, self.detection_settings)
                 if camera_number == 1:
                     primary_report = report
-            if modes[0][:2] != modes[1][:2]:
-                raise RuntimeError(
-                    f"Road cameras negotiated different modes: {modes[0]} and {modes[1]}")
-            self.camera_status.emit(
-                f"Cameras {self.cam1_idx} ({backend1}) + "
-                f"{self.cam2_idx} ({backend2}) connected (stereo, "
-                f"{modes[0][0]}x{modes[0][1]} @ {modes[0][2]:.1f} FPS)", True)
-            self.stereo_stream_status.emit(
-                1, f"Camera {self.cam1_idx} streaming", True)
-            self.stereo_stream_status.emit(
-                2, f"Camera {self.cam2_idx} streaming", True)
+            # CAP_PROP readback is only a driver's promise. Some inexpensive
+            # UVC cameras change mode when streaming begins, so validate the
+            # retrieved frames below instead of rejecting the pair here.
             self.camera_controls_report.emit(primary_report)
             applied_settings_revision = self._settings_revision
 
@@ -1446,6 +1438,7 @@ class HeadlightDetectorThread(QThread):
             last_diagnostics = 0.0
             read_failures = 0
             stream_healthy = [True, True]
+            stream_mode_announced = False
             while self._running:
                 # Sequential grabs reduce readout delay but do not synchronize exposure.
                 capture_started_ns = time.monotonic_ns()
@@ -1475,6 +1468,26 @@ class HeadlightDetectorThread(QThread):
                         raise RuntimeError("Repeated stereo read failures; reconnect and Run again")
                     self.msleep(30)
                     continue
+                if frame1.shape[:2] != frame2.shape[:2]:
+                    left_size = f"{frame1.shape[1]}x{frame1.shape[0]}"
+                    right_size = f"{frame2.shape[1]}x{frame2.shape[0]}"
+                    raise RuntimeError(
+                        "Road cameras returned different frame sizes after streaming: "
+                        f"camera {self.cam1_idx}={left_size}, "
+                        f"camera {self.cam2_idx}={right_size}. "
+                        "Stop, refresh cameras, and recalibrate using a shared mode.")
+                if not stream_mode_announced:
+                    height, width = frame1.shape[:2]
+                    reported_fps = min(float(modes[0][2]), float(modes[1][2]))
+                    self.camera_status.emit(
+                        f"Cameras {self.cam1_idx} ({backend1}) + "
+                        f"{self.cam2_idx} ({backend2}) connected (stereo, "
+                        f"{width}x{height} @ {reported_fps:.1f} FPS)", True)
+                    self.stereo_stream_status.emit(
+                        1, f"Camera {self.cam1_idx} streaming at {width}x{height}", True)
+                    self.stereo_stream_status.emit(
+                        2, f"Camera {self.cam2_idx} streaming at {width}x{height}", True)
+                    stream_mode_announced = True
                 health_issues = [
                     _is_color_bar_test_pattern(frame1),
                     _is_color_bar_test_pattern(frame2),

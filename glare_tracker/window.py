@@ -868,7 +868,8 @@ class MainWindow(QMainWindow):
         dialog.exec_()
         if dialog.saved_path:
             self.controls.stereo_status.setText(
-                f"Saved {dialog.saved_path.name}. Run to load; verify measured distances next.")
+                f"Calibration ready: {dialog.saved_path.name}. "
+                "Standby/Run will load it; verify measured distances next.")
         dialog.deleteLater()
 
     def _refresh_available_cameras(self):
