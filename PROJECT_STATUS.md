@@ -49,6 +49,17 @@ the small apparent zoom/FOV difference without a resolution mismatch. This is a
 passing fit candidate, not yet physical validation; the operator must compare the
 baseline with a ruler and save the profile before it becomes active.
 
+The operator measured the physical lens-centre baseline at approximately 15.35 cm,
+only 0.08 cm (about 0.52%) from the fitted 15.43 cm, and saved the ordered camera
+2-LEFT / camera 1-RIGHT stereo profile. Live calibrated tracking then appeared smooth
+with saliency floor 4, confidence 32%, adaptive threshold ceiling 200, minimum area
+656 px, 9 x 9 blur, five cleanup passes, eight sources, and 221 px ID distance. These
+are provisional bring-up settings rather than a validated detector configuration:
+they favour a large nearby blob and caused one-camera dropout outside a limited common
+view. The next software phase is interface reduction plus temporal/hysteresis stability
+that permits wider-coverage detector settings, followed by physical overlap alignment
+and camera-to-windshield extrinsic validation.
+
 The operator now has **two road cameras plus one driver camera**. The single-road
 setup detected a light using a sunglass lens. Both stereo feeds opened, but stereo
 operation was unreliable and observed accuracy was poor; no measured accuracy

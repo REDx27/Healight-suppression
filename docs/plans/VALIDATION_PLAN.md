@@ -29,6 +29,14 @@ accounts for the visible scale difference. Keep the physical checklist open unti
 operator confirms baseline plausibility, saves the profile, and completes independent
 held-out distance measurements.
 
+The operator subsequently confirmed a measured 15.35 cm lens-centre baseline against
+the fitted 15.43 cm value (0.08 cm / about 0.52% difference) and saved the ordered
+2-LEFT / 1-RIGHT profile. Smooth live tracking was observed with aggressive spatial
+filtering and a 656 px minimum blob area, but coverage remained limited when one camera
+lost the source. Treat this as calibrated bring-up, not the stationary-light depth or
+windshield-intersection validation pass. Cleanup now targets temporal stability with
+wider detector coverage and a reduced stereo-focused interface.
+
 Preliminary live evidence on 2026-11-04: after rough camera-offset compensation, the
 real road-camera pair automatically detected and associated one, two, and three
 stationary lights across the tested lower and upper image regions while the driver feed

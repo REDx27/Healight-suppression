@@ -62,6 +62,16 @@ FOV difference of about 4.5%, not a frame-size mismatch. This remains a fit-set 
 not held-out accuracy evidence; it becomes the active profile only after baseline
 plausibility is checked and the operator explicitly saves it.
 
+The operator measured approximately 15.35 cm between lens centres, a difference of
+0.08 cm (about 0.52%) from the 15.43 cm fitted baseline, and saved the ordered camera
+2-LEFT / camera 1-RIGHT profile. Calibrated live tracking appeared smooth under the
+operator's provisional high-suppression settings (saliency 4, confidence 32%, adaptive
+brightness ceiling 200, minimum area 656 px, 9 x 9 blur, five morphology passes,
+eight retained sources, and 221 px identity distance). That smoothness is not yet a
+detector-accuracy result: aggressive spatial filtering can suppress noise while also
+erasing smaller or edge-of-overlap sources. One-camera dropout limited the observed
+windshield-intersection region, and camera-to-windshield extrinsics remain unapplied.
+
 The operator confirmed **two road cameras plus the driver camera**. Single-road
 light detection worked with a sunglass lens; the second road-camera feed became
 live but stereo initially did not operate reliably. Accuracy is poor by observation,
