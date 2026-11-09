@@ -11,6 +11,7 @@ from PyQt5.QtWidgets import (
 from glare_tracker.widgets.icons import ICON_SIZE, IconFactory
 from glare_tracker.operating_modes import OperatingMode, policy_for
 from glare_tracker.headlight_detector import LightDetectionSettings
+from glare_tracker.drowsiness import DrowsinessSettings
 
 
 class CameraSelector(QComboBox):
@@ -76,6 +77,8 @@ class ControlsPanel(QWidget):
     inside the OperationsSidebar tab.
     """
 
+    drowsiness_settings_changed = pyqtSignal(object)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
@@ -95,8 +98,11 @@ class ControlsPanel(QWidget):
         self.mode_description = QLabel()
         self.mode_description.setObjectName("mutedText")
         self.mode_description.setWordWrap(True)
+        self.check_show_advanced_configuration = QCheckBox(
+            "Show advanced and experimental configuration")
         mode_layout.addWidget(self.combo_operating_mode)
         mode_layout.addWidget(self.mode_description)
+        mode_layout.addWidget(self.check_show_advanced_configuration)
         layout.addWidget(self.mode_group)
 
         # ── Windshield ──
@@ -258,6 +264,71 @@ class ControlsPanel(QWidget):
         auto_layout.addRow(self.btn_stereo_calibration)
         auto_layout.addRow(self.stereo_status)
         layout.addWidget(self.auto_camera_group)
+
+        # Driver monitoring reuses the existing Face Mesh result.  It remains
+        # disabled by default because its thresholds have not yet been
+        # validated as a safety device for this camera or vehicle environment.
+        self.driver_monitoring_group = QGroupBox(
+            "Driver Drowsiness Monitoring (Experimental)")
+        self.driver_monitoring_group.setProperty("section", "driver")
+        drowsiness_layout = QFormLayout(self.driver_monitoring_group)
+        drowsiness_layout.setSpacing(6)
+        self._configure_form(drowsiness_layout)
+        self.check_drowsiness = QCheckBox("Enable drowsiness indicators")
+        self.combo_drowsiness_profile = QComboBox()
+        self.combo_drowsiness_profile.addItems(["Default", "Custom"])
+        self.spin_eye_openness = self._make_spin(
+            0.05, 0.60, 0.21, " ratio")
+        self.spin_eye_openness.setDecimals(2)
+        self.spin_eye_openness.setSingleStep(0.01)
+        self.spin_blink_duration = QSpinBox()
+        self.spin_blink_duration.setRange(100, 5000)
+        self.spin_blink_duration.setValue(800)
+        self.spin_blink_duration.setSuffix(" ms")
+        self.spin_blink_duration.setMinimumHeight(30)
+        self.spin_perclos_threshold = self._make_spin(
+            1.0, 95.0, 25.0, " %")
+        self.spin_perclos_threshold.setDecimals(0)
+        self.spin_perclos_window = self._make_spin(
+            5.0, 300.0, 60.0, " s")
+        self.spin_perclos_window.setDecimals(0)
+        self.spin_yawn_openness = self._make_spin(
+            0.05, 1.50, 0.35, " ratio")
+        self.spin_yawn_openness.setDecimals(2)
+        self.spin_yawn_openness.setSingleStep(0.01)
+        self.spin_yawn_duration = QSpinBox()
+        self.spin_yawn_duration.setRange(250, 10000)
+        self.spin_yawn_duration.setValue(1500)
+        self.spin_yawn_duration.setSuffix(" ms")
+        self.spin_yawn_duration.setMinimumHeight(30)
+        self.drowsiness_status = QLabel(
+            "Off. Experimental research indicator; not a safety-certified alarm.")
+        self.drowsiness_status.setObjectName("mutedText")
+        self.drowsiness_status.setWordWrap(True)
+        drowsiness_layout.addRow(self.check_drowsiness)
+        drowsiness_layout.addRow("Threshold profile:", self.combo_drowsiness_profile)
+        drowsiness_layout.addRow("Eye openness minimum:", self.spin_eye_openness)
+        drowsiness_layout.addRow("Long closure duration:", self.spin_blink_duration)
+        drowsiness_layout.addRow("PERCLOS warning:", self.spin_perclos_threshold)
+        drowsiness_layout.addRow("PERCLOS window:", self.spin_perclos_window)
+        drowsiness_layout.addRow("Yawn openness minimum:", self.spin_yawn_openness)
+        drowsiness_layout.addRow("Yawn duration:", self.spin_yawn_duration)
+        drowsiness_layout.addRow(self.drowsiness_status)
+        layout.addWidget(self.driver_monitoring_group)
+
+        self.check_drowsiness.toggled.connect(
+            self._drowsiness_controls_changed)
+        self.combo_drowsiness_profile.currentTextChanged.connect(
+            self._drowsiness_controls_changed)
+        for widget in (
+            self.spin_eye_openness,
+            self.spin_blink_duration,
+            self.spin_perclos_threshold,
+            self.spin_perclos_window,
+            self.spin_yawn_openness,
+            self.spin_yawn_duration,
+        ):
+            widget.valueChanged.connect(self._emit_drowsiness_settings)
 
         # Camera-driver controls and software image-processing controls are
         # intentionally grouped together so the operator can tune a new lamp
@@ -547,10 +618,15 @@ class ControlsPanel(QWidget):
         lcd_layout.addRow(self.lcd_status)
         layout.addWidget(self.lcd_group)
 
+        self.check_show_advanced_configuration.toggled.connect(
+            self._update_configuration_visibility)
+        self._rebuild_configuration_flow(layout)
         layout.addStretch()
         self._update_detection_control_states()
         self._update_detection_advanced_visibility()
         self._refresh_detection_summary()
+        self._drowsiness_controls_changed()
+        self._update_configuration_visibility()
         self._update_mode_controls()
 
     # ── helpers ──────────────────────────────────────────────────────
@@ -582,6 +658,88 @@ class ControlsPanel(QWidget):
         if label is not None:
             label.setVisible(visible)
 
+    @staticmethod
+    def _section_heading(text):
+        heading = QLabel(text.upper())
+        heading.setObjectName("configurationSectionHeading")
+        return heading
+
+    def _rebuild_configuration_flow(self, layout):
+        """Arrange the sidebar in the order used during a test session."""
+
+        groups = (
+            self.mode_group,
+            self.auto_camera_group,
+            self.calibration_group,
+            self.driver_monitoring_group,
+            self.dist_group,
+            self.manual_driver_group,
+            self.light_detection_group,
+            self.vehicle_group,
+            self.light_group,
+            self.movement_group,
+            self.ws_group,
+            self.camera_group,
+            self.diagnostics_group,
+            self.lcd_group,
+        )
+        for group in groups:
+            layout.removeWidget(group)
+
+        flow = (
+            ("1  Operation", (self.mode_group,)),
+            ("2  Cameras and calibration", (
+                self.auto_camera_group, self.calibration_group)),
+            ("3  Driver monitoring", (
+                self.driver_monitoring_group, self.dist_group,
+                self.manual_driver_group)),
+            ("4  Road-light detection", (
+                self.light_detection_group, self.vehicle_group,
+                self.light_group, self.movement_group)),
+            ("5  System geometry", (self.ws_group, self.camera_group)),
+            ("6  Research and output", (
+                self.diagnostics_group, self.lcd_group)),
+        )
+        self.configuration_headings = []
+        for title, section_groups in flow:
+            heading = self._section_heading(title)
+            self.configuration_headings.append(heading)
+            layout.addWidget(heading)
+            for group in section_groups:
+                layout.addWidget(group)
+
+    def _update_configuration_visibility(self):
+        """Keep the normal workflow concise while retaining research tools."""
+
+        advanced = self.check_show_advanced_configuration.isChecked()
+        self.camera_group.setVisible(advanced)
+        self.lcd_group.setVisible(advanced)
+
+    def _drowsiness_controls_changed(self, *_):
+        custom = self.combo_drowsiness_profile.currentText() == "Custom"
+        form = self.driver_monitoring_group.layout()
+        for widget in (
+            self.spin_eye_openness,
+            self.spin_blink_duration,
+            self.spin_perclos_threshold,
+            self.spin_perclos_window,
+            self.spin_yawn_openness,
+            self.spin_yawn_duration,
+        ):
+            self._set_form_row_visible(form, widget, custom)
+        self._emit_drowsiness_settings()
+
+    def _emit_drowsiness_settings(self, *_):
+        settings = self.get_drowsiness_settings()
+        if not settings.enabled:
+            self.drowsiness_status.setText(
+                "Off. Experimental research indicator; not a safety-certified alarm.")
+        else:
+            profile = self.combo_drowsiness_profile.currentText().lower()
+            self.drowsiness_status.setText(
+                f"Enabled with {profile} thresholds; waiting for driver face data.")
+        self.drowsiness_settings_changed.emit(settings)
+
     def _update_mode_controls(self):
         policy = self.mode_policy()
         self.mode_description.setText(policy.description)
@@ -592,11 +750,13 @@ class ControlsPanel(QWidget):
         self.vehicle_group.setVisible(policy.manual_headlight)
         self.movement_group.setVisible(policy.manual_headlight)
         self.dist_group.setEnabled(policy.use_driver_camera)
+        self.driver_monitoring_group.setEnabled(policy.use_driver_camera)
         self.auto_camera_group.setVisible(True)
         self.spin_driver_camera.setEnabled(True)
         self._update_auto_controls()
         self.spin_driver_camera.setEnabled(
             not self.check_lock_driver_camera.isChecked())
+        self._update_configuration_visibility()
 
     def _update_auto_controls(self):
         policy = self.mode_policy()
@@ -871,6 +1031,22 @@ class ControlsPanel(QWidget):
             brightness=self.spin_camera_brightness.value(),
             contrast=self.spin_camera_contrast.value(),
             gain=self.spin_camera_gain.value(),
+        ).normalized()
+
+    def get_drowsiness_settings(self):
+        """Return default or operator-defined experimental thresholds."""
+
+        enabled = self.check_drowsiness.isChecked()
+        if self.combo_drowsiness_profile.currentText() != "Custom":
+            return DrowsinessSettings(enabled=enabled)
+        return DrowsinessSettings(
+            enabled=enabled,
+            eye_openness_threshold=self.spin_eye_openness.value(),
+            blink_duration_ms=self.spin_blink_duration.value(),
+            perclos_threshold=self.spin_perclos_threshold.value() / 100.0,
+            perclos_window_s=self.spin_perclos_window.value(),
+            yawn_openness_threshold=self.spin_yawn_openness.value(),
+            yawn_duration_ms=self.spin_yawn_duration.value(),
         ).normalized()
 
     # ── public getters ──────────────────────────────────────────────

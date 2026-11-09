@@ -34,6 +34,7 @@ class ReadoutPanel(QGroupBox):
         for key, label_text in [
             ("eye_pos", "Eye Position"),
             ("light_pos", "Light Sources"),
+            ("drowsiness", "Driver Monitoring"),
             ("fps", "Frame Rate"),
             ("status", "Tracking"),
         ]:

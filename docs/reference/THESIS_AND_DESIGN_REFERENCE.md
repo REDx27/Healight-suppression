@@ -453,6 +453,33 @@ second driver camera later requires synchronized capture, stereo calibration, ma
 the same left and right pupils between views, triangulation, and transformation into
 LCD coordinates.
 
+#### 3.8.1 Driver camera plus Time-of-Flight depth trial
+
+A lower-cost intermediate option was selected for evaluation before buying another
+driver camera: retain the calibrated RGB driver camera for left/right iris pixels and
+co-mount a single-zone Time-of-Flight sensor near its optical axis. The range sensor
+would provide forward depth while calibrated pixel unprojection preserves separate
+lateral and vertical coordinates for both eyes. The existing IPD-based estimate would
+remain a comparison and short fallback, not the primary scale source.
+
+The readily available GY-VL53L0X board can communicate with an ESP32 or Arduino over
+I2C, followed by timestamped USB serial delivery to the application. It is suitable for
+a prototype trial, but the board's 1 mm output resolution must not be reported as
+1 mm measurement accuracy. The [manufacturer datasheet](https://www.st.com/resource/datasheet/vl53l0x.pdf)
+shows material dependence on target reflectance, timing budget and ambient infrared.
+At typical seating distances the expected error is therefore centimetre-scale and must
+be characterized on the actual face, mount and lighting configuration.
+
+The sensor must be fixed close to the driver camera, aimed at the forehead/upper-face
+region, offset-calibrated against measured eye depth, and rejected when stale or when
+its return quality is invalid. Strong 940 nm interference, particularly from sources
+with substantial infrared output, is an explicit failure condition. Range alone cannot
+replace iris detection: if the camera loses the eyes, the application must clear the
+blocking output even when the ToF reading remains available. The comparison matrix will
+include multiple distances, lateral positions, yaw angles, glasses, LED light, and
+halogen/high-IR exposure. Driver stereo remains the stronger geometric upgrade if this
+multimodal method fails the predeclared final intersection-error requirement.
+
 ### 3.9 Low-cost camera compatibility was treated as an engineering result
 
 The available cameras exposed an important practical constraint: a correct detector is
@@ -501,6 +528,45 @@ identified, rigidly mounted, and included during intrinsic and camera-to-windshi
 calibration. Moving or replacing it invalidates the relevant calibration. The control
 values visible in the successful screenshot were one experimental condition, not
 approved defaults; persistent named hardware/detection profiles remain future work.
+
+#### 3.10.1 Alternative headlight-sensing technologies
+
+The team assessed whether another sensor could make road-headlight tracking more
+reliable. The result is a distinction between **detecting the emitting lamp** and
+**measuring the surrounding vehicle**:
+
+| Option | Useful contribution | Principal limitation for this project |
+|---|---|---|
+| Automotive HDR camera | Preserves bright cores and darker vehicle context; LED-flicker mitigation is available in automotive sensors | More expensive interfaces/modules than ordinary USB webcams |
+| Camera plus 3D LiDAR | Camera locates the lamp while LiDAR supplies vehicle/body range and shape | LiDAR may return bumper/body points rather than the emitting lamp; requires temporal and extrinsic calibration |
+| Camera plus radar | Robust vehicle range/velocity in darkness and poor weather | Insufficient angular resolution for individual left/right lamps in a low-cost implementation |
+| Event camera plus frame camera | Very high dynamic range, low latency and little motion blur for changing/moving lights | Sparse response to static scenes, no ordinary absolute-intensity image, new algorithms and higher cost |
+| Depth/ToF camera | Registered or near-registered depth can simplify 3D recovery | Ambient infrared, reflective lamps and outdoor range can invalidate depth |
+| Photodiode/quadrant array | Cheap, fast indication of glare direction and intensity | Low spatial resolution, no independent depth and weak multiple-source separation |
+| Thermal camera | Can observe warm vehicles or people | Does not directly measure visible headlight glare and is relatively costly |
+
+Camera-LiDAR fusion is technically credible because cameras contribute appearance and
+LiDAR contributes spatial structure; it is widely treated as a multimodal 3D-detection
+architecture. It does not remove the need for a camera or automatically provide the
+optical centre of each lamp. Within this thesis it is therefore a possible future
+extension or external ground-truth instrument, not a required part of the low-cost
+demonstrator.
+
+The most direct remedy for headlight saturation is improved camera dynamic range. For
+example, Sony's [IMX490 automotive sensor](https://www.sony.com/en/SonyInfo/News/Press/201812/18-098E/)
+documents simultaneous HDR and LED-flicker mitigation with a stated 120 dB range.
+Event sensors are another high-dynamic-range option: they timestamp brightness changes
+asynchronously and can exceed 120 dB, but their sparse response and lack of a normal
+intensity frame change the tracking problem. Radar and LiDAR provide valuable modality
+diversity, yet neither directly labels a return as the glare-producing lamp.
+
+The selected near-term design remains the calibrated low-cost stereo road pair with a
+rigid shared field of view, identical final filters, controlled/locked exposure where
+supported, and measured multi-lamp validation. A higher-dynamic-range road camera is
+the preferred direct hardware upgrade if saturation remains the dominant failure.
+LiDAR may be added as a reference for distance or as a later fusion study only after
+the camera baseline has been quantified. This preserves the low-cost research question
+and makes the upgrade decision evidence-based rather than speculative.
 
 ### 3.11 Visual-design decisions were established through rejected alternatives
 
@@ -1016,9 +1082,11 @@ should report the resulting blocked screen area as well as coverage success.
 | Four operating modes | Implemented | Camera/manual source policy is explicit and tested |
 | Driver camera capture | Implemented | Windows backend fallback and 640x480 MJPEG configuration |
 | MediaPipe face/iris tracking | Implemented | Both irises visible in annotated live preview |
+| Experimental drowsiness indicators | Implemented in software; validation pending | Disabled-by-default EAR, long-closure, PERCLOS and sustained-yawn metrics reuse the driver face landmarks; missing-face frames are excluded, but labelled driver trials and glare robustness tests are not complete |
 | Separate left/right-eye geometry | Implemented | Independent rays/intersections and head-roll regression test |
 | Single-camera driver depth | Demonstration only | IPD-based estimate works but remains noisy and unvalidated |
 | Driver temporal stabilization | Planned | No dedicated binocular eye filter yet |
+| Driver camera + ToF depth | Planned comparison | VL53L0X/ESP32-or-Arduino path selected for evaluation; serial integration, offset calibration and physical error/glare tests are not implemented |
 | Driver stereo tracking | Planned optional upgrade | No stereo driver worker or pupil triangulation yet |
 | Manual light position | Implemented | X/Y/Z input and simulated movement paths |
 | Single road-camera detection | Implemented | Multi-candidate bright-region detector, stable IDs, confidence/state records, and tunable previews |
@@ -1026,6 +1094,7 @@ should report the resulting blocked screen area as well as coverage success.
 | Stereo road pipeline | Calibrated qualitative bring-up | Saved 2-LEFT/1-RIGHT profile passes fit gates and baseline plausibility; held-out physical accuracy and camera-to-windshield mapping remain pending |
 | Independent multiple-light detection | Live qualitative bring-up achieved | One, two, and three lights were automatically detected and associated on 2026-11-04; recorded repetitions, calibrated positions and accuracy validation remain pending |
 | Road-camera tuning | Implemented; physical A/B test pending | Normal UI provides exact Smooth and proposed Balanced presets plus a compact summary; detailed camera/detector controls are collapsed under advanced tuning |
+| Alternative road sensing | Design alternatives assessed | HDR is the preferred direct saturation upgrade; LiDAR/radar are complementary vehicle-range sensors; event/depth/photodiode paths remain future research, not implemented requirements |
 | Processing-stage previews | Implemented | Each road feed can show detection overlay, original, final candidate mask, background difference, multi-scale saliency, local contrast, strongest-channel intensity, or blurred intensity |
 | Broad-light and clutter rejection | Implemented in software | Six-scale eight-neighbor contrast suppresses broad illumination and long edges, while confidence ranks saturated core/halo sources above weaker clutter; synthetic screenshot-like coverage passes |
 | Controlled-scene background rejection | Implemented | Captured reference frame removes stationary bright regions such as a nearby window while retaining newly introduced test lights |
@@ -1077,10 +1146,11 @@ The detector-era checkpoint contained twenty-seven tests covering:
 - immediate replacement of a stale false single-source track when the lamp appears at
   a different image position.
 
-The current Python 3.13 suite contains **112 passing tests**, including automatic
+The current Python 3.13 suite contains **127 passing tests**, including automatic
 two-source rough association and calibrated triangulation, plus synthetic stereo
 fitting with supplied individual intrinsics, startup prompt policy, staged workflow,
-profile compatibility, calibrated matching, and mocked capture/UI paths.
+profile compatibility, calibrated matching, mocked capture/UI paths, structured
+configuration flow, and temporal drowsiness-metric behavior.
 Earlier coverage adds geometry
 boundaries, timestamped telemetry/video, ground-truth analysis, rigid transforms,
 guarded extrinsic fitting, physical-intersection error decomposition, latency and stale
@@ -1088,7 +1158,27 @@ rejection, LCD fail-safe behavior, and the earlier session/detector cases. These
 protect software behavior. They do not replace physical-camera accuracy, timing,
 lighting, and LCD experiments.
 
-### 9.4 Recorded live evidence
+### 9.4 Experimental driver-drowsiness method
+
+The current feature uses the same single driver camera and MediaPipe face landmarks as
+eye-position tracking, so it does not require another camera. The software calculates:
+
+- eye aspect ratio (EAR) from six landmarks around each eye;
+- sustained eye-closure duration and completed blink count;
+- rolling PERCLOS from valid face observations only; and
+- mouth-opening ratio plus sustained-yawn count.
+
+The option is off by default. The operator can select the fixed Default profile or a
+Custom profile that exposes eye openness, long-closure duration, PERCLOS percentage
+and window, mouth openness, and yawn duration. A warning means that a configured
+threshold was crossed; it is not a clinical diagnosis and not a certified driver-
+monitoring alarm. If the face disappears because of glare, occlusion, or pose, the
+state becomes `face_unavailable`; those frames do not increase PERCLOS or simulate a
+closed eye. Required validation includes labelled alert/normal sequences, different
+drivers, glasses, day/night and direct-headlight conditions, false-positive and false-
+negative rates, and timing measurements.
+
+### 9.5 Recorded live evidence
 
 Previous controlled observations include:
 
@@ -1483,21 +1573,23 @@ Remaining tasks:
 5. verify signal/power failure reaches the transparent state; and
 6. perform the dynamic, binocular, multi-light, and string/grid experiments.
 
-### Stage 8 - Optional driver stereo
+### Stage 8 - Driver-depth sensor evaluation and optional stereo
 
-**Goal:** improve driver depth only if single-camera validation is insufficient.
+**Goal:** improve driver depth only if the calibrated monocular baseline is insufficient.
 **State:** planned optional upgrade.
 
 Tasks:
 
-1. install the reserved second driver camera;
-2. perform driver-pair intrinsic and stereo calibration;
-3. capture near-synchronized frames;
-4. locate both pupils in both images;
-5. match left pupil to left pupil and right to right;
-6. triangulate each eye independently;
-7. transform the eyes into LCD coordinates; and
-8. compare against the single-camera baseline using the same test matrix.
+1. intrinsic-calibrate and freeze the existing driver camera;
+2. mount a ToF sensor rigidly beside it and stream timestamped range/status data;
+3. fit and validate the sensor-to-eye offset using measured driver depths;
+4. compare IPD-only and camera-plus-ToF error, jitter, latency, availability, yaw,
+   glasses, LED and halogen/high-IR behavior using the same test matrix;
+5. fail closed whenever either iris validity or range validity is insufficient;
+6. declare whether the fused path meets the final intersection-error requirement;
+7. only if it fails, install the reserved second driver camera, perform driver stereo
+   calibration, capture near-synchronized frames and match both pupils; and
+8. triangulate each eye, transform into LCD coordinates, and compare all three methods.
 
 ### Stage 9 - Final evaluation and packaging
 

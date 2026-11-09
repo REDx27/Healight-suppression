@@ -1,12 +1,12 @@
 # GlareTracker — Project Status & Specification
 
-> **Last Updated:** 2026-11-05
+> **Last Updated:** 2026-11-09
 > **Python Version:** 3.13 (current test environment; 3.11 previously verified)
 > **Platform:** Windows 10/11
 > **UI Framework:** PyQt5
 > **3D Engine:** PyQtGraph GLViewWidget (OpenGL)
 > **Source Version:** 1.2.0
-> **Reviewed Baseline:** current guided-calibration and automatic multi-light working tree
+> **Reviewed Baseline:** calibrated stereo milestone plus focused interface/tracker cleanup
 
 ---
 
@@ -60,13 +60,60 @@ view. The next software phase is interface reduction plus temporal/hysteresis st
 that permits wider-coverage detector settings, followed by physical overlap alignment
 and camera-to-windshield extrinsic validation.
 
+The stable calibrated milestone was pushed as `3118d4f`; the following cleanup is
+preserved separately as `c8e2bd3`. The application now starts in stereo, labels the
+road roles LEFT/RIGHT, offers the exact **Current Rig - Smooth** preset and a proposed
+**Balanced Stereo Coverage** preset, collapses low-level tuning, confirms new stereo
+tracks across two frames, and uses both camera-image positions for temporal identity.
+The complete automated suite contains **120 passing tests**. The Balanced preset and
+the temporal changes still require a physical A/B recording before any improvement is
+claimed.
+
+An experimental driver-drowsiness module now reuses the existing MediaPipe face
+landmarks from the single driver webcam. It is disabled by default and offers Default
+or Custom thresholds for eye aspect ratio, long eye-closure duration, rolling PERCLOS,
+mouth-opening ratio, and sustained-yawn duration. Face-missing frames are explicitly
+excluded rather than counted as closed eyes, which avoids a false drowsiness decision
+when glare, occlusion, or head pose prevents face tracking. Live state is shown in the
+telemetry panel and state changes can enter the research log. This is an implemented
+research indicator only: camera-specific threshold tuning, day/night and direct-glare
+trials, false-alarm measurement, and comparison against labelled ground truth remain
+mandatory before making a reliability claim.
+
+The configuration sidebar now follows a six-stage operator flow: Operation, Cameras
+and Calibration, Driver Monitoring, Road-Light Detection, System Geometry, and
+Research and Output. Normal operation hides legacy/experimental camera-position and
+LCD controls behind one advanced switch; detailed detector tuning remains separately
+collapsed. This cleanup changes presentation only and does not remove the underlying
+research workflows.
+
+Two hardware decisions were recorded on 2026-11-09. For driver depth, the preferred
+next low-cost experiment is the existing calibrated driver camera plus a rigidly
+co-mounted narrow-field Time-of-Flight sensor. A GY-VL53L0X board is technically usable
+through ESP32/Arduino I2C and USB serial, but its 1 mm output resolution is not 1 mm
+accuracy; centimetre-scale error and ambient-infrared failures must be measured. The
+camera continues to locate both irises, the ToF reading supplies depth, and IPD depth
+remains a comparison/fallback. Driver stereo remains the upgrade only if the fused
+method fails the predeclared eye/intersection error limit.
+
+For road-headlight sensing, LiDAR, radar, event cameras, photodiode arrays, depth
+cameras, and automotive HDR cameras were assessed as alternatives. LiDAR/radar measure
+vehicle geometry/range but do not directly identify each emitting lamp; they are best
+treated as complementary sensors or ground-truth references. Event cameras offer high
+dynamic range and low latency but have sparse/static-scene and cost/algorithm burdens.
+The main low-cost thesis path therefore remains calibrated road stereo with identical
+filters, controlled exposure and physical validation. An automotive HDR/LED-flicker-
+mitigating camera is the most direct future improvement for saturation; camera-LiDAR
+fusion is a higher-cost future extension, not a current requirement.
+
 The operator now has **two road cameras plus one driver camera**. The single-road
 setup detected a light using a sunglass lens. Both stereo feeds opened, but stereo
 operation was unreliable and observed accuracy was poor; no measured accuracy
 result is available. The earlier camera-availability blocker is historical.
 
-Next: rigid road-camera mounting, chessboard calibration, and stationary-light
-range checks in Driver Position Fixed mode. The app now exposes paired raw-image
+Next: compare the Smooth and Balanced detector profiles in a timestamped stationary-
+light test, measure shared-field-of-view coverage, complete held-out road-depth checks,
+and apply camera-to-windshield extrinsics in Driver Position Fixed mode. The app exposes paired raw-image
 capture and intrinsic/stereo fitting, preserves calibration sessions, gates fit
 quality, and binds active profiles to camera order and resolution. Uncalibrated
 metric stereo remains fail-closed; its optional assumed-depth display is visibly
@@ -93,7 +140,7 @@ multi-source bring-up. It does not establish metric accuracy: the session was no
 recorded repeated trial, and stereo/chessboard plus camera-to-windshield calibration
 are still required before the coordinates or intersections can be validated.
 
-**Verification:** 118 automated tests pass on Python 3.13. No completed calibrated
+**Verification:** 127 automated tests pass on Python 3.13. No completed calibrated
 physical validation has been performed. Live camera-to-windshield transforms and all physical exit
 criteria remain outstanding. Follow
 [the stereo setup guide](docs/guides/STEREO_CHESSBOARD_SETUP_GUIDE.md), then resume
@@ -118,7 +165,7 @@ GlareTracker is currently a **source-level visualization and tracking prototype*
 | Test workflow | Repeatable functional test checklist covering startup, eyes, calibration, geometry, simulation, road detection, end-to-end operation, and shutdown |
 | Guided demonstration calibration | Wizard captures stable IPD and lamp-size references, saves camera-specific profiles, enables IPD driver depth and apparent-size road range, and labels estimated versus assumed values |
 | Operating policy | Explicit Run/Standby/Stop states and four source modes now control camera ownership, manual inputs, calculations, previews, and movement simulation consistently |
-| Automated coverage | 112 tests cover geometry boundaries, mode/state policy, diagnostics/video recording and soak verification, ground-truth analysis, rigid transforms, guarded extrinsic fitting, latency/stale rejection, LCD fail-safe behavior, camera assignment, detector robustness, automatic two-source stereo association and camera-offset compensation, printable-board integration, binocular/multi-light geometry, stereo fitting/profile guards, stable source identity, tuning UI, calibration profiles, and bright-spot observations |
+| Automated coverage | 127 tests cover geometry boundaries, mode/state policy, diagnostics/video recording and soak verification, ground-truth analysis, rigid transforms, guarded extrinsic fitting, latency/stale rejection, LCD fail-safe behavior, camera assignment, detector robustness, automatic two-source stereo association and camera-offset compensation, printable-board integration, binocular/multi-light geometry, stereo fitting/profile guards, drowsiness metrics, structured configuration flow, stable source identity, tuning UI, calibration profiles, and bright-spot observations |
 | Recording soak gate | Strict verifier checks finalized duration, timestamp order, exact streams, sidecar/manifest/decode counts, frame gaps/FPS, drops and writer errors |
 
 ### Current blockers to the physical prototype

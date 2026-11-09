@@ -92,6 +92,14 @@ class ThemeManager:
             font-size: 8.5pt;
             letter-spacing: 1px;
         }}
+        QLabel#configurationSectionHeading {{
+            color: {p.accent_bright};
+            font-size: 8pt;
+            font-weight: 800;
+            letter-spacing: 1.2px;
+            padding: 10px 4px 0 4px;
+            border-bottom: 1px solid {p.border};
+        }}
 
         /* ── Camera Cards ── */
         QFrame#cameraCard {{

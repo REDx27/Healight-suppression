@@ -123,6 +123,7 @@ class MainWindow(QMainWindow):
         self.lcd_blocker = LCDBlockerWindow()
         self._latest_pipeline_timing = {}
         self._maximum_sample_age_ms = 250.0
+        self._last_drowsiness_state = "disabled"
 
         # Saved demonstration calibration profiles
         try:
@@ -160,6 +161,7 @@ class MainWindow(QMainWindow):
 
         # ── signal wiring ──
         self._connect_signals()
+        self._update_drowsiness_settings()
 
         # ── timers ──
         self._fps_timer = QTimer(self)
@@ -242,6 +244,8 @@ class MainWindow(QMainWindow):
         self.cap_thread.eye_lost.connect(self._on_eye_lost)
         self.cap_thread.camera_status.connect(self._on_driver_camera_status)
         self.cap_thread.pipeline_timing.connect(self._on_pipeline_timing)
+        self.cap_thread.drowsiness_updated.connect(
+            self._on_drowsiness_updated)
 
         # Operating mode and camera setup
         self.controls.combo_operating_mode.currentTextChanged.connect(
@@ -303,6 +307,8 @@ class MainWindow(QMainWindow):
             self._clear_light_background)
         self.controls.btn_daylight_phone_preset.clicked.connect(
             self._activate_phone_light_diagnostics)
+        self.controls.drowsiness_settings_changed.connect(
+            self._update_drowsiness_settings)
 
         # Buttons
         self.header.btn_run.clicked.connect(
@@ -383,6 +389,52 @@ class MainWindow(QMainWindow):
             return
         self.tracker.on_eye_lost()
         self.header.set_tracking("NO FACE", "warning")
+
+    def _update_drowsiness_settings(self, settings=None):
+        """Push the current monitoring profile to the camera worker."""
+
+        if settings is None:
+            settings = self.controls.get_drowsiness_settings()
+        self.cap_thread.update_drowsiness_settings(settings)
+        if not settings.enabled:
+            self.readout.set_value("drowsiness", "OFF", "#66788a")
+
+    def _on_drowsiness_updated(self, metrics):
+        """Render experimental driver-monitoring telemetry and warnings."""
+
+        state = str(metrics.get("state", "face_unavailable"))
+        if state == "disabled":
+            text, color = "OFF", "#66788a"
+            panel_text = (
+                "Off. Experimental research indicator; not a safety-certified alarm.")
+        elif state == "face_unavailable":
+            text, color = "FACE UNAVAILABLE — no decision", "#ffb74d"
+            panel_text = (
+                "Face unavailable. This frame is excluded from PERCLOS and does "
+                "not count as closed eyes.")
+        else:
+            ear = metrics.get("eye_openness")
+            mar = metrics.get("mouth_openness")
+            perclos = float(metrics.get("perclos", 0.0))
+            blinks = int(metrics.get("blink_count", 0))
+            yawns = int(metrics.get("yawn_count", 0))
+            summary = (
+                f"EAR {ear:.2f} | PERCLOS {perclos:.0%} | "
+                f"blinks {blinks} | MAR {mar:.2f} | yawns {yawns}")
+            if state == "warning":
+                reasons = ", ".join(metrics.get("reasons", ()))
+                text, color = f"WARNING: {reasons} | {summary}", "#f87171"
+                panel_text = f"Experimental warning: {reasons}."
+            else:
+                text, color = f"NORMAL | {summary}", "#34d399"
+                panel_text = "Monitoring active; no threshold is currently exceeded."
+
+        self.readout.set_value("drowsiness", text, color)
+        self.controls.drowsiness_status.setText(panel_text)
+        if state != self._last_drowsiness_state:
+            self.diagnostics.record_event(
+                "drowsiness_state_changed", details=dict(metrics))
+            self._last_drowsiness_state = state
 
     def _update_driver_frame(self, q_img):
         self.camera_feeds.driver.set_frame(q_img)
@@ -1085,6 +1137,10 @@ class MainWindow(QMainWindow):
         self.cap_thread.eye_lost.connect(self._on_eye_lost)
         self.cap_thread.camera_status.connect(self._on_driver_camera_status)
         self.cap_thread.pipeline_timing.connect(self._on_pipeline_timing)
+        self.cap_thread.drowsiness_updated.connect(
+            self._on_drowsiness_updated)
+        self.cap_thread.update_drowsiness_settings(
+            self.controls.get_drowsiness_settings())
         if was_running:
             self._push_config()
             self.camera_feeds.driver.set_status("Opening camera...", "warning")

@@ -21,6 +21,7 @@ from PyQt5.QtGui import QImage
 from glare_tracker.calibration import CalibrationResult, load_single_calibration
 from glare_tracker.capture import configure_video_capture, open_video_capture
 from glare_tracker.config import TrackingConfig
+from glare_tracker.drowsiness import DrowsinessDetector, DrowsinessSettings
 from glare_tracker.geometry import (
     estimate_ipd_depth,
     pixel_to_cm,
@@ -71,6 +72,7 @@ class VideoCaptureThread(QThread):
     eye_pixels_detected = pyqtSignal(float, float, float, float, int, int)
     camera_status = pyqtSignal(str, bool)
     pipeline_timing = pyqtSignal(object)
+    drowsiness_updated = pyqtSignal(object)
 
     def __init__(self, camera_index=0, parent=None):
         super().__init__(parent)
@@ -78,6 +80,7 @@ class VideoCaptureThread(QThread):
         self._running = False
         self._config = TrackingConfig()
         self._calibration: Optional[CalibrationResult] = None
+        self._drowsiness = DrowsinessDetector()
 
         # Try to load existing calibration on init
         self._try_load_calibration()
@@ -91,6 +94,12 @@ class VideoCaptureThread(QThread):
     def set_calibration(self, calib: Optional[CalibrationResult]):
         """Set or clear camera calibration data."""
         self._calibration = calib
+
+    def update_drowsiness_settings(self, settings: DrowsinessSettings):
+        """Replace experimental driver-monitoring thresholds."""
+        self._drowsiness.update_settings(settings)
+        if not self._drowsiness.settings.enabled:
+            self.drowsiness_updated.emit(self._drowsiness.unavailable().as_dict())
 
     def stop(self):
         """Request the thread to stop and wait for it to finish."""
@@ -185,6 +194,8 @@ class VideoCaptureThread(QThread):
                 self.camera_status.emit(
                     f"Camera {self.camera_index} not detected", False)
                 self.eye_lost.emit()
+                self.drowsiness_updated.emit(
+                    self._drowsiness.unavailable().as_dict())
                 return
 
             width, height, _ = configure_video_capture(cap)
@@ -232,6 +243,10 @@ class VideoCaptureThread(QThread):
                     lm = faces[0]
                     config = self._config
                     calib = self._calibration if config.use_calibration else None
+
+                    if self._drowsiness.settings.enabled:
+                        metrics = self._drowsiness.update(lm, w, h)
+                        self.drowsiness_updated.emit(metrics.as_dict())
 
                     # MediaPipe iris-centre landmarks: left 468, right 473
                     left_iris = lm[468]
@@ -321,6 +336,9 @@ class VideoCaptureThread(QThread):
                         self.eyes_detected.emit(*left_cm, *right_cm)
                 else:
                     self.eye_lost.emit()
+                    if self._drowsiness.settings.enabled:
+                        self.drowsiness_updated.emit(
+                            self._drowsiness.unavailable().as_dict())
 
                 # .copy() so Qt owns the buffer
                 bytes_per_line = 3 * w
@@ -331,6 +349,8 @@ class VideoCaptureThread(QThread):
             print(f"Camera tracking stopped: {error}", file=sys.stderr)
             self.camera_status.emit(f"Driver camera error: {error}", False)
             self.eye_lost.emit()
+            self.drowsiness_updated.emit(
+                self._drowsiness.unavailable().as_dict())
         finally:
             if face_mesh is not None:
                 face_mesh.close()

@@ -5,8 +5,9 @@
 > test pass. Hardware-dependent stages remain open until measurements and
 > evidence files have been collected.
 
-Current software verification: **118 automated tests passed on Python 3.13** on
-2026-11-05. This does not satisfy any open physical exit criterion.
+Current software verification: **127 automated tests passed on Python 3.13** on
+2026-11-09. This includes the experimental drowsiness-state logic and configuration-
+flow checks, but does not satisfy any open physical exit criterion.
 
 Corrected replacement-camera bring-up on 2026-11-05 identified integrated camera 0
 and identical USB road cameras 1 and 2. The former 0/2 road defaults accidentally
@@ -36,6 +37,15 @@ filtering and a 656 px minimum blob area, but coverage remained limited when one
 lost the source. Treat this as calibrated bring-up, not the stationary-light depth or
 windshield-intersection validation pass. Cleanup now targets temporal stability with
 wider detector coverage and a reduced stereo-focused interface.
+
+Design decision recorded 2026-11-09: do not expand the required road pipeline to
+LiDAR, radar, event vision or a depth camera before validating the calibrated stereo
+baseline. These sensors measure complementary vehicle range/geometry or improve
+dynamic range, but do not independently locate every emitting lamp. LiDAR may be used
+as an external ground-truth reference if available. The preferred driver-depth trial is
+one calibrated iris camera plus a rigidly mounted Time-of-Flight range sensor; compare
+it against IPD-only depth and add driver stereo only if the fused method fails the
+declared error limit. Neither proposal is implemented or validated yet.
 
 Preliminary live evidence on 2026-11-04: after rough camera-offset compensation, the
 real road-camera pair automatically detected and associated one, two, and three
@@ -134,6 +144,11 @@ encoded frame; no unexplained telemetry loss occurs.
       jitter, detection rate, and dropout duration.
 - [ ] Save synchronized videos, CSV files, setup photographs, and configuration.
 - [ ] Enter acceptance limits in the protocol before inspecting final results.
+- [ ] Compare driver IPD-only depth with camera-plus-ToF depth at the same measured
+      positions, poses, lighting conditions, and timestamps if the ToF trial proceeds.
+- [ ] Record ToF valid-reading rate and error under LED, halogen/high-IR, glasses,
+      lateral movement, and head-yaw conditions; clear output when either iris or range
+      validity is insufficient.
 
 Exit criteria: the complete measurement matrix is repeatable and includes enough
 evidence for another operator to reproduce every reported number.
@@ -205,6 +220,15 @@ rays throughout the declared viewing region without unacceptable visibility loss
 - [ ] Test vibration spectra and mount movement representative of a vehicle.
 - [ ] Test declared cold, ambient, and hot operating temperatures.
 - [ ] Test glasses, sunglasses, multiple drivers, skin tones, and seating positions.
+- [x] Implement disabled-by-default EAR, long-closure, rolling PERCLOS, and
+      sustained-yawn indicators using the existing driver face landmarks.
+- [x] Exclude missing-face frames from eye-closure/PERCLOS decisions and expose
+      Default/Custom thresholds in the operator panel.
+- [ ] Build labelled alert/normal driver sequences and measure drowsiness-indicator
+      false positives, false negatives, detection delay, and face-unavailable time.
+- [ ] Repeat the drowsiness trials with glasses, pose changes, daylight, darkness,
+      and direct incoming-headlight glare; do not present the result as a certified
+      driver-monitoring system.
 - [ ] Test motorcycles, cars, multiple lights, occlusions, crossings, and LED flicker.
 - [ ] Run endurance tests and inspect CPU, memory, temperature, dropped frames, and
       calibration drift.
