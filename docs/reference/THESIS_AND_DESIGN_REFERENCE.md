@@ -1,12 +1,12 @@
 # GlareTracker Thesis and Design Reference
 
 **Project:** Low-Cost Active Windshield Glare Suppression System
-**Software:** GlareTracker v1.2 development source
+**Software:** GlareTracker v1.3.0 research release
 **Original milestone snapshot:** 2026-10-05
-**Consolidated through:** 2026-11-05
+**Consolidated through:** 2026-11-11
 **Prepared for:** Project teammate and later thesis development
-**Reviewed source baseline:** calibrated stereo milestone plus focused interface/tracker cleanup
-**Current automated verification:** 120 tests passed on Python 3.13
+**Reviewed source baseline:** v1.3 calibrated-stereo, research-UI, and packaging release
+**Current automated verification:** 135 tests passed on Python 3.13
 **Document status:** Long-form design and milestone reference; current execution
 status is maintained in `PROJECT_STATUS.md` and `docs/plans/VALIDATION_PLAN.md`.
 
@@ -370,7 +370,21 @@ This evolution matters because it demonstrates iterative, user-led interface des
 5. separate camera and telemetry responsibilities into sibling panes.
 
 The current layout keeps the 3D workspace above, camera feeds in a lower left-aligned
-strip, telemetry in a separate lower pane, and configuration in a right sidebar.
+strip, telemetry in a separate lower pane, and configuration in a right sidebar. A
+2026-11-11 refinement replaced the consumer-dashboard card treatment with a Blender-
+like technical-editor system: flat resizable regions, a slim session toolbar, compact
+4/8 px spacing, equal-width camera editors, borderless telemetry text, and true toggle
+switches for persistent binary settings. The right sidebar now follows Blender's
+properties pattern: a narrow vertical context rail selects one focused page instead
+of showing all settings in a single long form. The wide layout retains this right
+sidebar; the narrow layout moves it below the visual workspace. This was a
+presentation-layer change and did not modify camera, detection, calibration, or
+geometry algorithms.
+
+Within each properties page, sections use integrated collapsible headers, compact
+right-aligned label/value rows, recessed fields, and restrained panel separation.
+Grouped XYZ values include working per-axis locks and reset controls, preventing
+accidental coordinate edits without introducing non-functional decoration.
 
 ### 3.5 The midpoint-eye limitation was discovered
 
@@ -572,13 +586,19 @@ and makes the upgrade decision evidence-based rather than speculative.
 
 The UI was not produced in one styling pass. A blue-heavy design made cards difficult
 to distinguish, while a later rainbow-coded semantic experiment looked inconsistent
-and was rejected. The retained direction uses layered blue/green/neutral-gray surfaces,
-spacing, and restrained borders, reserving warning and tracking colours for meaning.
+and was rejected. The retained direction uses neutral-gray editor regions with blue
+selection/focus accents. Green, amber, and red are reserved for operational meaning.
+Ordinary text and telemetry do not receive decorative background boxes. The detailed
+rules and responsive review checklist are maintained in
+`docs/reference/UI_DESIGN_STANDARD.md`.
 
 The original dark 3D scene remains the preferred baseline. The optional light scene
 uses a medium gray canvas (approximately `#c3c9cf`), not pure white, so the grids,
-rays, markers, and labels remain visible. A fine minor grid and stronger major grid are
-slightly separated to avoid depth fighting. Theme-specific marker colours and glow
+rays, markers, and labels remain visible. Fine and major grid segments are generated
+without overlap, preventing the doubled bands produced by two superimposed grid
+objects. Misleading road-guide lines were removed, while explicit X/Y/Z axes remain.
+The operator can hide or show the ground grid from the viewport. Theme-specific marker
+colours and glow
 treatments keep eyes, lamps, rays, and intersections visible in both modes. These are
 usability decisions, not evidence of geometric accuracy.
 
@@ -1077,7 +1097,7 @@ should report the resulting blocked screen area as well as coverage success.
 
 | Feature | Status | Current evidence or limitation |
 |---|---|---|
-| Qt desktop application | Implemented | Launches with operator dashboard and responsive panes |
+| Qt desktop application | Implemented | Launches with Blender-like flat editor regions, responsive splitters, a focused properties context rail, compact toggles, and camera-size-independent panes |
 | Run/Standby/Stop | Implemented | State policy and automated session tests exist |
 | Four operating modes | Implemented | Camera/manual source policy is explicit and tested |
 | Driver camera capture | Implemented | Windows backend fallback and 640x480 MJPEG configuration |
@@ -1146,7 +1166,7 @@ The detector-era checkpoint contained twenty-seven tests covering:
 - immediate replacement of a stale false single-source track when the lamp appears at
   a different image position.
 
-The current Python 3.13 suite contains **127 passing tests**, including automatic
+The current Python 3.13 suite contains **135 passing tests**, including automatic
 two-source rough association and calibrated triangulation, plus synthetic stereo
 fitting with supplied individual intrinsics, startup prompt policy, staged workflow,
 profile compatibility, calibrated matching, mocked capture/UI paths, structured
@@ -1157,6 +1177,13 @@ guarded extrinsic fitting, physical-intersection error decomposition, latency an
 rejection, LCD fail-safe behavior, and the earlier session/detector cases. These tests
 protect software behavior. They do not replace physical-camera accuracy, timing,
 lighting, and LCD experiments.
+
+The v1.3.0 source was also packaged as the single-file Windows artifact
+`dist/GlareTracker-v1.3.exe`. The optimized PyInstaller specification excludes
+unrelated examples, tests, Jupyter integrations, benchmarks, and conversion tools
+while retaining MediaPipe's required top-level imports. The 134.9 MB artifact passed
+a hardware-independent packaged UI launch/shutdown test and has SHA-256
+`f28a6d5205d1035a20f346e90d179f689b316053f720877792bb96fe63eacf30`.
 
 ### 9.4 Experimental driver-drowsiness method
 
@@ -1602,7 +1629,8 @@ Tasks:
 - execute the full validation matrix;
 - analyze accuracy, jitter, latency, availability, blocker coverage, and cost;
 - document failure cases and limitations;
-- rebuild and launch-test the standalone executable;
+- rebuild and launch-test the standalone executable again after the final hardware and
+  calibration evidence is frozen (the current v1.3 release already passes this gate);
 - prepare demonstration instructions; and
 - archive source, calibration files, raw logs, analysis scripts, photos, and results.
 

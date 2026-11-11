@@ -96,11 +96,12 @@ def camera_roles_for_devices(
 class MainWindow(QMainWindow):
     """Assembles all panels and wires signals to the tracking controller."""
 
-    def __init__(self):
+    def __init__(self, discover_cameras=True):
         super().__init__()
         self.setWindowTitle("Windshield Glare Tracking System")
         self.setWindowIcon(self._application_icon())
         self.setMinimumSize(960, 640)
+        self._layout_is_narrow = None
         self._set_initial_geometry()
         self.setStyleSheet(DARK_STYLESHEET)
         self._camera_role_settings = QSettings(
@@ -175,15 +176,18 @@ class MainWindow(QMainWindow):
         # Push initial parameters
         self._operating_mode_changed()
         self.tracker.on_params_changed(calculate=False)
-        if QApplication.platformName().lower() != "offscreen":
+        if (
+            discover_cameras
+            and QApplication.platformName().lower() != "offscreen"
+        ):
             QTimer.singleShot(150, self._refresh_available_cameras)
 
     # ── layout ──────────────────────────────────────────────────────
 
     def _build_layout(self):
         self.sidebar = ConfigurationSidebar(self.controls)
-        self.sidebar.setMinimumWidth(380)
-        self.sidebar.setMaximumWidth(500)
+        self.sidebar.setMinimumWidth(390)
+        self.sidebar.setMaximumWidth(560)
 
         self.visual_column = QWidget()
         visual_layout = QVBoxLayout(self.visual_column)
@@ -205,35 +209,48 @@ class MainWindow(QMainWindow):
             QSizePolicy.Expanding, QSizePolicy.Ignored)
         self.readout.setProperty("overlay", False)
         self.readout.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-        self.readout.setMinimumWidth(320)
-        self.readout.setMaximumWidth(430)
+        self.readout.setMinimumWidth(260)
+        self.readout.setMaximumWidth(420)
         self.bottom_splitter.addWidget(self.camera_feeds)
         self.bottom_splitter.addWidget(self.readout)
         self.bottom_splitter.setStretchFactor(0, 1)
         self.bottom_splitter.setStretchFactor(1, 0)
-        self.bottom_splitter.setSizes([900, 380])
+        available_visual_width = max(760, self.width() - 430)
+        telemetry_width = min(340, max(260, available_visual_width // 3))
+        self.bottom_splitter.setSizes([
+            max(480, available_visual_width - telemetry_width),
+            telemetry_width,
+        ])
 
         self.visual_splitter.addWidget(self.bottom_splitter)
         self.visual_splitter.setStretchFactor(0, 1)
         self.visual_splitter.setStretchFactor(1, 0)
-        self.visual_splitter.setSizes([650, 300])
+        available_visual_height = max(540, self.height() - 54)
+        lower_height = min(340, max(230, available_visual_height // 3))
+        self.visual_splitter.setSizes([
+            max(310, available_visual_height - lower_height), lower_height,
+        ])
         visual_layout.addWidget(self.visual_splitter)
 
         # Main: visual operations workspace | dedicated configuration panel
         self.main_splitter = QSplitter(Qt.Horizontal)
         self.main_splitter.addWidget(self.visual_column)
         self.main_splitter.addWidget(self.sidebar)
-        self.main_splitter.setSizes([1080, 460])
+        sidebar_width = min(460, max(390, self.width() // 3))
+        self.main_splitter.setSizes([
+            max(570, self.width() - sidebar_width), sidebar_width,
+        ])
         self.main_splitter.setStretchFactor(0, 1)
         self.main_splitter.setStretchFactor(1, 0)
 
         central = QWidget()
         central_layout = QVBoxLayout(central)
-        central_layout.setContentsMargins(10, 10, 10, 10)
-        central_layout.setSpacing(8)
+        central_layout.setContentsMargins(0, 0, 0, 0)
+        central_layout.setSpacing(0)
         central_layout.addWidget(self.header)
         central_layout.addWidget(self.main_splitter)
         self.setCentralWidget(central)
+        self._update_responsive_layout(force=True)
 
     # ── signal wiring ───────────────────────────────────────────────
 
@@ -1500,14 +1517,32 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        self._update_responsive_layout()
+
+    def _update_responsive_layout(self, force=False):
+        """Switch editor regions without repeatedly disturbing user splitters."""
+
+        if not hasattr(self, "main_splitter"):
+            return
         narrow = self.width() < 1180
+        if not force and narrow == self._layout_is_narrow:
+            return
+        self._layout_is_narrow = narrow
         self.main_splitter.setOrientation(Qt.Vertical if narrow else Qt.Horizontal)
         if narrow:
             self.sidebar.setMinimumWidth(0)
             self.sidebar.setMaximumWidth(16777215)
+            self.main_splitter.setSizes([
+                max(420, int(self.height() * 0.68)),
+                max(180, int(self.height() * 0.32)),
+            ])
         else:
-            self.sidebar.setMinimumWidth(380)
-            self.sidebar.setMaximumWidth(500)
+            self.sidebar.setMinimumWidth(390)
+            self.sidebar.setMaximumWidth(560)
+            sidebar_width = min(460, max(390, self.width() // 3))
+            self.main_splitter.setSizes([
+                max(570, self.width() - sidebar_width), sidebar_width,
+            ])
 
     # ── clean shutdown ──────────────────────────────────────────────
 

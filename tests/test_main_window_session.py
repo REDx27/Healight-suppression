@@ -39,14 +39,16 @@ def test_directshow_names_and_locked_integrated_driver_roles():
 def test_manual_session_run_standby_stop_policy():
     app = _application()
     window = MainWindow()
-    assert window.camera_feeds.maximumHeight() == 420
-    assert window.camera_feeds.driver.maximumWidth() == 480
+    assert window.camera_feeds.maximumHeight() == 480
+    assert window.camera_feeds.driver.minimumWidth() == 180
+    assert window.camera_feeds.driver.maximumWidth() == 16777215
     assert (window.camera_feeds.sizePolicy().verticalPolicy()
             == QSizePolicy.Ignored)
     assert (window.bottom_splitter.sizePolicy().verticalPolicy()
             == QSizePolicy.Ignored)
-    assert window.camera_feeds.headlight.status_badge.width() == 88
-    assert window.camera_feeds.headlight.detail.height() == 38
+    assert window.camera_feeds.headlight.status_badge.minimumWidth() == 74
+    assert window.camera_feeds.headlight.detail.minimumHeight() == 28
+    assert window.camera_feeds.headlight.detail.maximumHeight() == 48
     assert window.visual_splitter.orientation() == Qt.Vertical
     assert window.workspace.telemetry is None
     assert window.readout.parent() is window.bottom_splitter
@@ -78,6 +80,53 @@ def test_manual_session_run_standby_stop_policy():
     assert window._session_state is SessionState.STOP
     assert window.tracker.last_eye_cm is None
     assert window.header.btn_stop.isChecked()
+    window.close()
+
+
+def test_editor_regions_expand_and_reflow_without_outer_card_margins():
+    app = _application()
+    window = MainWindow()
+    window.resize(1500, 900)
+    window.show()
+    app.processEvents()
+
+    margins = window.centralWidget().layout().contentsMargins()
+    assert (margins.left(), margins.top(), margins.right(), margins.bottom()) == (
+        0, 0, 0, 0)
+    assert window.header.height() == 54
+    assert window.main_splitter.orientation() == Qt.Horizontal
+    assert window.sidebar.width() >= 390
+
+    window.resize(1000, 700)
+    app.processEvents()
+    assert window.main_splitter.orientation() == Qt.Vertical
+    window.close()
+
+
+def test_scene_grid_has_unique_divisions_and_viewport_toggle():
+    app = _application()
+    window = MainWindow()
+    scene = window.scene_3d
+
+    minor = scene._grid_segments(240, 10, exclude_multiple=40).reshape(-1, 2, 3)
+    major = scene._grid_segments(240, 40).reshape(-1, 2, 3)
+    minor_segments = {tuple(segment.flatten()) for segment in minor}
+    major_segments = {tuple(segment.flatten()) for segment in major}
+    assert len(minor_segments) == len(minor)
+    assert len(major_segments) == len(major)
+    assert minor_segments.isdisjoint(major_segments)
+
+    assert scene._grid_visible
+    scene.grid_button.click()
+    app.processEvents()
+    assert not scene._grid_visible
+    assert not scene._minor_grid.visible()
+    assert not scene._major_grid.visible()
+    assert scene.grid_button.toolTip() == "Show ground grid"
+    scene.grid_button.click()
+    assert scene._grid_visible
+    assert scene._minor_grid.visible()
+    assert scene._major_grid.visible()
     window.close()
 
 

@@ -5,8 +5,8 @@
 > test pass. Hardware-dependent stages remain open until measurements and
 > evidence files have been collected.
 
-Current software verification: **127 automated tests passed on Python 3.13** on
-2026-11-09. This includes the experimental drowsiness-state logic and configuration-
+Current software verification: **135 automated tests passed on Python 3.13** on
+2026-11-11. This includes the experimental drowsiness-state logic and configuration-
 flow checks, but does not satisfy any open physical exit criterion.
 
 Corrected replacement-camera bring-up on 2026-11-05 identified integrated camera 0

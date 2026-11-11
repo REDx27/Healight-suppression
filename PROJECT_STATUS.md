@@ -1,12 +1,12 @@
 # GlareTracker — Project Status & Specification
 
-> **Last Updated:** 2026-11-09
+> **Last Updated:** 2026-11-11
 > **Python Version:** 3.13 (current test environment; 3.11 previously verified)
 > **Platform:** Windows 10/11
 > **UI Framework:** PyQt5
 > **3D Engine:** PyQtGraph GLViewWidget (OpenGL)
-> **Source Version:** 1.2.0
-> **Reviewed Baseline:** calibrated stereo milestone plus focused interface/tracker cleanup
+> **Source Version:** 1.3.0
+> **Reviewed Baseline:** v1.3 calibrated-stereo, research-UI, and packaging release
 
 ---
 
@@ -65,7 +65,7 @@ preserved separately as `c8e2bd3`. The application now starts in stereo, labels 
 road roles LEFT/RIGHT, offers the exact **Current Rig - Smooth** preset and a proposed
 **Balanced Stereo Coverage** preset, collapses low-level tuning, confirms new stereo
 tracks across two frames, and uses both camera-image positions for temporal identity.
-The complete automated suite contains **120 passing tests**. The Balanced preset and
+The complete automated suite contains **135 passing tests**. The Balanced preset and
 the temporal changes still require a physical A/B recording before any improvement is
 claimed.
 
@@ -80,12 +80,28 @@ research indicator only: camera-specific threshold tuning, day/night and direct-
 trials, false-alarm measurement, and comparison against labelled ground truth remain
 mandatory before making a reliability claim.
 
-The configuration sidebar now follows a six-stage operator flow: Operation, Cameras
-and Calibration, Driver Monitoring, Road-Light Detection, System Geometry, and
-Research and Output. Normal operation hides legacy/experimental camera-position and
-LCD controls behind one advanced switch; detailed detector tuning remains separately
-collapsed. This cleanup changes presentation only and does not remove the underlying
-research workflows.
+The configuration sidebar now exposes six focused property contexts: Operation,
+Cameras, Driver, Road Lights, Geometry, and Research. A Blender-like vertical icon
+rail shows one scrollable page at a time instead of placing every setting in one long
+form. Normal operation hides legacy/experimental camera-position and LCD controls
+behind one advanced switch; detailed detector tuning remains separately collapsed.
+This cleanup changes presentation only and does not remove the underlying workflows.
+
+The desktop presentation was subsequently rebuilt around a Blender-like technical-
+editor model without changing the tracking backend. Rounded dashboard cards and boxed
+telemetry labels were replaced by flat resizable regions, a compact session toolbar,
+neutral gray surfaces, restrained blue selection accents, equal-width camera editors,
+and borderless telemetry text. The properties region uses a narrow context icon rail
+and one selected page, matching the information architecture of a technical 3D editor.
+Persistent binary settings now use animated, keyboard-accessible toggle switches.
+Startup sizing derives from available space, camera frames cannot dictate panel size,
+and the main splitter reflows at narrow window widths. The design rules are recorded
+in `docs/reference/UI_DESIGN_STANDARD.md`.
+
+Configuration sections now use integrated Blender-style panel headers with working
+collapse chevrons, compact label/value rows, header detail grips, and recessed value
+fields. XYZ editors also provide functional per-axis locks and reset dots; these are
+operator safeguards rather than decorative copies of Blender's animation controls.
 
 Two hardware decisions were recorded on 2026-11-09. For driver depth, the preferred
 next low-cost experiment is the existing calibrated driver camera plus a rigidly
@@ -140,7 +156,7 @@ multi-source bring-up. It does not establish metric accuracy: the session was no
 recorded repeated trial, and stereo/chessboard plus camera-to-windshield calibration
 are still required before the coordinates or intersections can be validated.
 
-**Verification:** 127 automated tests pass on Python 3.13. No completed calibrated
+**Verification:** 135 automated tests pass on Python 3.13. No completed calibrated
 physical validation has been performed. Live camera-to-windshield transforms and all physical exit
 criteria remain outstanding. Follow
 [the stereo setup guide](docs/guides/STEREO_CHESSBOARD_SETUP_GUIDE.md), then resume
@@ -165,7 +181,7 @@ GlareTracker is currently a **source-level visualization and tracking prototype*
 | Test workflow | Repeatable functional test checklist covering startup, eyes, calibration, geometry, simulation, road detection, end-to-end operation, and shutdown |
 | Guided demonstration calibration | Wizard captures stable IPD and lamp-size references, saves camera-specific profiles, enables IPD driver depth and apparent-size road range, and labels estimated versus assumed values |
 | Operating policy | Explicit Run/Standby/Stop states and four source modes now control camera ownership, manual inputs, calculations, previews, and movement simulation consistently |
-| Automated coverage | 127 tests cover geometry boundaries, mode/state policy, diagnostics/video recording and soak verification, ground-truth analysis, rigid transforms, guarded extrinsic fitting, latency/stale rejection, LCD fail-safe behavior, camera assignment, detector robustness, automatic two-source stereo association and camera-offset compensation, printable-board integration, binocular/multi-light geometry, stereo fitting/profile guards, drowsiness metrics, structured configuration flow, stable source identity, tuning UI, calibration profiles, and bright-spot observations |
+| Automated coverage | 135 tests cover geometry boundaries, mode/state policy, diagnostics/video recording and soak verification, ground-truth analysis, rigid transforms, guarded extrinsic fitting, latency/stale rejection, LCD fail-safe behavior, camera assignment, detector robustness, automatic two-source stereo association and camera-offset compensation, printable-board integration, binocular/multi-light geometry, stereo fitting/profile guards, drowsiness metrics, structured responsive configuration flow, collapsible property panels and vector-field safeguards, release metadata and icon caching, unique grid divisions and grid visibility, stable source identity, tuning UI, calibration profiles, and bright-spot observations |
 | Recording soak gate | Strict verifier checks finalized duration, timestamp order, exact streams, sidecar/manifest/decode counts, frame gaps/FPS, drops and writer errors |
 
 ### Current blockers to the physical prototype
@@ -178,10 +194,10 @@ GlareTracker is currently a **source-level visualization and tracking prototype*
 
 ### Packaging and verification snapshot
 
-- The source reports version **1.2.0**.
-- The only local packaged artifact is `dist/GlareTracker-v1.exe`, built on 2026-09-10; it predates the September 25 v1.2 work. The current build script instead produces `dist/GlareTracker.exe`, so a fresh package is required after the next stable milestone.
-- This review inspected the tracked source, repository history, dependency list, and available build artifact. The repository contained no uncommitted changes before this notes update.
-- Verification on 2026-10-14 passed compilation, all documented validation-script entry points, and 70 automated tests. Coverage includes geometry boundaries, timestamped telemetry/video, ground-truth analysis, rigid/extrinsic transforms, held-out calibration gating, independent physical-intersection analysis, latency/stale rejection, LCD fail-safe behavior, and the earlier detector/session cases. The six-scale detector previously benchmarked at 31.4 FPS on a synthetic 640x480 frame. Physical-camera regression, measurement accuracy, external latency, and stripped-LCD hardware validation remain outstanding.
+- The source and Windows metadata report version **1.3.0**.
+- `dist/GlareTracker-v1.3.exe` was rebuilt on 2026-11-11, reduced to 134.9 MB by excluding unused package examples/tests/converters, and passed a packaged hardware-independent UI launch/shutdown test.
+- Release SHA-256: `f28a6d5205d1035a20f346e90d179f689b316053f720877792bb96fe63eacf30`.
+- Verification passed compilation, dependency consistency, 135 automated tests, source smoke launch, and standalone smoke launch. Physical-camera regression, measurement accuracy, external latency, and stripped-LCD hardware validation remain outstanding.
 
 ---
 
@@ -273,7 +289,7 @@ Glare suppression system_test2/
 ├── assets/                     # Application icon (glaretracker-icon.ico)
 ├── docs/                       # Indexed plans, guides, protocols, and references
 ├── dist/                       # Standalone executables
-│   └── GlareTracker-v1.exe     # Standalone build v1 (PyInstaller)
+│   └── GlareTracker-v1.3.exe   # Current standalone v1.3 release
 ├── scripts/                    # Build scripts
 │   ├── build_exe.ps1           # PowerShell script to build .exe via PyInstaller
 │   └── glare_tracker.spec      # PyInstaller spec file
@@ -311,7 +327,7 @@ pythonw GlareTracker.pyw
 python -m glare_tracker
 
 # Standalone executable (no Python needed)
-dist/GlareTracker-v1.exe
+dist/GlareTracker-v1.3.exe
 ```
 
 ---
@@ -464,15 +480,15 @@ dist/GlareTracker-v1.exe
 | Sub-requirement | Status | Implementation |
 |---|---|---|
 | Windshield dimension inputs (W, H in cm) | ✅ | `QDoubleSpinBox` with 0.5 step |
-| Camera position inputs (X, Y, Z) | ✅ | Three spin boxes |
+| Camera position inputs (X, Y, Z) | ✅ | Blender-style grouped vector fields backed by three spin boxes |
 | Driver distance input | ✅ | Used as fallback depth when uncalibrated |
-| Light source position inputs (X, Y, Z) | ✅ | Three spin boxes, disabled during auto-detect |
+| Light source position inputs (X, Y, Z) | ✅ | Grouped vector fields, disabled during auto-detect |
 | Vehicle category selector (Motorcycle/Car/Extreme) | ✅ | `QComboBox` — generates 1/2/4 light sources |
 | Light movement simulation (3 modes) | ✅ | Coming straight, opposite side, long distance |
-| Start/Stop stream button | ✅ | Checkable toggle button |
+| Run/Standby/Stop session controls | ✅ | Exclusive state buttons with explicit camera/calculation policy |
 | Calibrate center button | ✅ | Captures current eye position as baseline |
 | Reset 3D view button | ✅ | Resets camera to default angle |
-| Stereo auto-detect toggle | ✅ | `QCheckBox` that starts/stops headlight thread |
+| Road-camera activation | ✅ | Operating mode and session state start/stop the required road-camera worker; no contradictory independent checkbox |
 
 **Key files:** `widgets/controls.py`
 
@@ -548,14 +564,14 @@ dist/GlareTracker-v1.exe
 ---
 
 ### REQ-14: Standalone Executable
-**Status: 🔧 PARTIAL** — build pipeline exists, but the v1.2 source has not been packaged
+**Status: ✅ DONE** — current v1.3 source is packaged and smoke-tested
 
 | Sub-requirement | Status | Implementation |
 |---|---|---|
 | PyInstaller build script | ✅ | `scripts/build_exe.ps1` + `scripts/glare_tracker.spec` |
-| Single-file .exe with bundled assets | ✅ | Confirmed by the older local `dist/GlareTracker-v1.exe` build |
+| Single-file .exe with bundled assets | ✅ | `dist/GlareTracker-v1.3.exe`, 134.9 MB |
 | Custom application icon | ✅ | `assets/glaretracker-icon.ico` |
-| Package current v1.2 source | ❌ | Current build script targets `dist/GlareTracker.exe`; a fresh build and launch test are still required |
+| Package current v1.3 source | ✅ | Hardware-independent packaged launch test passed; SHA-256 sidecar generated |
 
 **Key files:** `scripts/build_exe.ps1`, `scripts/glare_tracker.spec`
 
@@ -605,10 +621,10 @@ dist/GlareTracker-v1.exe
 | Action and mode iconography | ✅ | Stream, simulation, calibration, reset, panel, tabs, cameras, and scene controls use shared icons |
 | Recovered spatial palette | ✅ | Start-of-day deep navy scene with cyan windshield, amber lights, orange/yellow intersections, red rays, blue eye marker, and a coordinated light-gray canvas option |
 | Translucent windshield glass | ✅ | Low-alpha OpenGL mesh with a separate high-contrast cyan frame |
-| Spatial driving context | ✅ | Restored the layered minor/major grids plus road-edge and centre reference lines from the start-of-day scene |
+| Spatial reference grid | ✅ | Non-overlapping minor/major line sets plus explicit colored coordinate axes; misleading road-guide lines removed |
 | Layered tracked markers | ✅ | Eye, headlight, camera, and intersection points use separate glow and core layers |
 | In-scene legend | ✅ | Compact overlay identifies driver, light, intersection, and windshield colors |
-| Modern scene controls | ✅ | Dedicated gear settings control plus sun/moon dark/light-gray canvas toggle inside the 3D workspace |
+| Modern scene controls | ✅ | Dedicated grid visibility, sun/moon canvas, and gear settings controls inside the 3D workspace |
 
 **Key files:** `widgets/icons.py`, `widgets/scene_3d.py`, `widgets/controls.py`, `widgets/dashboard.py`
 
@@ -729,8 +745,7 @@ not treated as a physical test pass.
 9. **Filtering and Prediction** — Add Kalman/predictive rendering only after measured jitter and latency establish the required model and acceptance limits.
 
 ### Low Priority
-10. **Standalone v1.2+** — Rebuild and launch-test the PyInstaller executable after the next stable feature milestone.
-11. **Settings Persistence** — Save/load user preferences (windshield dimensions, camera positions) between sessions.
+10. **Settings Persistence** — Save/load user preferences (windshield dimensions, camera positions) between sessions.
 
 The detailed checkboxes, exit criteria, and evidence paths are maintained in
 `docs/plans/VALIDATION_PLAN.md`.

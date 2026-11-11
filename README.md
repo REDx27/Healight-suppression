@@ -31,13 +31,21 @@ states. The 3D workspace includes a dark/light-gray canvas toggle, coordinated w
 overlay, the restored layered navigation grid and marker palette from the start-of-day
 scene, and responsive scene controls.
 
+Version 1.3 consolidates the calibrated three-camera research workflow. It adds guided
+LEFT/RIGHT/stereo chessboard calibration with a printable A4 target, persistent camera
+roles and stereo profiles, automatic multi-light association, timestamped research
+recording, experimental driver-drowsiness indicators, and a focused Blender-style
+properties editor. Configuration sections use working collapsible headers, compact
+aligned fields, accessible toggles, and functional XYZ lock/reset controls. The
+release also removes duplicate 3D grid layers and caches vector-icon rendering.
+
 ## Current development status
 
-As of 2026-10-14, the source is version 1.2.0. The tracking, headlight-input,
+As of 2026-11-11, the source is version 1.3.0. The tracking, headlight-input,
 intersection, simulation, and visualization paths are implemented in source. Camera
 capture now includes Windows backend fallback, a low-bandwidth 640x480 MJPEG profile,
 adaptive bright-source detection, temporal light tracking, dropout tolerance, and
-MediaPipe Tasks compatibility for Python 3.13. Seventy automated tests cover geometry,
+MediaPipe Tasks compatibility for Python 3.13. A total of 135 automated tests cover geometry,
 mode/state, session, calibration profiles, extrinsic fitting, diagnostics, latency,
 LCD fail-safe behavior, and detection policies; the validation plan records the
 remaining physical-camera and optical checks.
@@ -52,9 +60,9 @@ left/right-eye intersections, stripped-panel optical validation, prediction, and
 ordered ground-truth/environmental test campaigns. Timestamped CSV/video recording
 and an experimental disabled-by-default secondary-display blocker now exist in source.
 
-The local `dist/GlareTracker-v1.exe` artifact predates the v1.2 source changes. Run the
-build script and launch-test the resulting `dist/GlareTracker.exe` before treating the
-latest source as a distributable release. See [PROJECT_STATUS.md](PROJECT_STATUS.md) for
+The current standalone release is `dist/GlareTracker-v1.3.exe`. It was built from the
+v1.3.0 source, passed the hardware-independent packaged launch test, and has a matching
+`.sha256` checksum file. See [PROJECT_STATUS.md](PROJECT_STATUS.md) for
 the reviewed implementation matrix, limitations, verification state, and ordered
 roadmap.
 
@@ -113,9 +121,7 @@ python -m glare_tracker
 
 ## Run the standalone executable
 
-For a build made with the current script, double-click `dist/GlareTracker.exe` — no
-Python is needed. The older local artifact is named `dist/GlareTracker-v1.exe` and does
-not include the latest v1.2 changes.
+Double-click `dist/GlareTracker-v1.3.exe` — no Python installation is needed.
 
 ## Build the executable
 
@@ -125,7 +131,9 @@ From the project root in PowerShell:
 ./scripts/build_exe.ps1
 ```
 
-The executable is created at `dist/GlareTracker.exe`. If Inno Setup (`iscc`) is available, an installer is also created at `installer-output/GlareTracker-Setup.exe`.
+The script builds and smoke-tests `dist/GlareTracker-v1.3.exe`, then writes
+`dist/GlareTracker-v1.3.exe.sha256`. If Inno Setup (`iscc`) is available, it also
+creates `installer-output/GlareTracker-v1.3-Setup.exe`.
 
 ## Project structure
 

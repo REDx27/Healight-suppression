@@ -3,15 +3,17 @@
 from PyQt5.QtCore import Qt, pyqtSignal
 
 from PyQt5.QtWidgets import (
-    QWidget, QGroupBox, QVBoxLayout, QFormLayout, QLabel,
-    QPushButton, QDoubleSpinBox, QComboBox, QSpinBox, QSizePolicy, QCheckBox,
-    QLineEdit,
+    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QFormLayout, QLabel,
+    QPushButton, QDoubleSpinBox, QComboBox, QSpinBox, QSizePolicy,
+    QLineEdit, QButtonGroup, QScrollArea, QStackedWidget, QToolButton,
 )
 
 from glare_tracker.widgets.icons import ICON_SIZE, IconFactory
 from glare_tracker.operating_modes import OperatingMode, policy_for
 from glare_tracker.headlight_detector import LightDetectionSettings
 from glare_tracker.drowsiness import DrowsinessSettings
+from glare_tracker.widgets.toggle import ToggleSwitch
+from glare_tracker.widgets.property_panel import PropertyGroupBox
 
 
 class CameraSelector(QComboBox):
@@ -22,7 +24,7 @@ class CameraSelector(QComboBox):
     def __init__(self, default_index=0, parent=None):
         super().__init__(parent)
         self._fallback_value = int(default_index)
-        self.setMinimumHeight(30)
+        self.setMinimumHeight(26)
         self.addItem(f"Camera {default_index} (not scanned)", default_index)
         self.currentIndexChanged.connect(self._emit_value_changed)
 
@@ -81,15 +83,15 @@ class ControlsPanel(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
+        layout.setSpacing(4)
 
         # Operating mode is the primary workflow choice. It replaces the old
         # independent Manual/Auto light switch, which allowed contradictory
         # combinations of driver and road inputs.
-        self.mode_group = QGroupBox("Operating Mode")
+        self.mode_group = PropertyGroupBox("Operating Mode")
         self.mode_group.setProperty("section", "vision")
         mode_layout = QVBoxLayout(self.mode_group)
         mode_layout.setSpacing(6)
@@ -98,15 +100,31 @@ class ControlsPanel(QWidget):
         self.mode_description = QLabel()
         self.mode_description.setObjectName("mutedText")
         self.mode_description.setWordWrap(True)
-        self.check_show_advanced_configuration = QCheckBox(
+        self.check_show_advanced_configuration = ToggleSwitch(
             "Show advanced and experimental configuration")
+        self.advanced_configuration_note = QLabel(
+            "Advanced Camera Position and LCD panels are hidden.")
+        self.advanced_configuration_note.setObjectName("mutedText")
+        self.advanced_configuration_note.setWordWrap(True)
+        self.advanced_shortcuts = QWidget()
+        advanced_shortcut_layout = QHBoxLayout(self.advanced_shortcuts)
+        advanced_shortcut_layout.setContentsMargins(0, 0, 0, 0)
+        advanced_shortcut_layout.setSpacing(4)
+        self.btn_open_advanced_geometry = QPushButton("Open Geometry")
+        self.btn_open_advanced_research = QPushButton("Open Research")
+        self.btn_open_advanced_geometry.setObjectName("propertyLinkButton")
+        self.btn_open_advanced_research.setObjectName("propertyLinkButton")
+        advanced_shortcut_layout.addWidget(self.btn_open_advanced_geometry)
+        advanced_shortcut_layout.addWidget(self.btn_open_advanced_research)
         mode_layout.addWidget(self.combo_operating_mode)
         mode_layout.addWidget(self.mode_description)
         mode_layout.addWidget(self.check_show_advanced_configuration)
+        mode_layout.addWidget(self.advanced_configuration_note)
+        mode_layout.addWidget(self.advanced_shortcuts)
         layout.addWidget(self.mode_group)
 
         # ── Windshield ──
-        self.ws_group = QGroupBox("Windshield")
+        self.ws_group = PropertyGroupBox("Windshield")
         self.ws_group.setProperty("section", "geometry")
         ws_layout = QFormLayout(self.ws_group)
         ws_layout.setSpacing(6)
@@ -118,7 +136,7 @@ class ControlsPanel(QWidget):
         layout.addWidget(self.ws_group)
 
         # ── Camera position ──
-        self.camera_group = QGroupBox("Camera Position")
+        self.camera_group = PropertyGroupBox("Camera Position")
         self.camera_group.setProperty("section", "camera")
         camera_layout = QFormLayout(self.camera_group)
         camera_layout.setSpacing(6)
@@ -126,13 +144,13 @@ class ControlsPanel(QWidget):
         self.spin_camera_x = self._make_spin(-1000, 1000, 0.0, " cm")
         self.spin_camera_y = self._make_spin(-1000, 1000, 0.0, " cm")
         self.spin_camera_z = self._make_spin(-1000, 1000, 19.5, " cm")
-        camera_layout.addRow("X:", self.spin_camera_x)
-        camera_layout.addRow("Y:", self.spin_camera_y)
-        camera_layout.addRow("Z:", self.spin_camera_z)
+        self._add_vector_row(
+            camera_layout, "Position",
+            self.spin_camera_x, self.spin_camera_y, self.spin_camera_z)
         layout.addWidget(self.camera_group)
 
         # ── Driver distance ──
-        self.dist_group = QGroupBox("Tracked Driver Reference")
+        self.dist_group = PropertyGroupBox("Tracked Driver Reference")
         self.dist_group.setProperty("section", "driver")
         dist_layout = QFormLayout(self.dist_group)
         dist_layout.setSpacing(6)
@@ -145,7 +163,7 @@ class ControlsPanel(QWidget):
         layout.addWidget(self.dist_group)
 
         # Manual driver position for Fully Manual and Driver Position Fixed.
-        self.manual_driver_group = QGroupBox("Manual Driver Position")
+        self.manual_driver_group = PropertyGroupBox("Manual Driver Position")
         self.manual_driver_group.setProperty("section", "driver")
         driver_layout = QFormLayout(self.manual_driver_group)
         driver_layout.setSpacing(6)
@@ -153,13 +171,13 @@ class ControlsPanel(QWidget):
         self.spin_driver_x = self._make_spin(-1000, 1000, 0.0, " cm")
         self.spin_driver_y = self._make_spin(-1000, -1.0, -50.0, " cm")
         self.spin_driver_z = self._make_spin(-1000, 1000, 9.75, " cm")
-        driver_layout.addRow("X:", self.spin_driver_x)
-        driver_layout.addRow("Y:", self.spin_driver_y)
-        driver_layout.addRow("Z:", self.spin_driver_z)
+        self._add_vector_row(
+            driver_layout, "Position",
+            self.spin_driver_x, self.spin_driver_y, self.spin_driver_z)
         layout.addWidget(self.manual_driver_group)
 
         # ── Guided distance calibration ──
-        self.calibration_group = QGroupBox("Single-Camera Calibration")
+        self.calibration_group = PropertyGroupBox("Single-Camera Calibration")
         self.calibration_group.setProperty("section", "vision")
         calibration_layout = QVBoxLayout(self.calibration_group)
         calibration_layout.setSpacing(6)
@@ -167,10 +185,10 @@ class ControlsPanel(QWidget):
             "Calibrate Single-Camera Distances")
         self.btn_guided_calibration.setIcon(IconFactory.icon("target"))
         self.btn_guided_calibration.setIconSize(ICON_SIZE)
-        self.btn_guided_calibration.setMinimumHeight(34)
-        self.check_driver_depth_calibration = QCheckBox(
+        self.btn_guided_calibration.setMinimumHeight(28)
+        self.check_driver_depth_calibration = ToggleSwitch(
             "Use estimated driver depth")
-        self.check_road_range_calibration = QCheckBox(
+        self.check_road_range_calibration = ToggleSwitch(
             "Use estimated road-light range")
         self.calibration_status = QLabel("No guided calibration loaded")
         self.calibration_status.setWordWrap(True)
@@ -182,7 +200,7 @@ class ControlsPanel(QWidget):
         layout.addWidget(self.calibration_group)
 
         # ── Vehicle / light mode ──
-        self.vehicle_group = QGroupBox("Vehicle Type")
+        self.vehicle_group = PropertyGroupBox("Vehicle Type")
         self.vehicle_group.setProperty("section", "vehicle")
         vehicle_layout = QFormLayout(self.vehicle_group)
         vehicle_layout.setSpacing(6)
@@ -193,7 +211,7 @@ class ControlsPanel(QWidget):
         layout.addWidget(self.vehicle_group)
 
         # ── Headlight source ──
-        self.light_group = QGroupBox("Manual Headlight Position")
+        self.light_group = PropertyGroupBox("Manual Headlight Position")
         self.light_group.setProperty("section", "light")
         light_layout = QFormLayout(self.light_group)
         light_layout.setSpacing(6)
@@ -201,14 +219,14 @@ class ControlsPanel(QWidget):
         self.spin_light_x = self._make_spin(-1000, 1000, 0.0, " cm")
         self.spin_light_y = self._make_spin(-1000, 1000, 120.0, " cm")
         self.spin_light_z = self._make_spin(-1000, 5000, 10.0, " cm")
-        light_layout.addRow("X:", self.spin_light_x)
-        light_layout.addRow("Y:", self.spin_light_y)
-        light_layout.addRow("Z:", self.spin_light_z)
+        self._add_vector_row(
+            light_layout, "Position",
+            self.spin_light_x, self.spin_light_y, self.spin_light_z)
         layout.addWidget(self.light_group)
 
         # Camera roles remain assignable even while a role is inactive. This
         # allows Camera 0 to detect a lamp while driver coordinates are fixed.
-        self.auto_camera_group = QGroupBox("Camera Selection")
+        self.auto_camera_group = PropertyGroupBox("Camera Selection")
         self.auto_camera_group.setProperty("section", "vision")
         auto_layout = QFormLayout(self.auto_camera_group)
         auto_layout.setSpacing(6)
@@ -222,7 +240,7 @@ class ControlsPanel(QWidget):
         self.spin_driver_camera = self._make_index_spin(0)
         self.spin_headlight_camera = self._make_index_spin(1)
         self.spin_headlight_camera_2 = self._make_index_spin(2)
-        self.check_lock_driver_camera = QCheckBox(
+        self.check_lock_driver_camera = ToggleSwitch(
             "Lock integrated camera as driver")
         self.check_lock_driver_camera.setChecked(True)
         self.check_lock_driver_camera.setToolTip(
@@ -233,14 +251,14 @@ class ControlsPanel(QWidget):
         self.spin_brightness_threshold = QSpinBox()
         self.spin_brightness_threshold.setRange(0, 255)
         self.spin_brightness_threshold.setValue(200)
-        self.spin_brightness_threshold.setMinimumHeight(30)
+        self.spin_brightness_threshold.setMinimumHeight(26)
         self.spin_brightness_threshold.setToolTip(
             "In adaptive mode this is a ceiling; scene brightness chooses the "
             "lower working threshold shown on the feed")
         self.btn_refresh_cameras = QPushButton("Refresh Available Cameras")
         self.btn_refresh_cameras.setIcon(IconFactory.icon("reset"))
         self.btn_refresh_cameras.setIconSize(ICON_SIZE)
-        self.btn_refresh_cameras.setMinimumHeight(34)
+        self.btn_refresh_cameras.setMinimumHeight(28)
         self.camera_scan_status = QLabel(
             "Choose which detected camera is used for each role.")
         self.camera_scan_status.setWordWrap(True)
@@ -268,13 +286,13 @@ class ControlsPanel(QWidget):
         # Driver monitoring reuses the existing Face Mesh result.  It remains
         # disabled by default because its thresholds have not yet been
         # validated as a safety device for this camera or vehicle environment.
-        self.driver_monitoring_group = QGroupBox(
+        self.driver_monitoring_group = PropertyGroupBox(
             "Driver Drowsiness Monitoring (Experimental)")
         self.driver_monitoring_group.setProperty("section", "driver")
         drowsiness_layout = QFormLayout(self.driver_monitoring_group)
         drowsiness_layout.setSpacing(6)
         self._configure_form(drowsiness_layout)
-        self.check_drowsiness = QCheckBox("Enable drowsiness indicators")
+        self.check_drowsiness = ToggleSwitch("Enable drowsiness indicators")
         self.combo_drowsiness_profile = QComboBox()
         self.combo_drowsiness_profile.addItems(["Default", "Custom"])
         self.spin_eye_openness = self._make_spin(
@@ -285,7 +303,7 @@ class ControlsPanel(QWidget):
         self.spin_blink_duration.setRange(100, 5000)
         self.spin_blink_duration.setValue(800)
         self.spin_blink_duration.setSuffix(" ms")
-        self.spin_blink_duration.setMinimumHeight(30)
+        self.spin_blink_duration.setMinimumHeight(26)
         self.spin_perclos_threshold = self._make_spin(
             1.0, 95.0, 25.0, " %")
         self.spin_perclos_threshold.setDecimals(0)
@@ -300,7 +318,7 @@ class ControlsPanel(QWidget):
         self.spin_yawn_duration.setRange(250, 10000)
         self.spin_yawn_duration.setValue(1500)
         self.spin_yawn_duration.setSuffix(" ms")
-        self.spin_yawn_duration.setMinimumHeight(30)
+        self.spin_yawn_duration.setMinimumHeight(26)
         self.drowsiness_status = QLabel(
             "Off. Experimental research indicator; not a safety-certified alarm.")
         self.drowsiness_status.setObjectName("mutedText")
@@ -333,15 +351,23 @@ class ControlsPanel(QWidget):
         # Camera-driver controls and software image-processing controls are
         # intentionally grouped together so the operator can tune a new lamp
         # while watching the selectable processing previews above the feed.
-        self.light_detection_group = QGroupBox("Light Detection")
+        self.light_detection_group = PropertyGroupBox("Light Detection")
         self.light_detection_group.setProperty("section", "light")
-        detection_layout = QFormLayout(self.light_detection_group)
-        detection_layout.setSpacing(6)
+        detection_panel_layout = QVBoxLayout(self.light_detection_group)
+        detection_panel_layout.setSpacing(6)
+        summary_layout = QFormLayout()
+        self._configure_form(summary_layout)
+        self.detection_advanced_container = QWidget()
+        self.detection_advanced_container.setObjectName(
+            "detectionAdvancedContainer")
+        detection_layout = QFormLayout(self.detection_advanced_container)
         self._configure_form(detection_layout)
+        detection_panel_layout.addLayout(summary_layout)
+        detection_panel_layout.addWidget(self.detection_advanced_container)
 
-        self.check_apply_camera_controls = QCheckBox(
+        self.check_apply_camera_controls = ToggleSwitch(
             "Apply camera controls")
-        self.check_auto_exposure = QCheckBox("Use auto exposure")
+        self.check_auto_exposure = ToggleSwitch("Use auto exposure")
         self.check_auto_exposure.setChecked(True)
         self.spin_exposure = self._make_spin(-13.0, 1.0, -6.0)
         self.spin_exposure.setSingleStep(1.0)
@@ -356,30 +382,30 @@ class ControlsPanel(QWidget):
         self.camera_control_feedback.setObjectName("mutedText")
         self.camera_control_feedback.setWordWrap(True)
 
-        self.check_background_rejection = QCheckBox(
+        self.check_background_rejection = ToggleSwitch(
             "Reject captured background")
         self.spin_background_difference = QSpinBox()
         self.spin_background_difference.setRange(1, 255)
         self.spin_background_difference.setValue(30)
-        self.spin_background_difference.setMinimumHeight(30)
+        self.spin_background_difference.setMinimumHeight(26)
         self.btn_capture_background = QPushButton(
             "Capture Background Without Test Light")
-        self.btn_capture_background.setMinimumHeight(34)
+        self.btn_capture_background.setMinimumHeight(28)
         self.btn_clear_background = QPushButton("Clear Background Reference")
-        self.btn_clear_background.setMinimumHeight(32)
+        self.btn_clear_background.setMinimumHeight(28)
         self.background_status = QLabel(
             "No background captured. Start Standby, remove the phone light, "
             "then capture the static scene.")
         self.background_status.setObjectName("mutedText")
         self.background_status.setWordWrap(True)
 
-        self.check_local_contrast = QCheckBox(
+        self.check_local_contrast = ToggleSwitch(
             "Require multi-scale light saliency")
         self.check_local_contrast.setChecked(True)
         self.spin_local_contrast_threshold = QSpinBox()
         self.spin_local_contrast_threshold.setRange(1, 255)
         self.spin_local_contrast_threshold.setValue(8)
-        self.spin_local_contrast_threshold.setMinimumHeight(30)
+        self.spin_local_contrast_threshold.setMinimumHeight(26)
         self.spin_local_contrast_threshold.setToolTip(
             "Minimum multi-scale contrast response required for a light")
         self.spin_min_source_confidence = self._make_spin(
@@ -390,27 +416,27 @@ class ControlsPanel(QWidget):
             "and saturated-core score is below this percentage")
         self.btn_daylight_phone_preset = QPushButton(
             "Load Daylight Phone-Light Preset")
-        self.btn_daylight_phone_preset.setMinimumHeight(34)
+        self.btn_daylight_phone_preset.setMinimumHeight(28)
 
         self.btn_stable_stereo_preset = QPushButton(
             "Current Rig - Smooth Preset")
-        self.btn_stable_stereo_preset.setMinimumHeight(34)
+        self.btn_stable_stereo_preset.setMinimumHeight(28)
         self.btn_stable_stereo_preset.setToolTip(
             "Load the exact values that produced stable tracking on the current rig. "
             "This favors stability over distant-light coverage.")
         self.btn_balanced_stereo_preset = QPushButton(
             "Balanced Stereo Coverage Preset")
-        self.btn_balanced_stereo_preset.setMinimumHeight(34)
+        self.btn_balanced_stereo_preset.setMinimumHeight(28)
         self.btn_balanced_stereo_preset.setToolTip(
             "Use moderate spatial filtering with temporal confirmation so smaller "
             "lights remain detectable.")
-        self.check_show_advanced_detection = QCheckBox(
+        self.check_show_advanced_detection = ToggleSwitch(
             "Show advanced detector tuning")
         self.detection_summary = QLabel()
         self.detection_summary.setObjectName("mutedText")
         self.detection_summary.setWordWrap(True)
 
-        self.check_adaptive_threshold = QCheckBox(
+        self.check_adaptive_threshold = ToggleSwitch(
             "Adapt threshold to scene")
         self.check_adaptive_threshold.setChecked(True)
         self.spin_min_light_area = self._make_spin(
@@ -427,16 +453,16 @@ class ControlsPanel(QWidget):
         self.spin_morphology_iterations = QSpinBox()
         self.spin_morphology_iterations.setRange(0, 5)
         self.spin_morphology_iterations.setValue(1)
-        self.spin_morphology_iterations.setMinimumHeight(30)
+        self.spin_morphology_iterations.setMinimumHeight(26)
         self.spin_max_light_sources = QSpinBox()
         self.spin_max_light_sources.setRange(1, 8)
         self.spin_max_light_sources.setValue(4)
-        self.spin_max_light_sources.setMinimumHeight(30)
+        self.spin_max_light_sources.setMinimumHeight(26)
         self.spin_light_match_distance = self._make_spin(
             5.0, 500.0, 80.0, " px")
         self.spin_light_match_distance.setDecimals(0)
         self.btn_reset_light_detection = QPushButton("Reset Detection Defaults")
-        self.btn_reset_light_detection.setMinimumHeight(32)
+        self.btn_reset_light_detection.setMinimumHeight(28)
         self.detection_note = QLabel(
             "Multi-scale saliency compares each bright patch with eight "
             "surrounding patches at six sizes, so nearby and distant lamps "
@@ -446,10 +472,10 @@ class ControlsPanel(QWidget):
         self.detection_note.setObjectName("mutedText")
         self.detection_note.setWordWrap(True)
 
-        detection_layout.addRow(self.btn_stable_stereo_preset)
-        detection_layout.addRow(self.btn_balanced_stereo_preset)
-        detection_layout.addRow(self.check_show_advanced_detection)
-        detection_layout.addRow(self.detection_summary)
+        summary_layout.addRow(self.btn_stable_stereo_preset)
+        summary_layout.addRow(self.btn_balanced_stereo_preset)
+        summary_layout.addRow(self.check_show_advanced_detection)
+        summary_layout.addRow(self.detection_summary)
         detection_layout.addRow(self.check_apply_camera_controls)
         detection_layout.addRow(self.check_auto_exposure)
         detection_layout.addRow("Exposure:", self.spin_exposure)
@@ -528,7 +554,7 @@ class ControlsPanel(QWidget):
             self._refresh_detection_summary)
 
         # ── Light movement ──
-        movement_group = QGroupBox("Simulation")
+        movement_group = PropertyGroupBox("Simulation")
         self.movement_group = movement_group
         movement_group.setProperty("section", "simulation")
         movement_layout = QVBoxLayout(movement_group)
@@ -544,17 +570,17 @@ class ControlsPanel(QWidget):
         self.btn_play_movement.setIcon(IconFactory.icon("play"))
         self.btn_play_movement.setIconSize(ICON_SIZE)
         self.btn_play_movement.setCheckable(True)
-        self.btn_play_movement.setMinimumHeight(34)
+        self.btn_play_movement.setMinimumHeight(28)
         movement_layout.addWidget(self.combo_movement)
         movement_layout.addWidget(self.btn_play_movement)
         layout.addWidget(movement_group)
 
         # ── Research diagnostics ──
-        self.diagnostics_group = QGroupBox("Research Recording")
+        self.diagnostics_group = PropertyGroupBox("Research Recording")
         self.diagnostics_group.setProperty("section", "vision")
         diagnostics_layout = QVBoxLayout(self.diagnostics_group)
         diagnostics_layout.setSpacing(6)
-        self.check_record_diagnostics = QCheckBox(
+        self.check_record_diagnostics = ToggleSwitch(
             "Record timestamped CSV and camera video"
         )
         self.check_record_diagnostics.setToolTip(
@@ -568,6 +594,7 @@ class ControlsPanel(QWidget):
         diagnostics_layout.addWidget(self.diagnostics_status)
 
         marker_form = QFormLayout()
+        self._configure_form(marker_form)
         self.combo_ground_truth_target = QComboBox()
         self.combo_ground_truth_target.addItems(
             ["Driver Eye Midpoint", "Road Light", "Windshield Intersection"]
@@ -578,7 +605,7 @@ class ControlsPanel(QWidget):
         self.spin_ground_truth_y = self._make_spin(-5000, 5000, -50.0, " cm")
         self.spin_ground_truth_z = self._make_spin(-5000, 5000, 9.75, " cm")
         self.btn_mark_ground_truth = QPushButton("Mark Measured Position")
-        self.btn_mark_ground_truth.setMinimumHeight(32)
+        self.btn_mark_ground_truth.setMinimumHeight(28)
         self.ground_truth_status = QLabel(
             "Start recording, enter tape-measured coordinates, then mark each "
             "stable test position."
@@ -587,20 +614,23 @@ class ControlsPanel(QWidget):
         self.ground_truth_status.setWordWrap(True)
         marker_form.addRow("Target:", self.combo_ground_truth_target)
         marker_form.addRow("Condition ID:", self.edit_ground_truth_label)
-        marker_form.addRow("Measured X:", self.spin_ground_truth_x)
-        marker_form.addRow("Measured Y:", self.spin_ground_truth_y)
-        marker_form.addRow("Measured Z:", self.spin_ground_truth_z)
+        self._add_vector_row(
+            marker_form, "Measured",
+            self.spin_ground_truth_x,
+            self.spin_ground_truth_y,
+            self.spin_ground_truth_z,
+        )
         marker_form.addRow(self.btn_mark_ground_truth)
         marker_form.addRow(self.ground_truth_status)
         diagnostics_layout.addLayout(marker_form)
         layout.addWidget(self.diagnostics_group)
 
-        self.lcd_group = QGroupBox("Experimental LCD Output")
+        self.lcd_group = PropertyGroupBox("Experimental LCD Output")
         self.lcd_group.setProperty("section", "geometry")
         lcd_layout = QFormLayout(self.lcd_group)
         lcd_layout.setSpacing(6)
         self._configure_form(lcd_layout)
-        self.check_lcd_output = QCheckBox(
+        self.check_lcd_output = ToggleSwitch(
             "Enable blocker on secondary display"
         )
         self.check_lcd_output.setToolTip(
@@ -620,8 +650,12 @@ class ControlsPanel(QWidget):
 
         self.check_show_advanced_configuration.toggled.connect(
             self._update_configuration_visibility)
-        self._rebuild_configuration_flow(layout)
-        layout.addStretch()
+        self._normalize_panel_layouts()
+        self._build_property_editor(layout)
+        self.btn_open_advanced_geometry.clicked.connect(
+            lambda: self._select_property_context(4))
+        self.btn_open_advanced_research.clicked.connect(
+            lambda: self._select_property_context(5))
         self._update_detection_control_states()
         self._update_detection_advanced_visibility()
         self._refresh_detection_summary()
@@ -633,9 +667,35 @@ class ControlsPanel(QWidget):
 
     @staticmethod
     def _configure_form(layout: QFormLayout):
-        layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        layout.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
         layout.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
         layout.setRowWrapPolicy(QFormLayout.WrapLongRows)
+        layout.setHorizontalSpacing(8)
+        layout.setVerticalSpacing(3)
+
+    def _normalize_panel_layouts(self):
+        """Apply one compact spacing system to every configuration panel."""
+
+        for group in (
+            self.mode_group,
+            self.ws_group,
+            self.camera_group,
+            self.dist_group,
+            self.manual_driver_group,
+            self.calibration_group,
+            self.vehicle_group,
+            self.light_group,
+            self.auto_camera_group,
+            self.driver_monitoring_group,
+            self.light_detection_group,
+            self.movement_group,
+            self.diagnostics_group,
+            self.lcd_group,
+        ):
+            group.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+            panel_layout = group.layout()
+            panel_layout.setContentsMargins(8, 32, 8, 8)
+            panel_layout.setSpacing(4)
 
     @staticmethod
     def _make_spin(min_val, max_val, default, suffix=""):
@@ -645,27 +705,94 @@ class ControlsPanel(QWidget):
         spin.setSuffix(suffix)
         spin.setDecimals(1)
         spin.setSingleStep(0.5)
-        spin.setMinimumHeight(30)
+        spin.setMinimumHeight(26)
         return spin
 
     @staticmethod
     def _make_index_spin(default):
         return CameraSelector(default)
 
+    @staticmethod
+    def _make_vector_editor(x_spin, y_spin, z_spin):
+        """Build a compact XYZ editor with working lock and reset controls."""
+
+        editor = QWidget()
+        editor.setObjectName("vectorEditor")
+        grid = QGridLayout(editor)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(2)
+        grid.setVerticalSpacing(1)
+        for row, (axis, spin) in enumerate((
+            ("X", x_spin), ("Y", y_spin), ("Z", z_spin),
+        )):
+            initial_value = spin.value()
+            label = QLabel(axis)
+            label.setObjectName("vectorAxisLabel")
+            label.setProperty("axis", axis.lower())
+            label.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            label.setFixedWidth(13)
+
+            lock_button = QToolButton()
+            lock_button.setObjectName("vectorLockButton")
+            lock_button.setCheckable(True)
+            lock_button.setFixedSize(18, 22)
+            lock_button.setIcon(IconFactory.icon("unlock", "#969a9f", 14))
+            lock_button.setIconSize(ICON_SIZE)
+            lock_button.setToolTip(f"Lock {axis} value")
+            lock_button.setAccessibleName(f"Lock {axis} value")
+
+            reset_button = QToolButton()
+            reset_button.setObjectName("vectorResetButton")
+            reset_button.setFixedSize(12, 22)
+            reset_button.setText("•")
+            reset_button.setToolTip(
+                f"Reset {axis} to {spin.textFromValue(initial_value)}")
+            reset_button.setAccessibleName(f"Reset {axis} value")
+
+            def set_locked(locked, target=spin, button=lock_button,
+                           axis_name=axis):
+                target.setReadOnly(locked)
+                button.setIcon(IconFactory.icon(
+                    "lock" if locked else "unlock",
+                    "#b8c5d5" if locked else "#969a9f", 14))
+                button.setToolTip(
+                    f"Unlock {axis_name} value" if locked
+                    else f"Lock {axis_name} value")
+
+            lock_button.toggled.connect(set_locked)
+            reset_button.clicked.connect(
+                lambda checked=False, target=spin, value=initial_value:
+                target.setValue(value))
+            grid.addWidget(label, row, 0)
+            grid.addWidget(spin, row, 1)
+            grid.addWidget(lock_button, row, 2)
+            grid.addWidget(reset_button, row, 3)
+        grid.setColumnStretch(1, 1)
+        return editor
+
+    @classmethod
+    def _add_vector_row(cls, layout, title, x_spin, y_spin, z_spin):
+        """Add an XYZ editor with its group label aligned to the first axis."""
+
+        editor = cls._make_vector_editor(x_spin, y_spin, z_spin)
+        layout.addRow(f"{title}:", editor)
+        label = layout.labelForField(editor)
+        if label is not None:
+            label.setAlignment(Qt.AlignRight | Qt.AlignTop)
+            label.setContentsMargins(0, 4, 0, 0)
+        return editor
+
     def _set_form_row_visible(self, layout, widget, visible):
+        if hasattr(layout, "setRowVisible"):
+            layout.setRowVisible(widget, visible)
+            return
         widget.setVisible(visible)
         label = layout.labelForField(widget)
         if label is not None:
             label.setVisible(visible)
 
-    @staticmethod
-    def _section_heading(text):
-        heading = QLabel(text.upper())
-        heading.setObjectName("configurationSectionHeading")
-        return heading
-
-    def _rebuild_configuration_flow(self, layout):
-        """Arrange the sidebar in the order used during a test session."""
+    def _build_property_editor(self, layout):
+        """Build a Blender-style context rail with one focused page at a time."""
 
         groups = (
             self.mode_group,
@@ -686,27 +813,92 @@ class ControlsPanel(QWidget):
         for group in groups:
             layout.removeWidget(group)
 
-        flow = (
-            ("1  Operation", (self.mode_group,)),
-            ("2  Cameras and calibration", (
+        contexts = (
+            ("Operation", "operations", (self.mode_group,)),
+            ("Cameras", "camera", (
                 self.auto_camera_group, self.calibration_group)),
-            ("3  Driver monitoring", (
+            ("Driver", "eye", (
                 self.driver_monitoring_group, self.dist_group,
                 self.manual_driver_group)),
-            ("4  Road-light detection", (
+            ("Road lights", "road", (
                 self.light_detection_group, self.vehicle_group,
                 self.light_group, self.movement_group)),
-            ("5  System geometry", (self.ws_group, self.camera_group)),
-            ("6  Research and output", (
+            ("Geometry", "target", (self.ws_group, self.camera_group)),
+            ("Research", "controls", (
                 self.diagnostics_group, self.lcd_group)),
         )
-        self.configuration_headings = []
-        for title, section_groups in flow:
-            heading = self._section_heading(title)
-            self.configuration_headings.append(heading)
-            layout.addWidget(heading)
-            for group in section_groups:
-                layout.addWidget(group)
+
+        editor = QWidget()
+        editor.setObjectName("propertyEditor")
+        editor_layout = QHBoxLayout(editor)
+        editor_layout.setContentsMargins(0, 0, 0, 0)
+        editor_layout.setSpacing(0)
+
+        rail = QWidget()
+        rail.setObjectName("propertyContextRail")
+        rail.setFixedWidth(42)
+        rail_layout = QVBoxLayout(rail)
+        rail_layout.setContentsMargins(4, 5, 4, 5)
+        rail_layout.setSpacing(3)
+
+        self.property_context_group = QButtonGroup(self)
+        self.property_context_group.setExclusive(True)
+        self.property_context_buttons = []
+        self.property_page_titles = []
+        self.property_pages = QStackedWidget()
+        self.property_pages.setObjectName("propertyPages")
+
+        for index, (title, icon_name, section_groups) in enumerate(contexts):
+            button = QToolButton()
+            button.setObjectName("propertyContextButton")
+            button.setCheckable(True)
+            button.setAutoExclusive(True)
+            button.setFixedSize(34, 34)
+            button.setIcon(IconFactory.icon(icon_name, "#9da4ab", 18))
+            button.setIconSize(ICON_SIZE)
+            button.setToolTip(title)
+            button.setAccessibleName(f"{title} settings")
+            button.clicked.connect(
+                lambda checked=False, page_index=index:
+                self.property_pages.setCurrentIndex(page_index))
+            self.property_context_group.addButton(button, index)
+            self.property_context_buttons.append(button)
+            rail_layout.addWidget(button)
+
+            page, title_label = self._make_property_page(title, section_groups)
+            self.property_pages.addWidget(page)
+            self.property_page_titles.append(title_label)
+
+        rail_layout.addStretch()
+        self.property_context_buttons[0].setChecked(True)
+        editor_layout.addWidget(rail)
+        editor_layout.addWidget(self.property_pages, 1)
+        layout.addWidget(editor, 1)
+
+    @staticmethod
+    def _make_property_page(title, groups):
+        content = QWidget()
+        content.setObjectName("propertyPageContent")
+        page_layout = QVBoxLayout(content)
+        page_layout.setContentsMargins(6, 6, 6, 9)
+        page_layout.setSpacing(5)
+        title_label = QLabel(title.upper())
+        title_label.setObjectName("propertyPageTitle")
+        page_layout.addWidget(title_label)
+        for group in groups:
+            page_layout.addWidget(group)
+        page_layout.addStretch()
+
+        scroll = QScrollArea()
+        scroll.setObjectName("propertyPageScroll")
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setWidget(content)
+        return scroll, title_label
+
+    def _select_property_context(self, index):
+        self.property_pages.setCurrentIndex(index)
+        self.property_context_buttons[index].setChecked(True)
 
     def _update_configuration_visibility(self):
         """Keep the normal workflow concise while retaining research tools."""
@@ -714,6 +906,14 @@ class ControlsPanel(QWidget):
         advanced = self.check_show_advanced_configuration.isChecked()
         self.camera_group.setVisible(advanced)
         self.lcd_group.setVisible(advanced)
+        self.advanced_shortcuts.setVisible(advanced)
+        if advanced:
+            self.advanced_configuration_note.setText(
+                "Enabled: Camera Position is under Geometry; Experimental LCD "
+                "Output is under Research.")
+        else:
+            self.advanced_configuration_note.setText(
+                "Advanced Camera Position and LCD panels are hidden.")
 
     def _drowsiness_controls_changed(self, *_):
         custom = self.combo_drowsiness_profile.currentText() == "Custom"
@@ -861,36 +1061,12 @@ class ControlsPanel(QWidget):
         """Keep normal calibrated-stereo operation compact and focused."""
 
         visible = self.check_show_advanced_detection.isChecked()
-        form = self.light_detection_group.layout()
-        for widget in (
-            self.check_apply_camera_controls,
-            self.check_auto_exposure,
-            self.spin_exposure,
-            self.spin_camera_brightness,
-            self.spin_camera_contrast,
-            self.spin_camera_gain,
-            self.camera_control_feedback,
-            self.check_background_rejection,
-            self.spin_background_difference,
-            self.btn_capture_background,
-            self.btn_clear_background,
-            self.background_status,
-            self.check_local_contrast,
-            self.spin_local_contrast_threshold,
-            self.spin_min_source_confidence,
-            self.check_adaptive_threshold,
-            self.spin_brightness_threshold,
-            self.spin_min_light_area,
-            self.spin_max_light_area,
-            self.combo_blur_size,
-            self.spin_morphology_iterations,
-            self.spin_max_light_sources,
-            self.spin_light_match_distance,
-            self.btn_daylight_phone_preset,
-            self.btn_reset_light_detection,
-            self.detection_note,
-        ):
-            self._set_form_row_visible(form, widget, visible)
+        # Preserve explicit visibility state on the controls as well as their
+        # parent.  Besides making introspection/accessibility unambiguous, this
+        # keeps the previous ``isHidden()`` contract used by integrations.
+        for widget in self.detection_advanced_container.findChildren(QWidget):
+            widget.setVisible(visible)
+        self.detection_advanced_container.setVisible(visible)
 
     def _refresh_detection_summary(self):
         if not hasattr(self, "detection_summary"):

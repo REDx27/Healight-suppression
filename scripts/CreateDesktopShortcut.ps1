@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $projectRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$target = Join-Path $projectRoot "GlareTracker.exe"
+$target = Join-Path $projectRoot "dist\GlareTracker-v1.3.exe"
 $icon = $target
 $desktop = [Environment]::GetFolderPath("Desktop")
 $shortcutPaths = @(
@@ -10,7 +10,7 @@ $shortcutPaths = @(
 )
 
 if (-not (Test-Path $target)) {
-    throw "GlareTracker.exe was not found. Build the application first."
+    throw "dist\GlareTracker-v1.3.exe was not found. Build the application first."
 }
 
 $shell = New-Object -ComObject WScript.Shell

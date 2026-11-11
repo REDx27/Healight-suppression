@@ -6,7 +6,7 @@ from collections import deque
 import numpy as np
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
-    QCheckBox, QDoubleSpinBox, QFormLayout, QLabel, QPushButton,
+    QDoubleSpinBox, QFormLayout, QLabel, QPushButton,
     QVBoxLayout, QWizard, QWizardPage,
 )
 
@@ -17,6 +17,7 @@ from glare_tracker.calibration import (
     save_monocular_range_calibration,
     save_single_calibration,
 )
+from glare_tracker.widgets.toggle import ToggleSwitch
 
 
 def _instruction(text: str) -> QLabel:
@@ -233,9 +234,11 @@ class ReviewPage(QWizardPage):
         layout = QVBoxLayout(self)
         self.summary = _instruction("")
         layout.addWidget(self.summary)
-        self.activate_driver = QCheckBox("Use calibrated IPD-based driver depth")
+        self.activate_driver = ToggleSwitch(
+            "Use calibrated IPD-based driver depth")
         self.activate_driver.setChecked(True)
-        self.activate_road = QCheckBox("Use reference-size road-light range estimate")
+        self.activate_road = ToggleSwitch(
+            "Use reference-size road-light range estimate")
         self.activate_road.setChecked(True)
         layout.addWidget(self.activate_driver)
         layout.addWidget(self.activate_road)

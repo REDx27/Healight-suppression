@@ -1,7 +1,7 @@
 #define MyAppName "GlareTracker"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.3.0"
 #define MyAppPublisher "Glare Tracking Project"
-#define MyAppExeName "GlareTracker.exe"
+#define MyAppExeName "GlareTracker-v1.3.exe"
 
 [Setup]
 AppId={{B7A8B6F4-3E08-4A59-9C75-8A4C2F0D7E11}
@@ -11,7 +11,7 @@ AppPublisher={#MyAppPublisher}
 DefaultDirName={localappdata}\Programs\{#MyAppName}
 DefaultGroupName={#MyAppName}
 OutputDir=installer-output
-OutputBaseFilename=GlareTracker-Setup
+OutputBaseFilename=GlareTracker-v1.3-Setup
 UninstallDisplayName={#MyAppName}
 PrivilegesRequired=lowest
 Compression=lzma

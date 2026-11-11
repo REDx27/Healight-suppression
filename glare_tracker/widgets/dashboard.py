@@ -47,15 +47,15 @@ class CameraPreviewCard(QFrame):
         # Cards share the bounded bottom preview strip. The source pixmap must
         # not be allowed to turn its native resolution into a layout request.
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Ignored)
-        self.setMinimumWidth(280)
-        self.setMaximumWidth(480)
+        self.setMinimumWidth(180)
+        self.setMaximumWidth(16777215)
         self._last_image: QImage | None = None
         self._render_clock = QElapsedTimer()
         self._render_clock.start()
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(6)
+        layout.setContentsMargins(8, 7, 8, 7)
+        layout.setSpacing(4)
 
         title_row = QHBoxLayout()
         title_icon = QLabel()
@@ -66,20 +66,21 @@ class CameraPreviewCard(QFrame):
         # SEARCHING/ONLINE may alternate while a marginal source is being
         # acquired. A fixed badge width prevents that text change from
         # repeatedly changing the card's layout request.
-        self.status_badge.setFixedWidth(88)
+        self.status_badge.setMinimumWidth(74)
+        self.status_badge.setMaximumWidth(96)
         self.preview_combo = QComboBox()
         self.preview_combo.setObjectName("cameraPreviewMode")
         self.preview_combo.addItems(PREVIEW_MODES)
         self.preview_combo.setToolTip(
             "Choose which image-processing stage is shown in this feed")
-        self.preview_combo.setMinimumWidth(126)
+        self.preview_combo.setMinimumWidth(108)
+        self.preview_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.preview_combo.setVisible(feed == "road")
         self.preview_combo.currentTextChanged.connect(
             self.preview_mode_changed.emit)
         title_row.addWidget(title_icon)
         title_row.addWidget(title_label)
         title_row.addStretch()
-        title_row.addWidget(self.preview_combo)
         title_row.addWidget(self.status_badge)
 
         self.viewport = QLabel(placeholder)
@@ -93,10 +94,12 @@ class CameraPreviewCard(QFrame):
         self.detail.setObjectName("mutedText")
         self.detail.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         self.detail.setWordWrap(True)
-        self.detail.setFixedHeight(38)
-        self.detail.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.detail.setMinimumHeight(28)
+        self.detail.setMaximumHeight(48)
+        self.detail.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
 
         layout.addLayout(title_row)
+        layout.addWidget(self.preview_combo)
         layout.addWidget(self.viewport, 1)  # stretch factor 1
         layout.addWidget(self.detail)
 
@@ -138,10 +141,11 @@ class ApplicationHeader(QFrame):
     def __init__(self, version: str, parent=None):
         super().__init__(parent)
         self.setObjectName("appHeader")
-        self.setFixedHeight(72)
+        self.setFixedHeight(54)
         layout = QHBoxLayout(self)
         layout.setSizeConstraint(QLayout.SetNoConstraint)
-        layout.setContentsMargins(18, 8, 18, 8)
+        layout.setContentsMargins(12, 4, 12, 4)
+        layout.setSpacing(5)
 
         title_stack = QVBoxLayout()
         title_stack.setSpacing(2)
@@ -197,11 +201,11 @@ class ApplicationHeader(QFrame):
         layout.addSpacing(4)
         layout.addWidget(self.btn_calibrate)
         layout.addWidget(self.btn_reset_view)
-        layout.addSpacing(10)
+        layout.addSpacing(5)
         layout.addWidget(self.panel_toggle)
-        layout.addSpacing(8)
+        layout.addSpacing(4)
         layout.addWidget(self.mode_badge)
-        layout.addSpacing(8)
+        layout.addSpacing(4)
         layout.addWidget(self.tracking_badge)
 
     def _session_button(self, text: str, role: str, tooltip: str):
@@ -256,24 +260,23 @@ class CameraFeedPanel(QWidget):
         # A 640x480 frame changes QLabel.sizeHint(). Keep the vision area a
         # bounded strip so live frames cannot consume the 3D workspace. Its
         # exact height remains user-adjustable through the workspace splitter.
-        self.setMinimumHeight(240)
-        self.setMaximumHeight(420)
+        self.setMinimumHeight(210)
+        self.setMaximumHeight(480)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(6)
+        layout.setSpacing(4)
         heading = QLabel("VISION INPUTS")
         heading.setObjectName("appSubtitle")
         self._cards = QBoxLayout(QBoxLayout.LeftToRight)
-        self._cards.setSpacing(8)
+        self._cards.setSpacing(4)
         self.driver = CameraPreviewCard("DRIVER / EYES", "Driver camera", "eye")
         self.headlight = CameraPreviewCard(
-            "HEADLIGHT / PRIMARY", "Headlight camera", "road")
+            "ROAD / LEFT", "Left road camera", "road")
         self.headlight_secondary = CameraPreviewCard(
-            "HEADLIGHT / SECONDARY", "Second headlight camera", "road")
+            "ROAD / RIGHT", "Right road camera", "road")
         self._cards.addWidget(self.driver, 1)
         self._cards.addWidget(self.headlight, 1)
         self._cards.addWidget(self.headlight_secondary, 1)
-        self._cards.addStretch(1)
         layout.addWidget(heading)
         layout.addLayout(self._cards)
         self.headlight_secondary.hide()
@@ -283,12 +286,10 @@ class CameraFeedPanel(QWidget):
         self.driver.setVisible(driver)
         self.headlight.setVisible(road)
         self.headlight_secondary.setVisible(road and stereo)
-        visible_cards = int(driver) + int(road) + int(road and stereo)
-        card_maximum = 760 if visible_cards == 1 else 480
         for card in (
             self.driver, self.headlight, self.headlight_secondary,
         ):
-            card.setMaximumWidth(card_maximum)
+            card.setMaximumWidth(16777215)
 
     def set_stereo_frames(self, primary: QImage, secondary: QImage):
         self.headlight.set_frame(primary)
@@ -297,7 +298,7 @@ class CameraFeedPanel(QWidget):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         direction = (
-            QBoxLayout.TopToBottom if self.width() < 500
+            QBoxLayout.TopToBottom if self.width() < 640
             else QBoxLayout.LeftToRight
         )
         if self._cards.direction() != direction:
@@ -314,7 +315,7 @@ class SceneWorkspace(QFrame):
         self.overlay = overlay
         self.telemetry = telemetry
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(1, 1, 1, 1)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(scene)
         overlay.setParent(self)
         overlay.setToolTip("Live windshield intersection view")
@@ -357,11 +358,14 @@ class ConfigurationSidebar(QFrame):
         self.setObjectName("configurationSidebar")
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-        heading = QLabel("CONFIGURATION")
+        layout.setSpacing(0)
+        heading = QLabel("PROPERTIES")
         heading.setObjectName("appSubtitle")
-        heading.setContentsMargins(12, 8, 12, 0)
+        heading.setFixedHeight(30)
+        heading.setContentsMargins(10, 0, 10, 0)
+        heading.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         layout.addWidget(heading)
-        layout.addWidget(OperationsSidebar._scroll_page([controls]))
+        layout.addWidget(controls, 1)
 
 
 class EqualWidthTabBar(QTabBar):
@@ -399,8 +403,8 @@ class OperationsSidebar(QTabWidget):
     def _scroll_page(widgets: list[QWidget]) -> QScrollArea:
         content = QWidget()
         layout = QVBoxLayout(content)
-        layout.setContentsMargins(6, 10, 6, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(8, 6, 8, 8)
+        layout.setSpacing(6)
         for widget in widgets:
             layout.addWidget(widget)
         layout.addStretch()

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from functools import lru_cache
 
 from PyQt5.QtCore import QPointF, QRectF, QSize, Qt
 from PyQt5.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
@@ -21,6 +22,14 @@ class IconFactory:
     @classmethod
     def pixmap(cls, name: str, color: str | QColor | None = None, size: int = 20) -> QPixmap:
         color = QColor(color or cls.DEFAULT_COLOR)
+        return QPixmap(cls._cached_pixmap(name, color.rgba(), int(size)))
+
+    @classmethod
+    @lru_cache(maxsize=128)
+    def _cached_pixmap(cls, name: str, rgba: int, size: int) -> QPixmap:
+        """Render each vector/color/size combination once per process."""
+
+        color = QColor.fromRgba(rgba)
         pixmap = QPixmap(size, size)
         pixmap.fill(Qt.transparent)
         painter = QPainter(pixmap)
@@ -123,6 +132,26 @@ class IconFactory:
             p.drawLine(QPointF(16, 21), QPointF(13, 3))
             p.drawLine(QPointF(12, 20), QPointF(12, 16))
             p.drawLine(QPointF(12, 12), QPointF(12, 9))
+        elif name == "grid":
+            p.drawRoundedRect(QRectF(3, 3, 18, 18), 1.5, 1.5)
+            for value in (8, 13, 18):
+                p.drawLine(QPointF(3, value), QPointF(21, value))
+                p.drawLine(QPointF(value, 3), QPointF(value, 21))
+        elif name in ("lock", "unlock"):
+            p.drawRoundedRect(QRectF(6, 10, 12, 10), 1.8, 1.8)
+            shackle = QPainterPath()
+            if name == "lock":
+                shackle.moveTo(8.5, 10)
+                shackle.lineTo(8.5, 7.5)
+                shackle.cubicTo(8.5, 2.8, 15.5, 2.8, 15.5, 7.5)
+                shackle.lineTo(15.5, 10)
+            else:
+                shackle.moveTo(15.5, 10)
+                shackle.lineTo(15.5, 7.5)
+                shackle.cubicTo(15.5, 3.2, 9, 3.2, 9, 7.5)
+            p.drawPath(shackle)
+            p.setBrush(color)
+            p.drawEllipse(QPointF(12, 15), 1.2, 1.2)
         else:
             p.drawRoundedRect(QRectF(4, 4, 16, 16), 3, 3)
 

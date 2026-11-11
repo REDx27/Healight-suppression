@@ -6,8 +6,7 @@ from PyQt5.QtWidgets import QGroupBox, QFormLayout, QVBoxLayout, QLabel, QSizePo
 
 
 _READOUT_STYLE = (
-    "color: {color}; background-color: rgba(11, 13, 17, 210); "
-    "padding: 6px 10px; border-radius: 5px; border: 1px solid #2a2f38;"
+    "color: {color}; background: transparent; padding: 3px 0; border: none;"
     "font-family: 'Consolas', 'Cascadia Code', monospace;"
 )
 _DEFAULT_COLOR = "#34d399"
@@ -21,8 +20,9 @@ class ReadoutPanel(QGroupBox):
         self.setProperty("section", "telemetry")
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         layout = QFormLayout(self)
-        layout.setHorizontalSpacing(10)
-        layout.setVerticalSpacing(7)
+        layout.setContentsMargins(6, 5, 6, 6)
+        layout.setHorizontalSpacing(12)
+        layout.setVerticalSpacing(4)
         layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         layout.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
         layout.setRowWrapPolicy(QFormLayout.WrapLongRows)
@@ -53,8 +53,8 @@ class ReadoutPanel(QGroupBox):
         self._intersection_box.setProperty("section", "results")
         self._intersection_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self._intersection_layout = QVBoxLayout(self._intersection_box)
-        self._intersection_layout.setContentsMargins(8, 12, 8, 8)
-        self._intersection_layout.setSpacing(4)
+        self._intersection_layout.setContentsMargins(4, 6, 4, 4)
+        self._intersection_layout.setSpacing(2)
         self._intersection_labels: list[QLabel] = []
         self._intersection_placeholder = self._make_intersection_label(
             "---", "#3d5268")

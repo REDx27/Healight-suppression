@@ -48,6 +48,7 @@ class Scene3DWidget(QWidget):
         self._last_eye_positions = None
         self._last_ray_positions = None
         self._light_scene = False
+        self._grid_visible = True
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -67,30 +68,19 @@ class Scene3DWidget(QWidget):
     # ── static scene elements ───────────────────────────────────────
 
     def _build_static_scene(self):
-        # Layered floor grid: fine navigation grid plus subdued major divisions.
-        self._minor_grid = gl.GLGridItem()
-        self._minor_grid.setSize(240, 240, 1)
-        self._minor_grid.setSpacing(10, 10, 10)
-        self._minor_grid.setColor(QColor(70, 96, 128, 38))
+        # Build non-overlapping minor/major segments. Two GLGridItems draw the
+        # major lines twice and produce false-looking parallel bands at shallow
+        # view angles, so the divisions are generated explicitly instead.
+        self._minor_grid = gl.GLLinePlotItem(
+            pos=self._grid_segments(240, 10, exclude_multiple=40),
+            color=(0.27, 0.38, 0.50, 0.15), width=1.0,
+            antialias=True, mode="lines")
         self.gl_view.addItem(self._minor_grid)
-        self._major_grid = gl.GLGridItem()
-        self._major_grid.setSize(240, 240, 1)
-        self._major_grid.setSpacing(40, 40, 40)
-        self._major_grid.setColor(QColor(34, 184, 207, 35))
-        self._major_grid.translate(0, 0, 0.04)
+        self._major_grid = gl.GLLinePlotItem(
+            pos=self._grid_segments(240, 40),
+            color=(0.13, 0.56, 0.66, 0.24), width=1.2,
+            antialias=True, mode="lines")
         self.gl_view.addItem(self._major_grid)
-
-        # Road/lane context in front of the windshield.
-        self._road_lines = []
-        for x, color, width in [
-            (-45, (0.22, 0.35, 0.48, 0.50), 1.2),
-            (45, (0.22, 0.35, 0.48, 0.50), 1.2),
-            (0, (0.20, 0.72, 0.82, 0.32), 1.0),
-        ]:
-            points = np.array([[x, 0, 0.12], [x, 220, 0.12]], dtype=np.float32)
-            line = gl.GLLinePlotItem(pos=points, color=color, width=width, antialias=True)
-            self.gl_view.addItem(line)
-            self._road_lines.append(line)
 
         # Windshield mesh (rebuilt when dimensions change)
         self._ws_mesh = None
@@ -120,6 +110,25 @@ class Scene3DWidget(QWidget):
             label = GLTextItem(pos=pos, text=text, color=color)
             self.gl_view.addItem(label)
             self._axis_labels.append(label)
+
+    @staticmethod
+    def _grid_segments(size, spacing, exclude_multiple=None):
+        """Return XY line pairs without duplicate major or origin lines."""
+
+        half = float(size) / 2.0
+        values = np.arange(-half, half + spacing * 0.5, spacing, dtype=float)
+        segments = []
+        for value in values:
+            if abs(value) < 1e-9:
+                continue
+            if (exclude_multiple is not None
+                    and abs(value % exclude_multiple) < 1e-9):
+                continue
+            segments.extend((
+                (-half, value, 0.0), (half, value, 0.0),
+                (value, -half, 0.0), (value, half, 0.0),
+            ))
+        return np.asarray(segments, dtype=np.float32)
 
     # ── dynamic tracking items ──────────────────────────────────────
 
@@ -382,6 +391,16 @@ class Scene3DWidget(QWidget):
         self.theme_button.setCheckable(True)
         self.theme_button.toggled.connect(self._toggle_scene_theme)
 
+        self.grid_button = QToolButton(self)
+        self.grid_button.setObjectName("sceneToolButton")
+        self.grid_button.setIcon(IconFactory.icon("grid", "#78b7ff"))
+        self.grid_button.setIconSize(ICON_SIZE)
+        self.grid_button.setToolTip("Hide ground grid")
+        self.grid_button.setFixedSize(36, 36)
+        self.grid_button.setCheckable(True)
+        self.grid_button.setChecked(True)
+        self.grid_button.toggled.connect(self._toggle_grid)
+
         self.settings_panel = QFrame(self)
         self.settings_panel.setObjectName("sceneSettingsPanel")
         self.settings_panel.setStyleSheet(
@@ -520,17 +539,19 @@ class Scene3DWidget(QWidget):
         self._apply_scene_theme()
         self.scene_theme_changed.emit(light)
 
+    def _toggle_grid(self, visible: bool):
+        self._grid_visible = bool(visible)
+        self._minor_grid.setVisible(self._grid_visible)
+        self._major_grid.setVisible(self._grid_visible)
+        self.grid_button.setToolTip(
+            "Hide ground grid" if self._grid_visible else "Show ground grid")
+
     def _apply_scene_theme(self):
         """Keep the original dark scene and provide a high-contrast gray variant."""
         if self._light_scene:
             self.gl_view.setBackgroundColor(QColor("#c3c9cf"))
-            self._minor_grid.setColor(QColor(55, 68, 78, 60))
-            self._major_grid.setColor(QColor(0, 96, 125, 90))
-            road_colors = [
-                (0.24, 0.34, 0.42, 0.62),
-                (0.24, 0.34, 0.42, 0.62),
-                (0.06, 0.42, 0.55, 0.62),
-            ]
+            self._minor_grid.setData(color=(0.22, 0.27, 0.31, 0.24))
+            self._major_grid.setData(color=(0.0, 0.38, 0.49, 0.36))
             axis_colors = [
                 (0.72, 0.18, 0.18, 0.76),
                 (0.08, 0.48, 0.22, 0.76),
@@ -559,13 +580,8 @@ class Scene3DWidget(QWidget):
         else:
             # Exact scene palette present at the start of today's work.
             self.gl_view.setBackgroundColor(QColor("#050810"))
-            self._minor_grid.setColor(QColor(70, 96, 128, 38))
-            self._major_grid.setColor(QColor(34, 184, 207, 35))
-            road_colors = [
-                (0.22, 0.35, 0.48, 0.50),
-                (0.22, 0.35, 0.48, 0.50),
-                (0.20, 0.72, 0.82, 0.32),
-            ]
+            self._minor_grid.setData(color=(0.27, 0.38, 0.50, 0.15))
+            self._major_grid.setData(color=(0.13, 0.56, 0.66, 0.24))
             axis_colors = [
                 (0.97, 0.44, 0.44, 0.55),
                 (0.20, 0.83, 0.60, 0.55),
@@ -593,8 +609,7 @@ class Scene3DWidget(QWidget):
             self.theme_button.setToolTip("Use a light gray 3D canvas")
 
         self.settings_button.setIcon(IconFactory.icon("settings", icon_color))
-        for line, color in zip(self._road_lines, road_colors):
-            line.setData(color=color)
+        self.grid_button.setIcon(IconFactory.icon("grid", icon_color))
         for line, color in zip(self._axis_lines, axis_colors):
             line.setData(color=color)
         for label, color in zip(self._axis_labels, label_colors):
@@ -649,8 +664,12 @@ class Scene3DWidget(QWidget):
         self.theme_button.move(
             self.width() - self.settings_button.width() - self.theme_button.width()
             - margin * 2, margin)
+        self.grid_button.move(
+            self.width() - self.settings_button.width() - self.theme_button.width()
+            - self.grid_button.width() - margin * 3, margin)
         self.settings_button.raise_()
         self.theme_button.raise_()
+        self.grid_button.raise_()
         if self.settings_panel.isVisible():
             self.settings_panel.adjustSize()
             self.settings_panel.move(

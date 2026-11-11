@@ -11,6 +11,8 @@ from glare_tracker.widgets.dashboard import (
     OperationsSidebar, SceneWorkspace, StatusBadge,
 )
 from glare_tracker.widgets.icons import ICON_SIZE, IconFactory
+from glare_tracker.widgets.toggle import ToggleSwitch
+from glare_tracker.widgets.property_panel import PropertyGroupBox
 
 __all__ = [
     "VideoWidget",
@@ -28,4 +30,6 @@ __all__ = [
     "StatusBadge",
     "IconFactory",
     "ICON_SIZE",
+    "ToggleSwitch",
+    "PropertyGroupBox",
 ]
