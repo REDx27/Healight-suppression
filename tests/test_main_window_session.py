@@ -4,11 +4,13 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import pytest
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QApplication, QSizePolicy
 
 from glare_tracker.operating_modes import OperatingMode, SessionState
 from glare_tracker.capture import CameraDevice, parse_directshow_camera_names
+import glare_tracker.window as window_module
 from glare_tracker.window import MainWindow, camera_roles_for_devices
 
 
@@ -36,7 +38,7 @@ def test_directshow_names_and_locked_integrated_driver_roles():
     ) == (2, 0, 1)
 
 
-def test_manual_session_run_standby_stop_policy():
+def test_manual_session_run_standby_stop_policy(monkeypatch):
     app = _application()
     window = MainWindow()
     assert window.camera_feeds.maximumHeight() == 480
@@ -57,6 +59,11 @@ def test_manual_session_run_standby_stop_policy():
             == QSizePolicy.Ignored)
     window.controls.combo_operating_mode.setCurrentText(
         OperatingMode.FULLY_MANUAL.value)
+    lcd_events = []
+    window._activate_lcd_output = (
+        lambda force=False: lcd_events.append("run") or True)
+    window._deactivate_lcd_output = (
+        lambda reason="idle": lcd_events.append(reason))
 
     window._set_session_state(SessionState.RUN)
     initial_eye = window.controls.get_manual_eye_pos()
@@ -80,6 +87,40 @@ def test_manual_session_run_standby_stop_policy():
     assert window._session_state is SessionState.STOP
     assert window.tracker.last_eye_cm is None
     assert window.header.btn_stop.isChecked()
+    assert lcd_events == ["run", "Standby", "run", "Stop"]
+    stored_profiles = []
+    monkeypatch.setattr(
+        window, "_read_user_panel_dimension_profiles",
+        lambda: [dict(profile) for profile in stored_profiles])
+
+    def store(profiles):
+        stored_profiles[:] = [dict(profile) for profile in profiles]
+
+    monkeypatch.setattr(window, "_write_user_panel_dimension_profiles", store)
+    monkeypatch.setattr(
+        window_module.QInputDialog, "getText",
+        lambda *args, **kwargs: ("Laboratory panel", True))
+
+    window.controls.combo_panel_profile.setCurrentIndex(
+        window.controls.combo_panel_profile.count() - 1)
+    window.controls.spin_ws_w.setValue(51.25)
+    window.controls.spin_ws_h.setValue(29.75)
+    window._save_named_panel_dimension_profile()
+
+    assert len(stored_profiles) == 1
+    assert stored_profiles[0]["name"] == "Laboratory panel"
+    assert stored_profiles[0]["width_cm"] == pytest.approx(51.25)
+    assert window.controls.btn_remove_panel_profile.isEnabled()
+
+    monkeypatch.setattr(
+        window_module.QMessageBox, "question",
+        lambda *args, **kwargs: window_module.QMessageBox.Yes)
+    window._remove_named_panel_dimension_profile()
+
+    assert stored_profiles == []
+    assert window.controls.combo_panel_profile.currentText() == (
+        "HP ProDisplay P203 (20-inch)")
+    assert not window.controls.btn_remove_panel_profile.isEnabled()
     window.close()
 
 

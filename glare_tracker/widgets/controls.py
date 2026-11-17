@@ -16,6 +16,19 @@ from glare_tracker.widgets.toggle import ToggleSwitch
 from glare_tracker.widgets.property_panel import PropertyGroupBox
 
 
+DEFAULT_PANEL_PROFILE_ID = "builtin:hp-prodisplay-p203"
+CUSTOM_PANEL_PROFILE_ID = "custom"
+BUILT_IN_PANEL_PROFILES = (
+    {
+        "id": DEFAULT_PANEL_PROFILE_ID,
+        "kind": "builtin",
+        "name": "HP ProDisplay P203 (20-inch)",
+        "width_cm": 44.28,
+        "height_cm": 24.91,
+    },
+)
+
+
 class CameraSelector(QComboBox):
     """Dropdown that exposes a spin-box-compatible camera-index API."""
 
@@ -129,10 +142,40 @@ class ControlsPanel(QWidget):
         ws_layout = QFormLayout(self.ws_group)
         ws_layout.setSpacing(6)
         self._configure_form(ws_layout)
-        self.spin_ws_w = self._make_spin(1.0, 500.0, 34.5, " cm")
-        self.spin_ws_h = self._make_spin(1.0, 500.0, 19.5, " cm")
+        self.combo_panel_profile = QComboBox()
+        self.combo_panel_profile.setToolTip(
+            "Select the measured active pixel area of the physical output panel.")
+        self.panel_profile_editor = QWidget()
+        panel_profile_layout = QHBoxLayout(self.panel_profile_editor)
+        panel_profile_layout.setContentsMargins(0, 0, 0, 0)
+        panel_profile_layout.setSpacing(3)
+        self.btn_save_panel_profile = QToolButton()
+        self.btn_save_panel_profile.setObjectName("vectorResetButton")
+        self.btn_save_panel_profile.setIcon(IconFactory.icon("save"))
+        self.btn_save_panel_profile.setIconSize(ICON_SIZE)
+        self.btn_save_panel_profile.setToolTip(
+            "Save the current Custom dimensions with a name")
+        self.btn_remove_panel_profile = QToolButton()
+        self.btn_remove_panel_profile.setObjectName("vectorResetButton")
+        self.btn_remove_panel_profile.setIcon(IconFactory.icon("delete"))
+        self.btn_remove_panel_profile.setIconSize(ICON_SIZE)
+        self.btn_remove_panel_profile.setToolTip(
+            "Remove the selected saved dimensions")
+        panel_profile_layout.addWidget(self.combo_panel_profile, 1)
+        panel_profile_layout.addWidget(self.btn_save_panel_profile)
+        panel_profile_layout.addWidget(self.btn_remove_panel_profile)
+        self.spin_ws_w = self._make_spin(1.0, 500.0, 44.28, " cm")
+        self.spin_ws_h = self._make_spin(1.0, 500.0, 24.91, " cm")
+        self.spin_ws_w.setDecimals(2)
+        self.spin_ws_h.setDecimals(2)
+        self.spin_ws_w.setSingleStep(0.01)
+        self.spin_ws_h.setSingleStep(0.01)
+        ws_layout.addRow("Panel preset:", self.panel_profile_editor)
         ws_layout.addRow("Width:", self.spin_ws_w)
         ws_layout.addRow("Height:", self.spin_ws_h)
+        self.combo_panel_profile.currentIndexChanged.connect(
+            self._apply_panel_dimension_profile)
+        self.set_panel_dimension_profiles(())
         layout.addWidget(self.ws_group)
 
         # ── Camera position ──
@@ -625,26 +668,55 @@ class ControlsPanel(QWidget):
         diagnostics_layout.addLayout(marker_form)
         layout.addWidget(self.diagnostics_group)
 
-        self.lcd_group = PropertyGroupBox("Experimental LCD Output")
+        self.lcd_group = PropertyGroupBox("Prototype Display Output")
         self.lcd_group.setProperty("section", "geometry")
         lcd_layout = QFormLayout(self.lcd_group)
         lcd_layout.setSpacing(6)
         self._configure_form(lcd_layout)
         self.check_lcd_output = ToggleSwitch(
-            "Enable blocker on secondary display"
+            "Use prototype display during Run"
         )
         self.check_lcd_output.setToolTip(
-            "Experimental stationary-rig output only. Requires a second display."
+            "Run opens the output fullscreen on the selected non-primary display. "
+            "Standby and Stop always return that display to its desktop."
         )
+        self.check_lcd_output.setChecked(True)
+        self.combo_lcd_display = QComboBox()
+        self.combo_lcd_display.addItem("No secondary display detected", "")
+        self.combo_lcd_display.setEnabled(False)
+        self.combo_lcd_clear_state = QComboBox()
+        self.combo_lcd_clear_state.addItem(
+            "White (maximum transmission)", "white")
+        self.combo_lcd_clear_state.addItem(
+            "Black (inverted test)", "black")
         self.spin_lcd_radius = self._make_spin(2.0, 500.0, 40.0, " px")
         self.spin_lcd_radius.setDecimals(0)
+        self.combo_lcd_test_pattern = QComboBox()
+        self.combo_lcd_test_pattern.addItem("Safe fill", "clear")
+        self.combo_lcd_test_pattern.addItem("Center spot", "center")
+        self.combo_lcd_test_pattern.addItem(
+            "Corners + center", "corners")
+        self.lcd_test_buttons = QWidget()
+        lcd_test_buttons_layout = QHBoxLayout(self.lcd_test_buttons)
+        lcd_test_buttons_layout.setContentsMargins(0, 0, 0, 0)
+        lcd_test_buttons_layout.setSpacing(4)
+        self.btn_refresh_displays = QPushButton("Refresh")
+        self.btn_test_lcd_output = QPushButton("Show Test")
+        self.btn_close_lcd_output = QPushButton("Close Output")
+        lcd_test_buttons_layout.addWidget(self.btn_refresh_displays)
+        lcd_test_buttons_layout.addWidget(self.btn_test_lcd_output)
+        lcd_test_buttons_layout.addWidget(self.btn_close_lcd_output)
         self.lcd_status = QLabel(
-            "Disabled. White is the fail-safe output for a stripped TN panel."
+            "Armed, but no secondary display is currently detected."
         )
         self.lcd_status.setObjectName("mutedText")
         self.lcd_status.setWordWrap(True)
         lcd_layout.addRow(self.check_lcd_output)
+        lcd_layout.addRow("Target display:", self.combo_lcd_display)
+        lcd_layout.addRow("Clear state:", self.combo_lcd_clear_state)
         lcd_layout.addRow("Spot radius:", self.spin_lcd_radius)
+        lcd_layout.addRow("Test pattern:", self.combo_lcd_test_pattern)
+        lcd_layout.addRow(self.lcd_test_buttons)
         lcd_layout.addRow(self.lcd_status)
         layout.addWidget(self.lcd_group)
 
@@ -909,7 +981,7 @@ class ControlsPanel(QWidget):
         self.advanced_shortcuts.setVisible(advanced)
         if advanced:
             self.advanced_configuration_note.setText(
-                "Enabled: Camera Position is under Geometry; Experimental LCD "
+                "Enabled: Camera Position is under Geometry; Prototype Display "
                 "Output is under Research.")
         else:
             self.advanced_configuration_note.setText(
@@ -1011,8 +1083,89 @@ class ControlsPanel(QWidget):
         self.spin_driver_camera.setEnabled(
             bool(devices) and not self.check_lock_driver_camera.isChecked())
 
+    def set_panel_dimension_profiles(
+        self,
+        user_profiles,
+        preferred_id=DEFAULT_PANEL_PROFILE_ID,
+        custom_dimensions=None,
+    ):
+        """Load built-in and user panel dimensions with Custom kept last."""
+
+        if custom_dimensions is not None:
+            self.spin_ws_w.setValue(float(custom_dimensions[0]))
+            self.spin_ws_h.setValue(float(custom_dimensions[1]))
+        current_data = self.combo_panel_profile.currentData()
+        current_id = (
+            preferred_id
+            or (current_data.get("id") if isinstance(current_data, dict) else "")
+            or DEFAULT_PANEL_PROFILE_ID
+        )
+        self.combo_panel_profile.blockSignals(True)
+        self.combo_panel_profile.clear()
+        profiles = [dict(profile) for profile in BUILT_IN_PANEL_PROFILES]
+        profiles.extend(dict(profile) for profile in user_profiles)
+        for profile in profiles:
+            self.combo_panel_profile.addItem(profile["name"], profile)
+        custom_profile = {
+            "id": CUSTOM_PANEL_PROFILE_ID,
+            "kind": "custom",
+            "name": "Custom dimensions…",
+        }
+        self.combo_panel_profile.addItem(custom_profile["name"], custom_profile)
+        selected_index = next(
+            (
+                index
+                for index in range(self.combo_panel_profile.count())
+                if self.combo_panel_profile.itemData(index).get("id") == current_id
+            ),
+            0,
+        )
+        self.combo_panel_profile.setCurrentIndex(selected_index)
+        self.combo_panel_profile.blockSignals(False)
+        self._apply_panel_dimension_profile()
+
+    def selected_panel_dimension_profile(self):
+        profile = self.combo_panel_profile.currentData()
+        return dict(profile) if isinstance(profile, dict) else {}
+
+    def _apply_panel_dimension_profile(self, *_):
+        profile = self.selected_panel_dimension_profile()
+        kind = profile.get("kind")
+        is_custom = kind == "custom"
+        if not is_custom and profile:
+            self.spin_ws_w.setValue(float(profile["width_cm"]))
+            self.spin_ws_h.setValue(float(profile["height_cm"]))
+        self.spin_ws_w.setEnabled(is_custom)
+        self.spin_ws_h.setEnabled(is_custom)
+        self.btn_save_panel_profile.setEnabled(is_custom)
+        self.btn_remove_panel_profile.setEnabled(kind == "user")
+
     def set_camera_scan_status(self, text):
         self.camera_scan_status.setText(text)
+
+    def set_available_lcd_displays(self, displays, preferred_name=""):
+        """Populate the prototype-output selector with non-primary displays.
+
+        ``displays`` contains ``(stable_name, operator_label)`` pairs. The
+        method blocks signals so a topology refresh cannot accidentally launch
+        or move a fullscreen output window midway through list construction.
+        """
+
+        current = self.combo_lcd_display.currentData() or preferred_name
+        self.combo_lcd_display.blockSignals(True)
+        self.combo_lcd_display.clear()
+        for name, label in displays:
+            self.combo_lcd_display.addItem(label, name)
+        if displays:
+            selected = self.combo_lcd_display.findData(current)
+            self.combo_lcd_display.setCurrentIndex(
+                selected if selected >= 0 else 0)
+            self.combo_lcd_display.setEnabled(True)
+        else:
+            self.combo_lcd_display.addItem(
+                "No secondary display detected", "")
+            self.combo_lcd_display.setEnabled(False)
+        self.combo_lcd_display.blockSignals(False)
 
     def is_auto_light(self):
         """Compatibility name: true when the road-camera source is active."""

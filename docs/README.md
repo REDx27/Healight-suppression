@@ -7,13 +7,16 @@ newest-looking filename.
 
 Use these documents in this order:
 
-1. [`../PROJECT_STATUS.md`](../PROJECT_STATUS.md) — current implementation status,
+1. [`reference/PROGRESS_MEETING_TECHNICAL_BRIEF.md`](reference/PROGRESS_MEETING_TECHNICAL_BRIEF.md)
+   — current plain-language architecture, behaviour, rig/calibration plan, evidence,
+   limitations, code map, and presentation material.
+2. [`../PROJECT_STATUS.md`](../PROJECT_STATUS.md) — current implementation status,
    limitations, and release state.
-2. [`plans/VALIDATION_PLAN.md`](plans/VALIDATION_PLAN.md) — ordered validation stages,
+3. [`plans/VALIDATION_PLAN.md`](plans/VALIDATION_PLAN.md) — ordered validation stages,
    completion state, and evidence links.
-3. [`plans/FUNCTIONAL_TEST_PLAN.md`](plans/FUNCTIONAL_TEST_PLAN.md) — concise operator
+4. [`plans/FUNCTIONAL_TEST_PLAN.md`](plans/FUNCTIONAL_TEST_PLAN.md) — concise operator
    checks for the current application.
-4. [`guides/SYSTEM_WORKFLOW_AND_TEST_GUIDE.md`](guides/SYSTEM_WORKFLOW_AND_TEST_GUIDE.md)
+5. [`guides/SYSTEM_WORKFLOW_AND_TEST_GUIDE.md`](guides/SYSTEM_WORKFLOW_AND_TEST_GUIDE.md)
    — detailed setup, operation, troubleshooting, and demonstration workflow.
 
 If documentation disagrees with the source or automated tests, the source and tests
@@ -58,6 +61,9 @@ physical test has passed.
 
 ### `reference/`
 
+- [`PROGRESS_MEETING_TECHNICAL_BRIEF.md`](reference/PROGRESS_MEETING_TECHNICAL_BRIEF.md)
+  — current shareable explanation for teammates, presentation preparation, and
+  question-answering with another AI.
 - [`THESIS_AND_DESIGN_REFERENCE.md`](reference/THESIS_AND_DESIGN_REFERENCE.md) —
   long-form design history, rationale, algorithms, thesis material, and milestone
   context. It contains historical status snapshots; use `PROJECT_STATUS.md` and the

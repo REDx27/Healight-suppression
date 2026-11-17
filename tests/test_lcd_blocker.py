@@ -5,6 +5,7 @@ from types import SimpleNamespace
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+import pytest
 from PyQt5.QtWidgets import QApplication
 
 from glare_tracker.lcd_blocker import LCDBlockerWindow
@@ -100,5 +101,33 @@ def test_tracking_controller_updates_and_clears_lcd_output():
     assert len(blocker.spots) == 1
     tracker.on_eye_lost()
     assert blocker.spots == ()
+    blocker.disable_output()
+    app.processEvents()
+
+
+def test_lcd_clear_state_and_alignment_patterns_are_explicit():
+    app = _application()
+    blocker = LCDBlockerWindow()
+    blocker.configure_panel(40.0, 20.0, (1600, 900), radius_px=30.0)
+    blocker.enable_for_testing()
+
+    assert blocker.clear_state == "white"
+    blocker.show_test_pattern("center")
+    assert [(spot.x_px, spot.y_px) for spot in blocker.spots] == [(800, 450)]
+
+    blocker.show_test_pattern("corners")
+    assert len(blocker.spots) == 5
+    assert (800, 450) in {
+        (spot.x_px, spot.y_px) for spot in blocker.spots
+    }
+
+    blocker.set_clear_state("black")
+    assert blocker.clear_state == "black"
+    assert blocker.spots == ()
+    blocker.show_test_pattern("clear")
+    assert blocker.spots == ()
+
+    with pytest.raises(ValueError, match="clear state"):
+        blocker.set_clear_state("transparent")
     blocker.disable_output()
     app.processEvents()

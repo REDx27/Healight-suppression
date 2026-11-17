@@ -1,16 +1,53 @@
 # GlareTracker — Project Status & Specification
 
-> **Last Updated:** 2026-11-11
+> **Last Updated:** 2026-11-18
 > **Python Version:** 3.13 (current test environment; 3.11 previously verified)
 > **Platform:** Windows 10/11
 > **UI Framework:** PyQt5
 > **3D Engine:** PyQtGraph GLViewWidget (OpenGL)
 > **Source Version:** 1.3.0
-> **Reviewed Baseline:** v1.3 calibrated-stereo, research-UI, and packaging release
+> **Reviewed Baseline:** v1.3 release plus prototype-display integration
 
 ---
 
 ## 0. Current Status Snapshot
+
+### Prototype-display integration — 2026-11-18
+
+The post-release source now treats the connected laboratory monitor as a controlled
+prototype output rather than an always-hidden experimental window. Qt enumerates only
+non-primary screens, remembers the selected screen name, explicitly assigns the native
+window to that `QScreen`, and opens it fullscreen only while the session is in **Run**
+and output is armed. **Standby**, **Stop**, display removal, and application shutdown
+clear all spots, hide the window, and return the monitor to its normal desktop. The
+operator can also show Safe Fill, Center Spot, and Corners + Center patterns for
+alignment without requiring live tracking.
+
+The HP ProDisplay P203 is the built-in physical-panel profile with a measured/recorded
+active image area of **44.28 x 24.91 cm**. The connected secondary display was observed
+at **1600 x 900**. Built-in and named user profiles lock their dimensions; Custom mode
+unlocks them and allows a named save, while user-profile deletion requires confirmation.
+White is the default clear-state hypothesis and black is available for inverted bench
+testing. The stripped panel must still be measured to determine the true maximum-
+transmission/safe command.
+
+The repeatable `scripts/validate_prototype_display.py` live test passed the real
+Run -> Standby -> Run -> Stop lifecycle on the selected 1600 x 900 display. The full
+Python 3.13 suite now contains **138 passing tests**. This establishes display discovery,
+fullscreen routing, state transitions, persistence, test patterns, panel profiles, and
+software clearing behaviour; it does not establish transparent-panel optics, physical
+pixel mapping, attenuation, external latency, temperature, or power/HDMI failure safety.
+
+The agreed final rig has the road stereo pair on the frame facing the road, with
+approximately parallel axes perpendicular to the LCD plane. The driver camera and
+ToF sensor face the driver. The cameras do not look at the LCD. A temporary rigid,
+measured checkerboard jig must provide known 3D references on the appropriate side of
+the panel for installed camera-to-panel extrinsic calibration. Extending that workflow
+and applying compatible profiles in the live pipelines remains a current blocker.
+
+See `docs/reference/PROGRESS_MEETING_TECHNICAL_BRIEF.md` for the meeting-ready
+architecture, runtime flow, mathematics, calibration sequence, evidence, limitations,
+file map, demonstration plan, and likely examiner questions.
 
 ### Active development priority — 2026-11-05
 
@@ -65,7 +102,7 @@ preserved separately as `c8e2bd3`. The application now starts in stereo, labels 
 road roles LEFT/RIGHT, offers the exact **Current Rig - Smooth** preset and a proposed
 **Balanced Stereo Coverage** preset, collapses low-level tuning, confirms new stereo
 tracks across two frames, and uses both camera-image positions for temporal identity.
-The complete automated suite contains **135 passing tests**. The Balanced preset and
+The complete automated suite contains **138 passing tests**. The Balanced preset and
 the temporal changes still require a physical A/B recording before any improvement is
 claimed.
 
@@ -156,14 +193,14 @@ multi-source bring-up. It does not establish metric accuracy: the session was no
 recorded repeated trial, and stereo/chessboard plus camera-to-windshield calibration
 are still required before the coordinates or intersections can be validated.
 
-**Verification:** 135 automated tests pass on Python 3.13. No completed calibrated
+**Verification:** 138 automated tests pass on Python 3.13. No completed calibrated
 physical validation has been performed. Live camera-to-windshield transforms and all physical exit
 criteria remain outstanding. Follow
 [the stereo setup guide](docs/guides/STEREO_CHESSBOARD_SETUP_GUIDE.md), then resume
 [the validation plan](docs/plans/VALIDATION_PLAN.md). Earlier dated snapshots below
 are retained as history where explicitly labelled.
 
-GlareTracker is currently a **source-level visualization and tracking prototype**, not yet a validated end-to-end physical glare-suppression system. The source contains driver-eye tracking, manual/single-camera/stereo headlight input, ray-plane intersection, 2D/3D visualization, simulation controls, calibration/validation backends, timestamped research recording, and an experimental disabled-by-default secondary-display blocker. Installed-camera and stripped-panel physical validation are still pending.
+GlareTracker is currently a **source-level visualization and tracking prototype**, not yet a validated end-to-end physical glare-suppression system. The source contains driver-eye tracking, manual/single-camera/stereo headlight input, ray-plane intersection, 2D/3D visualization, simulation controls, calibration/validation backends, timestamped research recording, and a session-controlled prototype secondary-display output. Installed-camera and stripped-panel physical validation are still pending.
 
 ### Recent changes (through 2026-10-14)
 
@@ -181,7 +218,7 @@ GlareTracker is currently a **source-level visualization and tracking prototype*
 | Test workflow | Repeatable functional test checklist covering startup, eyes, calibration, geometry, simulation, road detection, end-to-end operation, and shutdown |
 | Guided demonstration calibration | Wizard captures stable IPD and lamp-size references, saves camera-specific profiles, enables IPD driver depth and apparent-size road range, and labels estimated versus assumed values |
 | Operating policy | Explicit Run/Standby/Stop states and four source modes now control camera ownership, manual inputs, calculations, previews, and movement simulation consistently |
-| Automated coverage | 135 tests cover geometry boundaries, mode/state policy, diagnostics/video recording and soak verification, ground-truth analysis, rigid transforms, guarded extrinsic fitting, latency/stale rejection, LCD fail-safe behavior, camera assignment, detector robustness, automatic two-source stereo association and camera-offset compensation, printable-board integration, binocular/multi-light geometry, stereo fitting/profile guards, drowsiness metrics, structured responsive configuration flow, collapsible property panels and vector-field safeguards, release metadata and icon caching, unique grid divisions and grid visibility, stable source identity, tuning UI, calibration profiles, and bright-spot observations |
+| Automated coverage | 138 tests cover geometry boundaries, mode/state policy, diagnostics/video recording and soak verification, ground-truth analysis, rigid transforms, guarded extrinsic fitting, latency/stale rejection, LCD fail-safe behavior, camera assignment, detector robustness, automatic two-source stereo association and camera-offset compensation, printable-board integration, binocular/multi-light geometry, stereo fitting/profile guards, drowsiness metrics, structured responsive configuration flow, panel-profile persistence, display polarity/alignment patterns, Run/Standby/Stop output lifecycle, collapsible property panels and vector-field safeguards, release metadata and icon caching, unique grid divisions and grid visibility, stable source identity, tuning UI, calibration profiles, and bright-spot observations |
 | Recording soak gate | Strict verifier checks finalized duration, timestamp order, exact streams, sidecar/manifest/decode counts, frame gaps/FPS, drops and writer errors |
 
 ### Current blockers to the physical prototype
@@ -189,7 +226,7 @@ GlareTracker is currently a **source-level visualization and tracking prototype*
 1. Camera-to-windshield fitting, persistence, compatibility checks, and held-out validation tools now exist, but no installed camera has passed the physical target matrix and the profiles are not yet applied by the live pipelines.
 2. Road-pair chessboard intrinsic/stereo calibration is now exposed in the UI, but has not yet been validated with the physical pair. Installed-extrinsic calibration is still not integrated into the live pipelines.
 3. Separate eye rays and windshield intersections are implemented, but their physical LCD coverage and accuracy have not yet been validated.
-4. An experimental secondary-display blocker is implemented, but the stripped panel's optics, mapping, latency, thermal behavior, and safe state are not physically validated.
+4. The session-controlled non-primary-display output and its real monitor lifecycle are implemented, but the stripped panel's optics, mapping, latency, thermal behaviour, HDMI/power-loss behaviour, and physical safe state are not validated.
 5. Timestamped CSV/video logging and pipeline timing exist, but there is no Kalman/predictive filtering or settings persistence; automated coverage still cannot validate physical-camera behavior or measurement accuracy.
 
 ### Packaging and verification snapshot
@@ -197,7 +234,7 @@ GlareTracker is currently a **source-level visualization and tracking prototype*
 - The source and Windows metadata report version **1.3.0**.
 - `dist/GlareTracker-v1.3.exe` was rebuilt on 2026-11-11, reduced to 134.9 MB by excluding unused package examples/tests/converters, and passed a packaged hardware-independent UI launch/shutdown test.
 - Release SHA-256: `f28a6d5205d1035a20f346e90d179f689b316053f720877792bb96fe63eacf30`.
-- Verification passed compilation, dependency consistency, 135 automated tests, source smoke launch, and standalone smoke launch. Physical-camera regression, measurement accuracy, external latency, and stripped-LCD hardware validation remain outstanding.
+- The release artifact verification passed compilation, dependency consistency, 135 automated tests, source smoke launch, and standalone smoke launch. The current post-release source passes 138 tests plus the live secondary-display lifecycle test; the standalone executable has not yet been rebuilt with these changes. Physical-camera regression, measurement accuracy, external latency, and stripped-LCD hardware validation remain outstanding.
 
 ---
 
@@ -715,12 +752,12 @@ Stereo cams (cam 1+2) → HeadlightDetectorThread → headlight_detected signal
 
 | Parameter | Default | Unit | Description |
 |---|---|---|---|
-| `screen_w_cm` | 34.5 | cm | Windshield width |
-| `screen_h_cm` | 19.5 | cm | Windshield height |
+| `screen_w_cm` | 44.28 | cm | Default HP P203 active image width |
+| `screen_h_cm` | 24.91 | cm | Default HP P203 active image height |
 | `eye_dist_cm` | 50.0 | cm | Fallback driver distance (uncalibrated mode) |
 | `camera_x_cm` | 0.0 | cm | Camera lateral offset |
 | `camera_y_cm` | 0.0 | cm | Camera depth offset |
-| `camera_z_cm` | 19.5 | cm | Camera height; top edge of default windshield |
+| `camera_z_cm` | 19.5 | cm | Provisional camera height; replace with installed measurement |
 | `ipd_cm` | 6.3 | cm | Inter-pupillary distance (human average) |
 | `use_calibration` | False | bool | Whether to use calibrated intrinsics |
 

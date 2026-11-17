@@ -15,6 +15,29 @@ p_windshield = R_camera_to_windshield * p_camera + t_camera_to_windshield
 The saved profile is bound to the camera device, image size, intrinsic calibration,
 and physical mount. Any change invalidates the profile.
 
+## Final-rig orientation and current workflow limitation
+
+In the agreed prototype, the permanent road cameras are mounted on the frame and face
+the road; the driver camera and ToF sensor face the driver. Their optical axes are
+approximately normal to the LCD plane, but the cameras do **not** look at the LCD.
+Therefore the final installation cannot be calibrated by asking those cameras to view
+marks placed directly on the panel.
+
+Use a temporary rigid checkerboard/ChArUco jig on the side each camera can see. Measure
+the jig's complete 3D pose relative to the LCD bottom-centre origin using a rigid rail,
+slotted stand, square frame, or equivalent repeatable fixture. The road-side target
+faces the road cameras and has positive `Y`; the driver-side target faces the driver
+camera and has negative `Y`.
+
+The `solvePnP` fitting backend accepts general 3D reference points. However, the
+current `scripts/calibrate_extrinsics.py` held-out validator projects every observed
+ray onto `Y = 0` and compares it with panel-plane points. It is therefore suitable for
+the existing panel-plane validation case, but it is **not yet the complete guided
+workflow for the outward-facing final rig**. Before final calibration, extend the input
+and validator to use measured 3D jig poses for fitting, retain separate panel-plane
+targets for independent ray/intersection validation where observable, and apply the
+passing compatible transforms in the live pipelines. Until then, Stage 4 remains open.
+
 ## Prerequisites
 
 1. Finish the Stage 2 ten-minute logging check.
@@ -35,6 +58,10 @@ Do not move, refocus, zoom, rotate, or change resolution after collecting target
 - Record the physical origin with photographs and a dimensioned drawing.
 
 ## Target layout
+
+The following layout describes the currently implemented `Y = 0` panel-plane
+validation path. It must not be misrepresented as directly visible to the permanent
+outward-facing cameras.
 
 Use at least 11 accurately measured visible points distributed across the usable
 windshield area:

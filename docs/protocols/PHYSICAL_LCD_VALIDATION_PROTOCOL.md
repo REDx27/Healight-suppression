@@ -7,16 +7,26 @@ use or installation in the driver's primary field of view during vehicle operati
 
 ## Software behavior
 
-- Output is disabled by default.
-- It can be enabled only when a secondary display is detected.
-- White is treated as the stripped-TN-panel safe/transparent command.
-- Valid in-bounds intersections produce feathered black spots.
-- Lost eyes, lost lights, stale samples, Stop, and application shutdown clear spots.
+- Output is armed by default but opens only in **Run** when a selected non-primary
+  display is detected. It never intentionally targets the operator's primary screen.
+- **Standby**, **Stop**, display removal, and application shutdown clear the spots,
+  hide the output window, and release the display desktop.
+- White is the initial maximum-transmission hypothesis; black inverse mode is provided
+  to determine the actual panel polarity before selecting the physical safe state.
+- Under white-clear mode, valid in-bounds intersections produce feathered black spots;
+  inverted mode reverses the colours for bench testing.
+- Safe Fill, Center Spot, and Corners + Center patterns are available for alignment.
+- Lost eyes, lost lights, rough/uncalibrated sources, stale samples, invalid geometry,
+  Standby, Stop, and application shutdown clear physical spot authority.
 - Exact right/bottom panel boundaries clamp to the last valid zero-based pixel.
+- The built-in HP ProDisplay P203 profile records a 44.28 x 24.91 cm active image
+  area. The connected controller was observed at 1600 x 900; verify both dimensions
+  against the disassembled final panel before accepting the mapping.
 
-Confirm the actual panel's polarization and voltage behavior before assuming white is
-physically transparent. If the panel behaves oppositely, do not use this output until
-the safe-state design is corrected and retested.
+Confirm the actual panel's polarization, retained optical layers, and voltage behaviour
+before assuming white is physically transparent. If black transmits more light, select
+the inverse mode and repeat every clearing/failure test. The safe state is defined by
+measured maximum transmission, not by the software colour name.
 
 ## Electrical and optical safety
 
@@ -56,6 +66,9 @@ model, controller, refresh rate, and uncertainty.
 
 Do not assume that nominal screen resolution maps uniformly to the full transparent
 area. Record scaling, overscan, rotation, mirroring, and operating-system DPI settings.
+Begin with the built-in Center Spot and Corners + Center patterns to detect rotation,
+mirroring, clipping, and wrong-screen routing; then use the denser measurement grid for
+the actual fit.
 
 ## Phase C: blocker spot size
 
@@ -82,7 +95,8 @@ Use Stage 5 physical eye/light targets and Stage 6 timing instrumentation:
 3. validate multiple simultaneous light sources;
 4. move eye and lamp targets at declared maximum speeds;
 5. measure overshoot, lag, flicker, spot dropout, and reacquisition;
-6. inject every Stage 6 failure and measure time to all-white safe output.
+6. inject every Stage 6 failure and measure time to the physically verified maximum-
+   transmission safe output.
 
 ## Acceptance record
 

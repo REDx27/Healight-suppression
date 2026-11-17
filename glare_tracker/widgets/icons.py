@@ -137,6 +137,17 @@ class IconFactory:
             for value in (8, 13, 18):
                 p.drawLine(QPointF(3, value), QPointF(21, value))
                 p.drawLine(QPointF(value, 3), QPointF(value, 21))
+        elif name == "save":
+            p.drawRoundedRect(QRectF(4, 3, 16, 18), 1.5, 1.5)
+            p.drawRect(QRectF(7, 3, 9, 6))
+            p.drawRoundedRect(QRectF(7, 13, 10, 6), 1.2, 1.2)
+            p.drawLine(QPointF(14, 4.5), QPointF(14, 7.5))
+        elif name in ("delete", "remove"):
+            p.drawRoundedRect(QRectF(7, 7, 10, 14), 1.5, 1.5)
+            p.drawLine(QPointF(5, 7), QPointF(19, 7))
+            p.drawLine(QPointF(9, 4), QPointF(15, 4))
+            p.drawLine(QPointF(9.5, 10), QPointF(10.5, 18))
+            p.drawLine(QPointF(14.5, 10), QPointF(13.5, 18))
         elif name in ("lock", "unlock"):
             p.drawRoundedRect(QRectF(6, 10, 12, 10), 1.8, 1.8)
             shackle = QPainterPath()

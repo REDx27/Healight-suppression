@@ -1,4 +1,4 @@
-"""Experimental secondary-display output for a stripped transparent LCD panel."""
+"""Fail-safe secondary-display output for the prototype LCD panel."""
 
 from __future__ import annotations
 
@@ -21,23 +21,27 @@ class BlockerSpot:
 
 
 class LCDBlockerWindow(QWidget):
-    """White safe-state canvas with optional feathered black blocker spots.
+    """Clear-state canvas with optional feathered blocker spots.
 
     The window is inert until explicitly enabled on a display. Clearing or
-    disabling always returns it to an all-white output before hiding it.
+    disabling always removes blocker spots before hiding it. White is the
+    default clear state because it normally gives maximum transmission through
+    an unmodified LCD optical stack; an inverted mode is provided for bench
+    verification of the actual panel.
     """
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("GlareTracker Experimental LCD Output")
+        self.setWindowTitle("GlareTracker Prototype Display Output")
         self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_OpaquePaintEvent, True)
         self._enabled_output = False
         self._spots: tuple[BlockerSpot, ...] = ()
-        self._panel_width_cm = 34.5
-        self._panel_height_cm = 19.5
+        self._panel_width_cm = 44.28
+        self._panel_height_cm = 24.91
         self._resolution = (1920, 1080)
         self._radius_px = 40.0
+        self._clear_state = "white"
 
     @property
     def output_enabled(self) -> bool:
@@ -46,6 +50,25 @@ class LCDBlockerWindow(QWidget):
     @property
     def spots(self) -> tuple[BlockerSpot, ...]:
         return self._spots
+
+    @property
+    def clear_state(self) -> str:
+        return self._clear_state
+
+    @property
+    def resolution(self) -> tuple[int, int]:
+        return self._resolution
+
+    def set_clear_state(self, clear_state: str):
+        """Select the clear background and inverse blocker colour."""
+
+        clear_state = str(clear_state).strip().lower()
+        if clear_state not in {"white", "black"}:
+            raise ValueError("LCD clear state must be 'white' or 'black'")
+        if clear_state == self._clear_state:
+            return
+        self._clear_state = clear_state
+        self.clear_output()
 
     def configure_panel(
         self,
@@ -76,6 +99,13 @@ class LCDBlockerWindow(QWidget):
             (geometry.width(), geometry.height()),
             self._radius_px,
         )
+        # Assign the native window to the requested QScreen before entering
+        # fullscreen. Merely applying the screen geometry is unreliable on
+        # multi-monitor Windows systems when the main window retains focus.
+        self.winId()
+        handle = self.windowHandle()
+        if handle is not None:
+            handle.setScreen(screen)
         self.setGeometry(geometry)
         self._enabled_output = True
         self.showFullScreen()
@@ -112,6 +142,35 @@ class LCDBlockerWindow(QWidget):
         self._spots = ()
         self.update()
 
+    def show_test_pattern(self, pattern: str):
+        """Show a deterministic alignment pattern without tracking input."""
+
+        if not self._enabled_output:
+            return
+        pattern = str(pattern).strip().lower()
+        if pattern in {"clear", "safe", "safe fill"}:
+            self.clear_output()
+            return
+        width, height = self._resolution
+        radius = self._radius_px
+        if pattern in {"center", "center spot"}:
+            points = ((width // 2, height // 2),)
+        elif pattern in {"corners", "corners + center", "five point"}:
+            inset = max(int(radius) + 4, min(width, height) // 20)
+            points = (
+                (inset, inset),
+                (width - 1 - inset, inset),
+                (width // 2, height // 2),
+                (inset, height - 1 - inset),
+                (width - 1 - inset, height - 1 - inset),
+            )
+        else:
+            raise ValueError(f"Unknown LCD test pattern: {pattern}")
+        self._spots = tuple(
+            BlockerSpot(int(x), int(y), radius, 1.0) for x, y in points
+        )
+        self.update()
+
     def disable_output(self):
         self.clear_output()
         self._enabled_output = False
@@ -121,7 +180,10 @@ class LCDBlockerWindow(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing, True)
-        painter.fillRect(self.rect(), QColor(255, 255, 255))
+        inverted = self._clear_state == "black"
+        background = QColor(0, 0, 0) if inverted else QColor(255, 255, 255)
+        blocker_rgb = 255 if inverted else 0
+        painter.fillRect(self.rect(), background)
         if not self._enabled_output:
             return
         for spot in self._spots:
@@ -129,9 +191,12 @@ class LCDBlockerWindow(QWidget):
                 QPointF(float(spot.x_px), float(spot.y_px)), spot.radius_px
             )
             alpha = int(max(0.0, min(1.0, spot.opacity)) * 255)
-            gradient.setColorAt(0.0, QColor(0, 0, 0, alpha))
-            gradient.setColorAt(0.65, QColor(0, 0, 0, alpha))
-            gradient.setColorAt(1.0, QColor(0, 0, 0, 0))
+            gradient.setColorAt(
+                0.0, QColor(blocker_rgb, blocker_rgb, blocker_rgb, alpha))
+            gradient.setColorAt(
+                0.65, QColor(blocker_rgb, blocker_rgb, blocker_rgb, alpha))
+            gradient.setColorAt(
+                1.0, QColor(blocker_rgb, blocker_rgb, blocker_rgb, 0))
             painter.setBrush(gradient)
             painter.setPen(Qt.NoPen)
             diameter = 2.0 * spot.radius_px

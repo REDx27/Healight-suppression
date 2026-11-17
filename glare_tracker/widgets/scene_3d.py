@@ -85,9 +85,9 @@ class Scene3DWidget(QWidget):
         # Windshield mesh (rebuilt when dimensions change)
         self._ws_mesh = None
         self._ws_frame = None
-        self._ws_w = 34.5
-        self._ws_h = 19.5
-        self._build_windshield(34.5, 19.5)
+        self._ws_w = 44.28
+        self._ws_h = 24.91
+        self._build_windshield(44.28, 24.91)
 
         # Axis lines + labels
         axis_len = 50

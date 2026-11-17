@@ -6,6 +6,9 @@ The documentation map and source-of-truth order are in
 [docs/README.md](docs/README.md). Long-form design history, implementation rationale,
 validation methodology, and later-thesis material are in
 [docs/reference/THESIS_AND_DESIGN_REFERENCE.md](docs/reference/THESIS_AND_DESIGN_REFERENCE.md).
+The current meeting-ready architecture, behaviour, rig/calibration explanation, code
+map, evidence, and limitations are in
+[docs/reference/PROGRESS_MEETING_TECHNICAL_BRIEF.md](docs/reference/PROGRESS_MEETING_TECHNICAL_BRIEF.md).
 
 Driver and headlight coordinates can each come from a camera or a fixed manual value.
 The four explicit operating modes are Fully Auto, Fully Manual, Driver Position Fixed,
@@ -41,11 +44,12 @@ release also removes duplicate 3D grid layers and caches vector-icon rendering.
 
 ## Current development status
 
-As of 2026-11-11, the source is version 1.3.0. The tracking, headlight-input,
+As of 2026-11-18, the source is version 1.3.0 plus post-release prototype-display
+integration. The tracking, headlight-input,
 intersection, simulation, and visualization paths are implemented in source. Camera
 capture now includes Windows backend fallback, a low-bandwidth 640x480 MJPEG profile,
 adaptive bright-source detection, temporal light tracking, dropout tolerance, and
-MediaPipe Tasks compatibility for Python 3.13. A total of 135 automated tests cover geometry,
+MediaPipe Tasks compatibility for Python 3.13. A total of 138 automated tests cover geometry,
 mode/state, session, calibration profiles, extrinsic fitting, diagnostics, latency,
 LCD fail-safe behavior, and detection policies; the validation plan records the
 remaining physical-camera and optical checks.
@@ -58,7 +62,11 @@ apparent size of one reference lamp. Remaining physical-system work includes cam
 windshield extrinsic measurement/application, physical validation of the new
 left/right-eye intersections, stripped-panel optical validation, prediction, and the
 ordered ground-truth/environmental test campaigns. Timestamped CSV/video recording
-and an experimental disabled-by-default secondary-display blocker now exist in source.
+and a session-controlled non-primary-display blocker now exist in source. The built-in
+HP ProDisplay P203 profile uses a 44.28 x 24.91 cm active area; Run opens an armed
+fullscreen output on the selected secondary display, while Standby, Stop, display loss,
+and shutdown clear/release it. White/black polarity tests and centre/corner alignment
+patterns support the upcoming physical panel experiments.
 
 The current standalone release is `dist/GlareTracker-v1.3.exe`. It was built from the
 v1.3.0 source, passed the hardware-independent packaged launch test, and has a matching

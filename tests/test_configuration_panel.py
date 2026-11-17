@@ -72,6 +72,60 @@ def test_binary_settings_use_accessible_toggle_switches(panel):
     assert panel.check_drowsiness.isChecked() is not before
 
 
+def test_prototype_display_controls_default_to_safe_automatic_workflow(panel):
+    assert panel.check_lcd_output.isChecked()
+    assert panel.combo_lcd_clear_state.currentData() == "white"
+    assert not panel.combo_lcd_display.isEnabled()
+
+    panel.set_available_lcd_displays([
+        (r"\\.\DISPLAY2", r"\\.\DISPLAY2 — 1600×900"),
+        (r"\\.\DISPLAY3", r"\\.\DISPLAY3 — 1920×1080"),
+    ], preferred_name=r"\\.\DISPLAY3")
+
+    assert panel.combo_lcd_display.isEnabled()
+    assert panel.combo_lcd_display.count() == 2
+    assert panel.combo_lcd_display.currentData() == r"\\.\DISPLAY3"
+    assert panel.combo_lcd_test_pattern.itemData(2) == "corners"
+
+
+def test_panel_dimension_profiles_lock_presets_and_unlock_custom(panel):
+    profile = panel.selected_panel_dimension_profile()
+    assert profile["name"] == "HP ProDisplay P203 (20-inch)"
+    assert panel.spin_ws_w.value() == pytest.approx(44.28)
+    assert panel.spin_ws_h.value() == pytest.approx(24.91)
+    assert not panel.spin_ws_w.isEnabled()
+    assert not panel.spin_ws_h.isEnabled()
+    assert not panel.btn_save_panel_profile.isEnabled()
+    assert not panel.btn_remove_panel_profile.isEnabled()
+
+    custom_index = panel.combo_panel_profile.count() - 1
+    assert panel.combo_panel_profile.itemData(custom_index)["kind"] == "custom"
+    panel.combo_panel_profile.setCurrentIndex(custom_index)
+    assert panel.spin_ws_w.isEnabled()
+    assert panel.spin_ws_h.isEnabled()
+    assert panel.btn_save_panel_profile.isEnabled()
+    assert not panel.btn_remove_panel_profile.isEnabled()
+
+    panel.spin_ws_w.setValue(50.25)
+    panel.spin_ws_h.setValue(28.50)
+    panel.set_panel_dimension_profiles(
+        [{
+            "id": "user:Bench panel",
+            "kind": "user",
+            "name": "Bench panel",
+            "width_cm": 50.25,
+            "height_cm": 28.50,
+        }],
+        preferred_id="user:Bench panel",
+    )
+    assert panel.combo_panel_profile.currentText() == "Bench panel"
+    assert not panel.spin_ws_w.isEnabled()
+    assert not panel.btn_save_panel_profile.isEnabled()
+    assert panel.btn_remove_panel_profile.isEnabled()
+    assert panel.combo_panel_profile.itemData(
+        panel.combo_panel_profile.count() - 1)["kind"] == "custom"
+
+
 def test_advanced_toggle_has_visible_feedback_and_grouped_vectors(panel):
     assert "hidden" in panel.advanced_configuration_note.text().lower()
     assert panel.advanced_shortcuts.isHidden()

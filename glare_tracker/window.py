@@ -4,6 +4,7 @@ All tracking logic lives in :class:`~glare_tracker.tracking.TrackingController`.
 """
 
 from dataclasses import asdict
+import json
 import os
 from pathlib import Path
 import sys
@@ -14,7 +15,7 @@ from PyQt5.QtCore import Qt, QTimer, QSettings
 from PyQt5.QtGui import QIcon, QImage
 from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QSplitter, QMessageBox,
-    QSizePolicy,
+    QSizePolicy, QInputDialog,
 )
 
 from glare_tracker import __version__
@@ -43,6 +44,11 @@ from glare_tracker.widgets import (
     ApplicationHeader, CameraFeedPanel, ConfigurationSidebar, ControlsPanel,
     ReadoutPanel, Scene3DWidget, SceneWorkspace, Windshield2DWidget,
     GuidedCalibrationWizard, IconFactory,
+)
+from glare_tracker.widgets.controls import (
+    BUILT_IN_PANEL_PROFILES,
+    CUSTOM_PANEL_PROFILE_ID,
+    DEFAULT_PANEL_PROFILE_ID,
 )
 
 
@@ -113,6 +119,8 @@ class MainWindow(QMainWindow):
         self.readout = ReadoutPanel()
         self.controls = ControlsPanel()
         self._load_camera_role_settings()
+        self._load_lcd_output_settings()
+        self._load_panel_dimension_settings()
         self.header = ApplicationHeader(__version__)
         self.camera_feeds = CameraFeedPanel()
         self.workspace = SceneWorkspace(self.scene_3d, self.windshield_2d)
@@ -162,6 +170,7 @@ class MainWindow(QMainWindow):
 
         # ── signal wiring ──
         self._connect_signals()
+        self._refresh_available_lcd_displays()
         self._update_drowsiness_settings()
 
         # ── timers ──
@@ -349,8 +358,34 @@ class MainWindow(QMainWindow):
             self._record_ground_truth_marker)
         self.controls.check_lcd_output.toggled.connect(
             self._lcd_output_changed)
+        self.controls.combo_lcd_display.currentIndexChanged.connect(
+            self._lcd_display_selection_changed)
+        self.controls.combo_lcd_clear_state.currentIndexChanged.connect(
+            self._lcd_clear_state_changed)
         self.controls.spin_lcd_radius.valueChanged.connect(
             self._refresh_lcd_configuration)
+        self.controls.spin_lcd_radius.valueChanged.connect(
+            self._save_lcd_output_settings)
+        self.controls.btn_refresh_displays.clicked.connect(
+            self._refresh_available_lcd_displays)
+        self.controls.btn_test_lcd_output.clicked.connect(
+            self._show_lcd_test_output)
+        self.controls.btn_close_lcd_output.clicked.connect(
+            lambda: self._deactivate_lcd_output("test closed"))
+        self.controls.btn_save_panel_profile.clicked.connect(
+            self._save_named_panel_dimension_profile)
+        self.controls.btn_remove_panel_profile.clicked.connect(
+            self._remove_named_panel_dimension_profile)
+        self.controls.combo_panel_profile.currentIndexChanged.connect(
+            self._save_panel_dimension_settings)
+        self.controls.spin_ws_w.valueChanged.connect(
+            self._save_panel_dimension_settings)
+        self.controls.spin_ws_h.valueChanged.connect(
+            self._save_panel_dimension_settings)
+        application = QApplication.instance()
+        if application is not None:
+            application.screenAdded.connect(self._display_topology_changed)
+            application.screenRemoved.connect(self._display_topology_changed)
         self.header.panel_toggle.toggled.connect(self.sidebar.setVisible)
         self.scene_3d.scene_theme_changed.connect(self.windshield_2d.set_light_theme)
 
@@ -617,48 +652,158 @@ class MainWindow(QMainWindow):
         )
 
     def _lcd_output_changed(self, enabled):
-        """Explicitly enable experimental output only on a secondary display."""
+        """Arm output for Run without occupying a display while idle."""
 
+        self._save_lcd_output_settings()
         if not enabled:
+            self._deactivate_lcd_output("disabled")
+            return
+        if self._session_state is SessionState.RUN:
+            self._activate_lcd_output()
+        elif self._selected_lcd_screen() is None:
+            self.controls.lcd_status.setText(
+                "Armed, but no secondary display is detected. Select Extend "
+                "these displays in Windows and refresh."
+            )
+        else:
+            self.controls.lcd_status.setText(
+                "Armed. Select Run to open the fullscreen prototype output."
+            )
+
+    def _available_lcd_screens(self):
+        application = QApplication.instance()
+        if application is None:
+            return []
+        primary = application.primaryScreen()
+        return [screen for screen in application.screens() if screen is not primary]
+
+    def _selected_lcd_screen(self):
+        selected_name = self.controls.combo_lcd_display.currentData()
+        screens = self._available_lcd_screens()
+        for screen in screens:
+            if screen.name() == selected_name:
+                return screen
+        return screens[0] if screens else None
+
+    def _refresh_available_lcd_displays(self, *_):
+        """Refresh only non-primary targets; never cover the operator display."""
+
+        preferred = str(
+            self._camera_role_settings.value("lcd_output/target_name", "") or ""
+        )
+        screens = self._available_lcd_screens()
+        displays = []
+        for screen in screens:
+            geometry = screen.geometry()
+            displays.append((
+                screen.name(),
+                f"{screen.name()} — {geometry.width()}×{geometry.height()}",
+            ))
+        active_name = self.controls.combo_lcd_display.currentData() or preferred
+        self.controls.set_available_lcd_displays(displays, active_name)
+        if self.lcd_blocker.output_enabled:
+            # Recreate the native fullscreen assignment after any topology
+            # change. This also releases a display that has been unplugged.
+            self.lcd_blocker.disable_output()
+        self._save_lcd_output_settings()
+        if self._session_state is SessionState.RUN:
+            self._activate_lcd_output()
+        elif screens:
+            self.controls.lcd_status.setText(
+                f"Detected {len(screens)} secondary display(s). "
+                "Output is hidden until Run."
+            )
+        else:
+            self.controls.lcd_status.setText(
+                "No secondary display detected. In Windows, choose Extend "
+                "these displays, then select Refresh."
+            )
+
+    def _display_topology_changed(self, *_):
+        # QScreen removal is delivered while Qt is still updating its screen
+        # list; defer the refresh to the next event-loop turn.
+        QTimer.singleShot(0, self._refresh_available_lcd_displays)
+
+    def _lcd_display_selection_changed(self, *_):
+        self._save_lcd_output_settings()
+        if self.lcd_blocker.output_enabled:
+            self.lcd_blocker.disable_output()
+        if self._session_state is SessionState.RUN:
+            self._activate_lcd_output()
+
+    def _lcd_clear_state_changed(self, *_):
+        clear_state = self.controls.combo_lcd_clear_state.currentData() or "white"
+        self.lcd_blocker.set_clear_state(clear_state)
+        self._save_lcd_output_settings()
+        if self.lcd_blocker.output_enabled:
+            self.controls.lcd_status.setText(
+                f"Output active with {clear_state} clear state; tracking spots cleared."
+            )
+
+    def _activate_lcd_output(self, force=False):
+        if not force and not self.controls.check_lcd_output.isChecked():
+            return False
+        screen = self._selected_lcd_screen()
+        if screen is None:
             self.lcd_blocker.disable_output()
             self.controls.lcd_status.setText(
-                "Disabled; secondary output cleared to white."
+                "Cannot start output: no non-primary display is detected."
             )
-            self.diagnostics.record_event("lcd_output_disabled")
-            return
-        screens = QApplication.screens()
-        if len(screens) < 2:
-            self.controls.check_lcd_output.blockSignals(True)
-            self.controls.check_lcd_output.setChecked(False)
-            self.controls.check_lcd_output.blockSignals(False)
-            self.controls.lcd_status.setText(
-                "No secondary display detected; output remains safely disabled."
-            )
-            return
+            return False
         self._refresh_lcd_configuration()
-        self.lcd_blocker.enable_on_screen(screens[1])
+        self.lcd_blocker.clear_output()
+        self.lcd_blocker.enable_on_screen(screen)
+        geometry = screen.geometry()
+        clear_state = self.lcd_blocker.clear_state
         self.controls.lcd_status.setText(
-            f"Enabled on secondary display: {screens[1].name()}"
+            f"ACTIVE on {screen.name()} at {geometry.width()}×{geometry.height()} — "
+            f"{clear_state} clear state."
         )
         self.diagnostics.record_event(
             "lcd_output_enabled",
             details={
-                "screen": screens[1].name(),
-                "resolution": [
-                    screens[1].geometry().width(),
-                    screens[1].geometry().height(),
-                ],
+                "screen": screen.name(),
+                "resolution": [geometry.width(), geometry.height()],
+                "clear_state": clear_state,
                 "radius_px": self.controls.spin_lcd_radius.value(),
             },
         )
-        self.tracker.on_params_changed(
-            calculate=self._coordinates_ready_for_calculation()
+        return True
+
+    def _deactivate_lcd_output(self, reason="idle"):
+        was_enabled = self.lcd_blocker.output_enabled
+        self.lcd_blocker.disable_output()
+        if self.controls.check_lcd_output.isChecked():
+            self.controls.lcd_status.setText(
+                f"Armed; output hidden ({reason}). The display desktop is available."
+            )
+        else:
+            self.controls.lcd_status.setText(
+                "Prototype display output is disabled."
+            )
+        if was_enabled:
+            self.diagnostics.record_event(
+                "lcd_output_disabled", details={"reason": reason})
+
+    def _show_lcd_test_output(self):
+        if not self._activate_lcd_output(force=True):
+            return
+        pattern = self.controls.combo_lcd_test_pattern.currentData() or "clear"
+        self.lcd_blocker.show_test_pattern(pattern)
+        self.controls.lcd_status.setText(
+            f"TEST ACTIVE: {self.controls.combo_lcd_test_pattern.currentText()}. "
+            "Select Close Output when alignment is verified."
         )
 
     def _refresh_lcd_configuration(self):
-        screens = QApplication.screens()
-        screen = screens[1] if len(screens) > 1 else screens[0]
+        screen = self._selected_lcd_screen()
+        if screen is None:
+            screen = QApplication.primaryScreen()
+        if screen is None:
+            return
         geometry = screen.geometry()
+        clear_state = self.controls.combo_lcd_clear_state.currentData() or "white"
+        self.lcd_blocker.set_clear_state(clear_state)
         self.lcd_blocker.configure_panel(
             self.controls.spin_ws_w.value(),
             self.controls.spin_ws_h.value(),
@@ -869,6 +1014,11 @@ class MainWindow(QMainWindow):
         self.header.btn_calibrate.setEnabled(
             state is SessionState.RUN and policy.use_driver_camera)
 
+        if state is SessionState.RUN:
+            self._activate_lcd_output()
+        else:
+            self._deactivate_lcd_output(state.value)
+
         if state is SessionState.STOP:
             self._road_position_ready = False
             self._stop_movement_simulation()
@@ -1069,6 +1219,194 @@ class MainWindow(QMainWindow):
             "camera_roles/lock_integrated_driver", True, type=bool)
         self.controls.check_lock_driver_camera.setChecked(locked)
         self.controls.spin_driver_camera.setEnabled(not locked)
+
+    def _load_lcd_output_settings(self):
+        """Restore machine-local prototype-display preferences."""
+
+        if QApplication.platformName().lower() == "offscreen":
+            return
+        settings = self._camera_role_settings
+        self.controls.check_lcd_output.setChecked(
+            settings.value("lcd_output/armed", True, type=bool))
+        clear_state = str(
+            settings.value("lcd_output/clear_state", "white") or "white")
+        clear_index = self.controls.combo_lcd_clear_state.findData(clear_state)
+        self.controls.combo_lcd_clear_state.setCurrentIndex(
+            clear_index if clear_index >= 0 else 0)
+        self.controls.spin_lcd_radius.setValue(
+            settings.value("lcd_output/radius_px", 40.0, type=float))
+
+    def _read_user_panel_dimension_profiles(self):
+        raw = self._camera_role_settings.value(
+            "panel_dimensions/user_profiles", "[]") or "[]"
+        try:
+            loaded = json.loads(str(raw))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return []
+        profiles = []
+        seen_names = set()
+        for item in loaded if isinstance(loaded, list) else []:
+            try:
+                name = str(item["name"]).strip()
+                width = float(item["width_cm"])
+                height = float(item["height_cm"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            key = name.casefold()
+            if not name or key in seen_names or width <= 0 or height <= 0:
+                continue
+            seen_names.add(key)
+            profiles.append({
+                "id": f"user:{name}",
+                "kind": "user",
+                "name": name,
+                "width_cm": width,
+                "height_cm": height,
+            })
+        return sorted(profiles, key=lambda profile: profile["name"].casefold())
+
+    def _write_user_panel_dimension_profiles(self, profiles):
+        if QApplication.platformName().lower() == "offscreen":
+            return
+        serialized = [
+            {
+                "name": profile["name"],
+                "width_cm": float(profile["width_cm"]),
+                "height_cm": float(profile["height_cm"]),
+            }
+            for profile in profiles
+        ]
+        self._camera_role_settings.setValue(
+            "panel_dimensions/user_profiles", json.dumps(serialized))
+        self._camera_role_settings.sync()
+
+    def _load_panel_dimension_settings(self):
+        """Load physical-panel profiles, defaulting to the installed P203."""
+
+        if QApplication.platformName().lower() == "offscreen":
+            return
+        settings = self._camera_role_settings
+        selected_id = str(settings.value(
+            "panel_dimensions/selected_profile",
+            DEFAULT_PANEL_PROFILE_ID,
+        ) or DEFAULT_PANEL_PROFILE_ID)
+        custom_dimensions = (
+            settings.value("panel_dimensions/custom_width_cm", 44.28, type=float),
+            settings.value("panel_dimensions/custom_height_cm", 24.91, type=float),
+        )
+        self.controls.set_panel_dimension_profiles(
+            self._read_user_panel_dimension_profiles(),
+            preferred_id=selected_id,
+            custom_dimensions=custom_dimensions,
+        )
+
+    def _save_panel_dimension_settings(self, *_):
+        if QApplication.platformName().lower() == "offscreen":
+            return
+        profile = self.controls.selected_panel_dimension_profile()
+        profile_id = profile.get("id", DEFAULT_PANEL_PROFILE_ID)
+        settings = self._camera_role_settings
+        settings.setValue("panel_dimensions/selected_profile", profile_id)
+        if profile_id == CUSTOM_PANEL_PROFILE_ID:
+            settings.setValue(
+                "panel_dimensions/custom_width_cm",
+                self.controls.spin_ws_w.value())
+            settings.setValue(
+                "panel_dimensions/custom_height_cm",
+                self.controls.spin_ws_h.value())
+        settings.sync()
+
+    def _save_named_panel_dimension_profile(self):
+        profile = self.controls.selected_panel_dimension_profile()
+        if profile.get("id") != CUSTOM_PANEL_PROFILE_ID:
+            return
+        name, accepted = QInputDialog.getText(
+            self,
+            "Save panel dimensions",
+            "Preset name:",
+        )
+        name = name.strip()
+        if not accepted or not name:
+            return
+        built_in_names = {
+            item["name"].casefold() for item in BUILT_IN_PANEL_PROFILES
+        }
+        if name.casefold() in built_in_names:
+            QMessageBox.warning(
+                self,
+                "Reserved preset name",
+                "Choose a different name; built-in presets cannot be replaced.",
+            )
+            return
+        profiles = self._read_user_panel_dimension_profiles()
+        existing = next(
+            (item for item in profiles if item["name"].casefold() == name.casefold()),
+            None,
+        )
+        if existing is not None:
+            answer = QMessageBox.question(
+                self,
+                "Replace saved dimensions?",
+                f'A preset named "{existing["name"]}" already exists. Replace it?',
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if answer != QMessageBox.Yes:
+                return
+            profiles.remove(existing)
+        saved = {
+            "id": f"user:{name}",
+            "kind": "user",
+            "name": name,
+            "width_cm": self.controls.spin_ws_w.value(),
+            "height_cm": self.controls.spin_ws_h.value(),
+        }
+        profiles.append(saved)
+        profiles.sort(key=lambda item: item["name"].casefold())
+        self._write_user_panel_dimension_profiles(profiles)
+        self.controls.set_panel_dimension_profiles(
+            profiles, preferred_id=saved["id"])
+        self._save_panel_dimension_settings()
+
+    def _remove_named_panel_dimension_profile(self):
+        profile = self.controls.selected_panel_dimension_profile()
+        if profile.get("kind") != "user":
+            return
+        answer = QMessageBox.question(
+            self,
+            "Remove saved dimensions?",
+            f'Remove the preset "{profile["name"]}"? This cannot be undone.',
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
+            return
+        profiles = [
+            item for item in self._read_user_panel_dimension_profiles()
+            if item["id"] != profile["id"]
+        ]
+        self._write_user_panel_dimension_profiles(profiles)
+        self.controls.set_panel_dimension_profiles(
+            profiles, preferred_id=DEFAULT_PANEL_PROFILE_ID)
+        self._save_panel_dimension_settings()
+
+    def _save_lcd_output_settings(self, *_):
+        """Persist prototype-display selection without storing runtime state."""
+
+        if QApplication.platformName().lower() == "offscreen":
+            return
+        settings = self._camera_role_settings
+        settings.setValue(
+            "lcd_output/armed", self.controls.check_lcd_output.isChecked())
+        settings.setValue(
+            "lcd_output/target_name",
+            self.controls.combo_lcd_display.currentData() or "")
+        settings.setValue(
+            "lcd_output/clear_state",
+            self.controls.combo_lcd_clear_state.currentData() or "white")
+        settings.setValue(
+            "lcd_output/radius_px", self.controls.spin_lcd_radius.value())
+        settings.sync()
 
     def _save_camera_role_settings(self, *_):
         """Persist camera roles for this Windows user and installation."""

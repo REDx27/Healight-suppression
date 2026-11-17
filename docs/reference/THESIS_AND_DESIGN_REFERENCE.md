@@ -3,10 +3,10 @@
 **Project:** Low-Cost Active Windshield Glare Suppression System
 **Software:** GlareTracker v1.3.0 research release
 **Original milestone snapshot:** 2026-10-05
-**Consolidated through:** 2026-11-11
+**Consolidated through:** 2026-11-18
 **Prepared for:** Project teammate and later thesis development
-**Reviewed source baseline:** v1.3 calibrated-stereo, research-UI, and packaging release
-**Current automated verification:** 135 tests passed on Python 3.13
+**Reviewed source baseline:** v1.3 release plus prototype-display integration
+**Current automated verification:** 138 tests passed on Python 3.13
 **Document status:** Long-form design and milestone reference; current execution
 status is maintained in `PROJECT_STATUS.md` and `docs/plans/VALIDATION_PLAN.md`.
 
@@ -20,7 +20,60 @@ status is maintained in `PROJECT_STATUS.md` and `docs/plans/VALIDATION_PLAN.md`.
 
 ## Document purpose
 
-### Latest development decision — 2026-11-05
+### Latest verified progress — 2026-11-18
+
+The v1.3 source has progressed from an experimental secondary-display renderer to a
+controlled prototype-monitor workflow. Qt now enumerates non-primary screens, restores
+the selected target by its stable screen name, assigns the native fullscreen window
+to that `QScreen`, and follows the application session state. When the output is armed,
+**Run** opens it fullscreen; **Standby**, **Stop**, display removal, and application
+shutdown clear the spots, hide the output, and release the monitor desktop. A manual
+test path can show Safe Fill, Center Spot, or Corners + Center without requiring live
+tracking. White is the default clear-state hypothesis and black is available as an
+inverse bench test; the physical panel characterization must determine which command
+actually provides maximum transmission.
+
+The connected HP ProDisplay P203 is now represented by a built-in physical active-area
+profile of **44.28 cm x 24.91 cm**. The observed secondary-display resolution is
+**1600 x 900**. Built-in and named user profiles lock their dimensions against
+accidental editing, while Custom mode unlocks the values. Saving requests a profile
+name, duplicate replacement requires confirmation, and removal also requires an
+explicit confirmation. The selected profile, custom dimensions, output target,
+clear-state choice, armed state, and spot radius persist through Qt settings.
+
+A repeatable live smoke-test script exercised the real multi-monitor lifecycle. It
+confirmed that the P203 profile loaded and remained locked, the blocker window became
+visible and fullscreen on the selected non-primary display in Run, Standby hid and
+disabled it, a second Run restored it on the same screen, and Stop hid and disabled it.
+The full Python 3.13 regression suite now contains **138 passing tests**, including the
+new panel-profile controls, clear-state/test-pattern rules, and Run/Standby/Stop display
+lifecycle. These are software and monitor-routing results. The panel has not yet been
+stripped or optically characterized, and pixel-to-physical mapping, attenuation,
+latency, viewing angle, thermal behaviour, HDMI-loss state, and blocker-radius
+validation remain open.
+
+The final intended rig orientation has also been clarified. The vertical LCD active
+plane is `Y = 0`, with the driver on negative Y and road/lights on positive Y. The two
+road cameras are rigidly mounted on the frame/top bar, face the road, and should have
+approximately parallel optical axes perpendicular to the LCD plane. The driver camera
+and ToF sensor face the driver. None of the permanent cameras is intended to look at
+the LCD. Physical frame measurements provide approximate translations and a repeatable
+datum, but they cannot replace software calibration of lens intrinsics, road-stereo
+rotation/translation, installed camera-to-panel extrinsics, ToF bias/offset, and LCD
+pixel-to-physical mapping.
+
+Because outward-facing cameras cannot directly observe targets on the LCD plane, the
+installed-extrinsic workflow needs a temporary rigid checkerboard jig with accurately
+known 3D poses relative to the LCD bottom-centre origin. The road-side target faces the
+road cameras; the driver-side target faces the driver camera. The existing solvePnP
+backend can fit general 3D references, but the current protocol/CLI validation is still
+centred on projecting held-out observations to `Y = 0`, and compatible extrinsic
+profiles are not yet applied by the live pipelines. Extending that measured-jig
+workflow and applying it live is therefore the next critical software/calibration
+stage. The detailed current meeting explanation is maintained in
+[`PROGRESS_MEETING_TECHNICAL_BRIEF.md`](PROGRESS_MEETING_TECHNICAL_BRIEF.md).
+
+### Previous calibrated-road milestone — 2026-11-05
 
 The operator replaced the former road pair with two externally identical low-cost
 cameras. The product guide claims SNR greater than 48 dB at 30 FPS/220 lux, dynamic
@@ -223,8 +276,8 @@ The current software includes:
 - asynchronous timestamped CSV/video research recording and pipeline timing;
 - guarded camera-to-windshield extrinsic fitting and analysis tools;
 - stale-sample rejection and fail-safe clearing;
-- disabled-by-default experimental secondary-display blocker output; and
-- 112 automated regression tests at the current milestone.
+- session-controlled prototype secondary-display output; and
+- 138 automated regression tests at the current milestone.
 
 The current software does **not** yet provide a validated end-to-end glare-blocking
 system. The main missing items are physical evidence and live calibration integration:
@@ -1058,11 +1111,13 @@ to a pixel coordinate. The physical panel width and height are scaled to its pix
 resolution, and the vertical axis is inverted because image pixels usually count down
 from the top.
 
-The source now contains an experimental secondary-display renderer with explicit
-display selection, full-screen output, configurable radius, feathered black spots, and
-white fail-safe clearing. It remains disabled by default. Physical LCD-to-windshield
+The source now contains a session-controlled secondary-display renderer with explicit
+non-primary display selection, full-screen output, configurable radius, feathered
+spots, selectable white/black polarity, alignment patterns, and clearing on invalid or
+idle states. It is armed by default but does not occupy the second display until Run;
+Standby, Stop, display loss, and shutdown release it. Physical LCD-to-windshield
 mapping, overlap/coverage policy, optics, latency, temperature, power/signal failure,
-and actual transparent-state behavior remain unvalidated.
+and actual transparent-state behaviour remain unvalidated.
 
 ### 8.9 Blocker radius
 
@@ -1128,7 +1183,7 @@ should report the resulting blocked screen area as well as coverage success.
 | Guided driver/lamp calibration | Partial | Stable one-point demonstration profiles, not full metric installation |
 | Intrinsic/stereo chessboard workflow | Software implemented for road pair | Startup Calibrate/Skip plus ordered LEFT, RIGHT and paired capture; fixed-intrinsic stereo gates and profile loading; physical/filter validation and standalone driver intrinsic UI remain |
 | Camera-to-windshield extrinsics | Software ready; physical integration pending | Rigid transforms, solvePnP fitting, held-out validation, compatibility guards, and a CLI exist; no installed profile has passed and the live pipelines do not yet apply one |
-| LCD blocker output | Experimental software implemented | Disabled-by-default secondary-display window renders feathered spots and clears to white; stripped-panel validation is pending |
+| LCD blocker output | Software integrated; optical validation pending | Armed workflow targets a selected non-primary display: Run opens fullscreen; Standby/Stop/shutdown release it. White/black polarity tests, alignment patterns, P203 dimensions and fail-safe clearing are implemented; stripped-panel mapping and optical validation remain pending |
 | Blocker merging and sizing | Planned | Needed for overlapping paths and real coverage |
 | Prediction/latency compensation | Planned | No end-to-end predictor yet |
 | CSV/video research logging | Implemented in source | Asynchronous telemetry, video, frame sidecars, metadata, timing, and shutdown flushing are tested; the ten-minute dual-camera soak is pending |
@@ -1166,7 +1221,7 @@ The detector-era checkpoint contained twenty-seven tests covering:
 - immediate replacement of a stale false single-source track when the lamp appears at
   a different image position.
 
-The current Python 3.13 suite contains **135 passing tests**, including automatic
+The current Python 3.13 suite contains **138 passing tests**, including automatic
 two-source rough association and calibrated triangulation, plus synthetic stereo
 fitting with supplied individual intrinsics, startup prompt policy, staged workflow,
 profile compatibility, calibrated matching, mocked capture/UI paths, structured
@@ -1866,8 +1921,8 @@ Suggested tables:
 The project team should continue with the following actions in order:
 
 1. Use `docs/plans/VALIDATION_PLAN.md` as the active work queue and retain the current
-   98-test software baseline.
-2. Rigidly mount the now-available road pair with final filters; capture and fit the
+   138-test software baseline.
+2. Rigidly mount the now-available road pair with final filters; verify or repeat the
    chessboard, check baseline and independent stationary-light distances, then tune
    stereo in Driver Position Fixed mode. Reintroduce the driver camera and complete
    the Stage 2 recording soak, inspecting timestamps, videos, drops and shutdown.
@@ -1915,6 +1970,9 @@ The project team should continue with the following actions in order:
 Use the following files together:
 
 - `docs/README.md` - documentation index and source-of-truth order;
+- `docs/reference/PROGRESS_MEETING_TECHNICAL_BRIEF.md` - current meeting-ready
+  explanation, software behaviour, rig orientation, calibration chain, evidence,
+  limitations, and code map;
 - `README.md` - quick project introduction and launch instructions;
 - `PROJECT_STATUS.md` - requirement-by-requirement implementation matrix;
 - `docs/plans/VALIDATION_PLAN.md` - current ordered validation status;
@@ -1940,7 +1998,7 @@ states, independent eye geometry, camera previews, multi-source road-light detec
 stereo foundations, timestamped research recording, guarded extrinsic-calibration
 tools, timing/stale-data instrumentation, an experimental fail-safe LCD renderer, and
 a testable ray-intersection model. Road-pair chessboard calibration is now exposed
-in the UI; a strict timestamped-recording soak verifier is also available; 98
+in the UI; a strict timestamped-recording soak verifier is also available; 138
 automated tests pass on Python 3.13.
 
 The most important scientific work remains physical: completing the dual-camera soak,
@@ -1983,4 +2041,4 @@ incorporated into this reference as follows:
 Conflicts were resolved using current source and automated tests first, followed by
 `PROJECT_STATUS.md`, maintained documentation, Git history, dated physical evidence,
 and finally the chat summaries. Historical 4-, 11-, 12-, and 27-test checkpoints remain
-development provenance; the authoritative current software result is 112 passing tests.
+development provenance; the authoritative current software result is 138 passing tests.

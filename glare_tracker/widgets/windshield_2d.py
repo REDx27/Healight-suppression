@@ -24,7 +24,7 @@ class Windshield2DWidget(QWidget):
         self._has_out_of_range = False
 
         # Windshield aspect ratio (updated from controls)
-        self._ws_aspect = 34.5 / 19.4
+        self._ws_aspect = 44.28 / 24.91
         self._light_theme = False
         self._static_layer: QPixmap | None = None
         self._static_geometry = (0.0, 0.0, 1.0, 1.0)

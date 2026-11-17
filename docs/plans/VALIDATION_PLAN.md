@@ -5,9 +5,16 @@
 > test pass. Hardware-dependent stages remain open until measurements and
 > evidence files have been collected.
 
-Current software verification: **135 automated tests passed on Python 3.13** on
-2026-11-11. This includes the experimental drowsiness-state logic and configuration-
-flow checks, but does not satisfy any open physical exit criterion.
+Current software verification: **138 automated tests passed on Python 3.13** on
+2026-11-18. This includes the experimental drowsiness-state logic, configuration-flow,
+named panel-profile, output polarity/pattern, and Run/Standby/Stop display-lifecycle
+checks, but does not satisfy any open physical exit criterion.
+
+The connected non-primary 1600 x 900 monitor also passed the repeatable live
+`scripts/validate_prototype_display.py` lifecycle: Run opened the selected fullscreen
+output, Standby released it, Run restored it, and Stop released it. The default HP
+ProDisplay P203 active-area profile is 44.28 x 24.91 cm. This closes a software/display-
+routing prerequisite only; stripped-panel optics and physical mapping remain Stage 7.
 
 Corrected replacement-camera bring-up on 2026-11-05 identified integrated camera 0
 and identical USB road cameras 1 and 2. The former 0/2 road defaults accidentally
@@ -107,7 +114,7 @@ have passed.
 - [x] Run the complete automated regression suite.
 
 Exit evidence: `tests/test_geometry.py`; 15 focused tests pass and the current
-complete suite contains 112 passing tests on Python 3.13.
+complete suite contains 138 passing tests on Python 3.13.
 
 ## 2. Timestamped CSV/video logging
 
@@ -160,6 +167,11 @@ evidence for another operator to reproduce every reported number.
 - [x] Reject malformed/non-rigid transforms and incompatible camera profiles.
 - [x] Add solvePnP fitting, held-out physical target validation, and guarded profile
       output using predeclared limits.
+- [ ] Extend the installed workflow for the final outward-facing rig: accept accurately
+      measured 3D checkerboard-jig poses on the road/driver sides instead of requiring
+      the cameras to view points directly on the LCD plane.
+- [ ] Apply only compatible passing camera-to-LCD profiles in the live driver and road
+      pipelines; clear physical output when a profile is absent or incompatible.
 - [ ] Measure known targets across the windshield centre, edges, and corners.
 - [ ] Calculate per-target error, RMSE, maximum error, and repeatability.
 - [ ] Repeat after camera remounting and verify stale calibration is rejected.
@@ -206,8 +218,11 @@ stale blocker remaining active after an invalid tracking state.
 - [ ] Determine blocker diameter from pupil uncertainty, optical spread, and latency.
 - [ ] Validate simultaneous coverage of both pupils and multiple light sources.
 - [ ] Verify the panel returns immediately to its safe transparent state on failure.
-- [x] Add disabled-by-default secondary-display output, feathered spots, exact pixel
-      bounds, and white fail-safe clearing on lost/stale/stop/shutdown states.
+- [x] Add non-primary-display selection, explicit fullscreen routing, persisted P203
+      and custom physical dimensions, white/black polarity tests, Safe/Center/Corner
+      patterns, feathered spots, exact pixel bounds, and clearing/release on invalid
+      tracking, Standby, Stop, display loss, and shutdown.
+- [x] Pass a live 1600 x 900 Run/Standby/Run/Stop display-lifecycle smoke test.
 
 Exit criteria: rendered blocker spots physically cover the measured light-to-eye
 rays throughout the declared viewing region without unacceptable visibility loss.
