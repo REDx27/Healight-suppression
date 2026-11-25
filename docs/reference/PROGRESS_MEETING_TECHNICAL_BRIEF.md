@@ -3,9 +3,9 @@
 **Project:** Low-Cost Active Windshield Glare Suppression System
 **Application:** GlareTracker
 **Software version:** 1.3.0 plus the post-release prototype-display integration
-**Status date:** 2026-11-18
+**Status date:** 2026-11-25
 **Audience:** Project team, supervisor, presentation authors, and AI-assisted study
-**Verification at this state:** 138 automated tests passed on Python 3.13; the
+**Verification at this state:** 196 automated tests passed on Python 3.13; the earlier
 1600 x 900 secondary-display Run/Standby/Stop smoke test passed on the connected
 monitor.
 
@@ -16,6 +16,64 @@ monitor.
 > safety system.
 
 ---
+
+### Latest operator update - 2026-11-25
+
+Calibrate Center now redraws immediately, discards lost-eye observations and requires
+fresh Run-state driver data. Installed-rig positions cannot be shifted with that demo
+operation; the tooltip directs the user to the installed rig dialog. Result feedback
+stays visible in the status bar across subsequent camera frames.
+
+Driver > Driver Distance has a Live driver distance switch, default OFF. OFF keeps the
+entered camera-to-eye optical-axis distance fixed (initially 50 cm), while iris tracking
+and drowsiness landmarks stay live. ON restores camera IPD or selected valid ToF depth.
+Fixed mode is a bench reference, not measured depth; keep the subject at that distance.
+It needs no ToF connection. Settings persist, and changing them clears old observations
+and resets the preview centre. The suite now passes 196 tests, including 14 checks
+added for these fixes; both switch states were inspected offscreen. No new standalone
+build or physical accuracy result is included.
+
+### Previous software milestone - driver and installed-rig calibration, 2026-11-24
+
+Cameras > Calibration now shows the stages required by the chosen mode. Driver
+calibration has independent camera/ToF indicators and skips, explicit profile saves
+and success alerts, saved-profile reuse, and separate ordered camera and sensor guide
+sections. The third dialog fits measured camera-to-LCD poses from off-panel jig
+placements and registers the LCD using six measured fit marks and three held-out marks.
+
+Compatible saved poses are applied in live tracking. Road XYZ is reconstructed using
+P1/P2, converted from rectified coordinates back through R1, and transformed from raw
+LEFT-camera coordinates into LCD centimetres. Driver irises are measured in native
+pixels and unprojected using an estimated common eye-plane depth, then transformed into
+the same LCD frame. Mirroring is only for preview; installed geometry bypasses the old
+demonstration recentering. Profile bindings and per-launch mount/identity confirmation
+prevent silent reuse after known setup changes. Physical output checks frame identity,
+time pairing and expiry; manual geometry and test patterns remain separate.
+
+The optional USB ToF host path is implemented, including quality/session/clock checks,
+range-bias fitting and measured Z offsets. **No controller is attached and no firmware
+has been implemented/flashed or physically tested.** Use Skip ToF for camera-only IPD
+development. A selected but failed ToF does not silently revert to IPD. Its first fusion
+model is restricted to centred, near-frontal faces and does not identify the returning
+surface or independently measure each pupil's depth.
+
+44 new synthetic/native-processing/UI tests raise the suite from 138 to 182 passing
+tests. Dialog layouts were inspected offscreen. No new physical accuracy result,
+installed profile, release version or executable is claimed. See the
+[operator guide](../guides/DRIVER_AND_INSTALLED_RIG_CALIBRATION_GUIDE.md) and
+[firmware interface](TOF_BRIDGE_PROTOCOL.md). Earlier dated evidence remains history;
+the new implementation still needs final mounting and independent measurement.
+
+| File | New calibration responsibility |
+|---|---|
+| `glare_tracker/installation.py` | Validated records, measured board poses, held-out pose/LCD/range fits, native unprojection and installed stereo conversion |
+| `glare_tracker/tof.py` | Optional USB worker, bridge session/quality/clock parsing and bounded camera/range pairing |
+| `glare_tracker/widgets/driver_calibration.py` | Camera/ToF dialog, independent skips/saves, capture/reset/reuse and ordered guide |
+| `glare_tracker/widgets/rig_calibration.py` | Measured off-panel pose capture, LCD marks, fit validation, evidence and whole-rig save |
+| `glare_tracker/window.py` | Mode-aware orchestration, profile readiness, worker/config wiring and timed physical-output authority |
+
+Existing `camera.py`, `headlight_detector.py`, `tracking.py` and `lcd_blocker.py`
+apply these records without replacing the core eye/light intersection equation.
 
 ## 1. Sixty-second meeting summary
 
@@ -42,7 +100,7 @@ The current application has reached a useful integration milestone:
   profile: 44.28 cm by 24.91 cm;
 - Run opens the armed prototype output, while Standby, Stop, display removal, and
   application shutdown clear and release it;
-- 138 automated tests pass, and a physical multi-monitor lifecycle smoke test passed.
+- 196 automated tests pass; the earlier physical multi-monitor lifecycle smoke test passed.
 
 This proves substantial software readiness. It does **not** yet prove centimetre-level
 intersection accuracy or optical glare attenuation. Those claims require final rigid
@@ -250,9 +308,12 @@ reactivates a valid selected target while Run remains active.
 
 The driver worker captures frames outside the GUI thread and uses MediaPipe face/iris
 landmarks. It reports the left and right iris positions independently. Depending on
-the selected path, depth is a fixed manual value or an experimental IPD-based estimate.
-The planned ToF sensor will supply an independent distance measurement while the camera
-continues to supply lateral/vertical eye position and both iris centres.
+the selected path, depth is a fixed manual value, an experimental IPD-based estimate,
+or valid ToF range corrected using measured bias and sensor/eye-plane Z offsets.
+The ToF host path exists but still needs MCU firmware and physical testing. Both eyes
+use an approximate common optical depth in this first limited-pose fusion model.
+Native pixels are undistorted, unprojected and transformed through the installed driver
+pose; only the preview is mirrored. Invalid selected ToF suppresses measured output.
 
 Experimental drowsiness monitoring reuses the same landmarks for eye aspect ratio,
 long closure, PERCLOS, mouth aspect ratio, and sustained yawning. It is off by default,
@@ -288,8 +349,8 @@ Rough mode is allowed only for camera alignment and detection tuning. It can sho
 assumed-depth geometry but cannot authorize physical LCD spots, research measurements,
 or an accuracy claim. Calibrated stereo undistorts and rectifies the observations,
 matches valid pairs, and triangulates 3D points, but the resulting camera-frame points
-still need the installed camera-to-LCD transform before becoming measurement-grade
-panel coordinates.
+use the installed camera-to-LCD transform when its profile is compatible and confirmed.
+Actual measurement accuracy still needs physical validation of the entire chain.
 
 ### 5.7 Geometry
 
@@ -377,7 +438,8 @@ or final panel-intersection accuracy.
 
 ### 6.3 Automated evidence
 
-The complete Python 3.13 suite contains 138 passing tests. Coverage includes geometry
+The complete Python 3.13 suite contains 196 passing tests. Coverage includes centre-reference
+freshness/redraw, fixed/live driver distance and persistence, as well as geometry
 boundaries, camera-role policy, session states, detector behaviour, multiple sources,
 stereo fitting/profile guards, calibration UI, recording, stale-data rejection,
 extrinsic mathematics, drowsiness state, Blender-style configuration behaviour,
@@ -398,11 +460,11 @@ external photon-to-display latency, vibration, or environmental robustness.
 | Bright-source detector | Implemented, inspectable, multi-source | Controlled detection-rate trials pending |
 | Road intrinsics/stereo calibration | Guided and saved-profile workflow implemented | Fit accepted; held-out depth validation pending |
 | Rough stereo | Implemented for setup only | Never measurement authority |
-| Stereo triangulation | Implemented with compatible profile | Installed transform still pending |
+| Stereo triangulation | Installed transform applied with compatible confirmed profiles | Final installed profile and measured accuracy pending |
 | Ray-panel intersection | Implemented and unit-tested | End-to-end physical error pending |
 | Research CSV/video recording | Implemented | Ten-minute three-camera soak pending |
-| Camera-to-panel extrinsic backend | Mathematics/CLI implemented | Outward-facing jig workflow and live application pending |
-| ToF driver distance | Hardware selected | Firmware, serial integration, calibration, and tests pending |
+| Camera-to-panel extrinsic workflow | Measured jig dialog, held-out pose checks, LCD marks and live application implemented | Final physical calibration and independent accuracy pending |
+| ToF driver distance | Host serial/calibration/restricted fusion implemented | No controller attached; firmware, wiring and physical measurements pending |
 | Secondary-display output | Implemented and live lifecycle tested | Stripped-LCD optics/mapping/latency pending |
 | Standalone v1.3 executable | Built from release commit `7dcd958` | Does not yet include this post-release display workflow |
 
@@ -454,12 +516,12 @@ tested and later reused even if the desktop UI changes.
 
 ## 9. Known limitations and risks
 
-1. **No complete shared physical frame yet.** Road stereo points and driver estimates
-   are not yet transformed through measured installed camera poses into one validated
-   LCD coordinate frame.
-2. **Current extrinsic workflow needs rig adaptation.** The final outward-facing
-   cameras need a measured 3D target jig, not an assumption that they can see targets
-   directly on the LCD plane.
+1. **Shared physical frame is not yet validated.** The software applies compatible
+   installed transforms; real jig measurements and held-out eye/light/spot tests are
+   still needed to establish an accurate LCD coordinate chain.
+2. **Installed calibration needs a measured jig.** The final outward-facing cameras
+   must see accurately positioned 3D board targets on their own side. The new dialog
+   cannot turn freely waved or guessed board coordinates into measured truth.
 3. **Driver depth remains weak.** IPD-only depth changes with individual anatomy,
    head yaw, pose, glasses, landmark error, and camera calibration. The ToF comparison
    is intended to reduce this uncertainty.
@@ -483,6 +545,14 @@ tested and later reused even if the desktop UI changes.
 ---
 
 ## 10. Ordered next work
+
+**Implementation update, 2026-11-24:** The detailed
+[installed camera-to-LCD and ToF integration plan](../plans/CAMERA_LCD_AND_TOF_INTEGRATION_PLAN.md)
+now defines the implementation sequence, measured-jig workflow, frame/mirroring
+rules, live-profile readiness, serial protocol, face-to-eye depth calibration and
+test gates. Host calibration and live integration are now implemented; MCU firmware
+and physical gates remain open. Validate road alignment with measured fixed eyes
+first, then driver pose, then ToF fusion so their errors can be evaluated separately.
 
 1. Build the final rigid LCD/camera frame and record a dimensioned drawing.
 2. Mount the road pair parallel to each other and perpendicular to the panel plane;

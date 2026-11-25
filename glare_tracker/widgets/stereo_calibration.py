@@ -15,7 +15,7 @@ from PyQt5.QtWidgets import (
     QSpinBox, QDoubleSpinBox, QMessageBox, QScrollArea, QWidget,
 )
 
-from glare_tracker.capture import open_video_capture, configure_road_stereo_capture
+from glare_tracker.capture import open_video_capture, configure_road_stereo_capture, configure_video_capture
 from glare_tracker.calibration import (
     _calibration_dir, calibrate_single, calibrate_stereo_with_intrinsics,
     detect_checkerboard, save_single_calibration, save_stereo_calibration,
@@ -171,6 +171,7 @@ class SingleBoardCapture(QThread):
     preview = pyqtSignal(QImage)
     status = pyqtSignal(str)
     sample = pyqtSignal(object)
+    capture_finished = pyqtSignal()
 
     def __init__(self, index, pattern, side, parent=None):
         super().__init__(parent)
@@ -183,7 +184,10 @@ class SingleBoardCapture(QThread):
             capture, backend = open_video_capture(self.index)
             if capture is None:
                 raise RuntimeError(f"Camera {self.index} unavailable; close other camera apps")
-            configure_road_stereo_capture(capture)
+            if self.side == "driver":
+                configure_video_capture(capture)
+            else:
+                configure_road_stereo_capture(capture)
             self.status.emit(
                 f"{self.side.upper()} camera {self.index} opened using {backend}. "
                 "Move the board to a varied pose, then capture.")
@@ -206,6 +210,7 @@ class SingleBoardCapture(QThread):
                     else:
                         cv2.drawChessboardCorners(shown, self.pattern, corners, True)
                         self.sample.emit((frame.copy(), corners))
+                    self.capture_finished.emit()
                 self.preview.emit(_image(shown))
                 self.msleep(60)
         except Exception as error:

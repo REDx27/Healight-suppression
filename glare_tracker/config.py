@@ -20,3 +20,8 @@ class TrackingConfig:
     camera_z_cm: float = 19.5       # provisional; measure the installed camera
     ipd_cm: float = 6.3            # inter-pupillary distance (human avg)
     use_calibration: bool = False   # whether to use camera calibration data
+    live_driver_distance: bool = False  # Off uses the measured eye_dist_cm reference.
+    driver_model: Optional[dict] = None
+    installed_pose: Optional[dict] = None
+    tof_profile: Optional[dict] = None
+    generation: int = 0

@@ -30,6 +30,7 @@ from glare_tracker.capture import (
     configure_video_capture,
     open_video_capture,
 )
+from glare_tracker.installation import triangulate_lcd
 from glare_tracker.light_sources import (
     LightCandidate,
     LightSourceTracker,
@@ -873,6 +874,7 @@ def _match_stereo_candidates(
     calibration: Optional[StereoCalibrationResult],
     frame_shape: tuple[int, ...],
     camera_height_cm: float,
+    installed_pose=None,
 ) -> list[LightCandidate]:
     """Pair independent bright candidates and triangulate each valid pair."""
     if calibration is None:
@@ -944,6 +946,10 @@ def _match_stereo_candidates(
             depth_cm,
             -camera_y_cm + camera_height_cm,
         )
+        if installed_pose is not None:
+            position = triangulate_lcd((x1, y1), projected_secondary[secondary_index], calibration, installed_pose)
+            if position is None:
+                continue
         first = primary.observations[primary_index]
         second = secondary.observations[secondary_index]
         confidence = float(np.clip(
@@ -1065,6 +1071,7 @@ class MonocularHeadlightDetectorThread(QThread):
     frame_ready = pyqtSignal(QImage)
     headlight_detected = pyqtSignal(float, float, float)
     lights_detected = pyqtSignal(object)
+    light_observation = pyqtSignal(object)
     light_observed = pyqtSignal(float, float, float, int, int)
     headlight_lost = pyqtSignal()
     camera_status = pyqtSignal(str, bool)
@@ -1265,6 +1272,11 @@ class MonocularHeadlightDetectorThread(QThread):
                     "detection_complete_ns": detection_complete_ns,
                     "observation_valid": bool(sources),
                 })
+                self.light_observation.emit({
+                    "sources": sources, "captured_ns": capture_complete_ns,
+                    "generation": getattr(self, "generation", 0),
+                    "frame": "demo", "pair_skew_ns": 0,
+                })
                 if not sources:
                     if not lost_announced:
                         self.headlight_lost.emit()
@@ -1326,6 +1338,7 @@ class HeadlightDetectorThread(QThread):
     stereo_diagnostics = pyqtSignal(str)
     headlight_detected = pyqtSignal(float, float, float)
     lights_detected = pyqtSignal(object)
+    light_observation = pyqtSignal(object)
     rough_lights_detected = pyqtSignal(object)
     headlight_lost = pyqtSignal()
     camera_status = pyqtSignal(str, bool)
@@ -1366,6 +1379,7 @@ class HeadlightDetectorThread(QThread):
             confirmation_hits=2,
         )
         self._calib: Optional[StereoCalibrationResult] = None
+        self.installed_pose = None
 
         try:
             self._calib = load_stereo_calibration(stereo_profile_name(cam1_idx, cam2_idx))
@@ -1564,7 +1578,7 @@ class HeadlightDetectorThread(QThread):
                 candidates = (
                     _match_stereo_candidates(
                         processed1, processed2, self._calib,
-                        frame1.shape, self.camera_height_cm)
+                        frame1.shape, self.camera_height_cm, self.installed_pose)
                     if compatible else
                     _match_uncalibrated_candidates(
                         processed1, processed2, frame1.shape,
@@ -1591,6 +1605,10 @@ class HeadlightDetectorThread(QThread):
                         f"Matches: {len(candidates)} | {pairing_note}")
                     last_diagnostics = now
                 sources = self._source_tracker.update(candidates)
+                if self.installed_pose is not None:
+                    # Holding a source is useful for previews, but a held
+                    # coordinate must never acquire this new frame's time.
+                    sources = [s for s in sources if s.state != "temporarily_lost"]
                 detection_complete_ns = time.monotonic_ns()
                 self.pipeline_timing.emit({
                     "stream": "road_stereo",
@@ -1606,6 +1624,13 @@ class HeadlightDetectorThread(QThread):
                     "detection_complete_ns": detection_complete_ns,
                     "observation_valid": bool(sources) and compatible,
                     "rough_preview_valid": bool(sources) and not compatible,
+                })
+                self.light_observation.emit({
+                    "sources": sources if compatible else [],
+                    "captured_ns": primary_capture_complete_ns,
+                    "generation": getattr(self, "generation", 0),
+                    "frame": "lcd" if compatible and self.installed_pose is not None else "demo",
+                    "pair_skew_ns": secondary_capture_complete_ns - primary_capture_complete_ns,
                 })
                 if not sources:
                     if not lost_announced:

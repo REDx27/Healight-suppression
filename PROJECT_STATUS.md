@@ -1,6 +1,6 @@
 # GlareTracker — Project Status & Specification
 
-> **Last Updated:** 2026-11-18
+> **Last Updated:** 2026-11-25
 > **Python Version:** 3.13 (current test environment; 3.11 previously verified)
 > **Platform:** Windows 10/11
 > **UI Framework:** PyQt5
@@ -11,6 +11,79 @@
 ---
 
 ## 0. Current Status Snapshot
+
+### Centre-reference fix and fixed driver distance - 2026-11-25
+
+The toolbar **Calibrate Center** now redraws the centred midpoint and intersections
+immediately and preserves both eyes' separation. Lost-eye observations are discarded.
+The action requires Run, a live driver source and an observation no older than 200 ms;
+it is disabled for manual-driver modes, LCD test output and installed rig coordinates.
+Its tooltip explains the unavailable state. Success/failure appears in the status bar
+so the next camera frame does not immediately overwrite the feedback. This changes the
+preview's X/Z reference only; it is separate from lens, stereo and installed-rig fitting.
+
+Driver > **Driver Distance** now has a **Live driver distance** toggle. Default OFF uses
+the editable 50 cm fixed reference while continuing both-eye tracking and drowsiness
+landmarks. Measure camera-to-eye-plane distance along the camera's forward axis and
+remain at that distance for bench tests. ON restores calibrated camera IPD depth, or
+selected calibrated ToF when available. Selected invalid ToF still never silently
+falls back. Fixed mode does not open a ToF port or require its calibration; it is a
+declared reference, not a new distance measurement. Settings persist across restarts.
+Changing the mode/reference rejects queued observations and resets the preview centre.
+
+**Verification:** 196 tests passed on Python 3.13, including 14 checks added today for
+centering, lost/stale/installed states, UI feedback, fixed/live depth across native,
+legacy and preview camera paths, and preference loading. Both toggle layouts were
+inspected offscreen. No release version or standalone EXE rebuild is included. This
+source update includes the November 24 calibration workflow below. No new physical
+accuracy/latency/optical result is claimed; the ToF controller/firmware remains outstanding.
+
+### Driver and installed-rig calibration software - 2026-11-24
+
+The Cameras > Calibration panel now offers mode-relevant road stereo, driver-side,
+and installed-rig dialogs. Driver calibration has separate camera and ToF indicators,
+independent development skips, reuse of saved profiles, explicit save-success alerts,
+and an ordered two-section guide. Camera intrinsics use measured flat-board captures.
+ToF calibration accepts only real bridge-v1 samples, fits range bias on three distances,
+checks two held-out distances, and records separately measured sensor/eye-plane offsets.
+
+Installed-rig calibration uses measured off-panel checkerboard placements on the road
+and driver sides, then six fit and three held-out LCD marks. It saves passing poses
+and a physical-to-normalized-pixel affine map atomically. Profiles bind the selected
+camera indices, intrinsic/stereo fingerprints, LCD identity/display mode and dimensions.
+Cheap camera indices are not persistent device IDs: the operator confirms physical
+identities/order and unchanged mounts at each launch.
+
+Live installed road tracking triangulates using P1/P2, reverses R1, then applies the
+raw-LEFT-to-LCD transform once. Driver measurements use native pixels, optional valid
+ToF-derived common eye-plane depth and the driver-to-LCD transform. Mirroring affects
+the driver preview only; installed eye coordinates bypass demonstration recentering.
+Explicit Skip ToF selects IPD bench depth, never a calibrated sensor result. When ToF
+is selected but unavailable/invalid, physical output clears instead of falling back.
+Observation generations, state-entry cutoffs, readout pairing and an independent
+25 ms expiry watchdog protect physical output. Manual geometry and LCD test patterns
+retain their separate demonstration role.
+
+**Verification:** 182 tests passed on Python 3.13 (2026-11-24), including 44 new
+synthetic geometry, protocol, native-driver and headless UI checks. The driver,
+ToF, rig, LCD-mapping, guide and calibration-panel layouts were inspected offscreen.
+`pyserial` 3.5 is installed in the active development environment and declared in
+requirements. Software version remains 1.3.0; the existing standalone EXE is unchanged.
+
+**Outstanding hardware/evidence:** the purchased VL53L0X has no controller connected;
+no firmware has been implemented/flashed or tested against this bridge contract.
+No newly installed camera/ToF/LCD profile or end-to-end physical accuracy has passed.
+Final mounting, filtered-optics verification, independent eye/light/spot measurements,
+controller firmware, serial trials, latency and optical validation remain open.
+Readout timestamps are host proxies, not proof of synchronized webcam exposures.
+The November 18 physical display-lifecycle result below is historical and has not
+been repeated as a complete calibrated hardware chain after this change.
+
+Operator guide: `docs/guides/DRIVER_AND_INSTALLED_RIG_CALIBRATION_GUIDE.md`.
+Firmware contract: `docs/reference/TOF_BRIDGE_PROTOCOL.md`.
+
+The dated snapshots below preserve earlier evidence; their implementation gaps are
+superseded by this update where stated.
 
 ### Prototype-display integration — 2026-11-18
 
@@ -193,9 +266,9 @@ multi-source bring-up. It does not establish metric accuracy: the session was no
 recorded repeated trial, and stereo/chessboard plus camera-to-windshield calibration
 are still required before the coordinates or intersections can be validated.
 
-**Verification:** 138 automated tests pass on Python 3.13. No completed calibrated
-physical validation has been performed. Live camera-to-windshield transforms and all physical exit
-criteria remain outstanding. Follow
+**Verification:** 182 automated tests pass on Python 3.13. No completed calibrated
+physical validation has been performed. Compatible live camera-to-windshield transforms
+are now implemented; real installed profiles and physical exit criteria remain outstanding. Follow
 [the stereo setup guide](docs/guides/STEREO_CHESSBOARD_SETUP_GUIDE.md), then resume
 [the validation plan](docs/plans/VALIDATION_PLAN.md). Earlier dated snapshots below
 are retained as history where explicitly labelled.
@@ -234,7 +307,7 @@ GlareTracker is currently a **source-level visualization and tracking prototype*
 - The source and Windows metadata report version **1.3.0**.
 - `dist/GlareTracker-v1.3.exe` was rebuilt on 2026-11-11, reduced to 134.9 MB by excluding unused package examples/tests/converters, and passed a packaged hardware-independent UI launch/shutdown test.
 - Release SHA-256: `f28a6d5205d1035a20f346e90d179f689b316053f720877792bb96fe63eacf30`.
-- The release artifact verification passed compilation, dependency consistency, 135 automated tests, source smoke launch, and standalone smoke launch. The current post-release source passes 138 tests plus the live secondary-display lifecycle test; the standalone executable has not yet been rebuilt with these changes. Physical-camera regression, measurement accuracy, external latency, and stripped-LCD hardware validation remain outstanding.
+- The release artifact verification passed compilation, dependency consistency, 135 automated tests, source smoke launch, and standalone smoke launch. The current post-release source passes 182 tests. The earlier display-only integration passed a live secondary-display lifecycle test; the complete new calibration chain has not been physically tested or packaged. Physical-camera regression, measurement accuracy, external latency, and stripped-LCD hardware validation remain outstanding.
 
 ---
 

@@ -1,4 +1,5 @@
 __pycache__/
+.pytest_cache/
 build/
 dist/
 build_exe.log
@@ -9,4 +10,7 @@ glaretracker-test.*.log
 calibration/*.npz
 calibration/*.json
 calibration/stereo_sessions/
+calibration/installation/
+calibration/installation_sessions/
 diagnostics/
+/tmp/

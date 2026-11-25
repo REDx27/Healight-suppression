@@ -193,16 +193,24 @@ class ControlsPanel(QWidget):
         layout.addWidget(self.camera_group)
 
         # ── Driver distance ──
-        self.dist_group = PropertyGroupBox("Tracked Driver Reference")
+        self.dist_group = PropertyGroupBox("Driver Distance")
         self.dist_group.setProperty("section", "driver")
         dist_layout = QFormLayout(self.dist_group)
         dist_layout.setSpacing(6)
         self._configure_form(dist_layout)
+        self.check_live_driver_distance = ToggleSwitch("Live driver distance")
+        self.check_live_driver_distance.setToolTip(
+            "Off: keep the entered camera-to-eye distance fixed while tracking the eyes. "
+            "On: use live IPD depth, or calibrated ToF when selected. No ToF fallback is invented.")
         self.spin_eye_dist = self._make_spin(5.0, 500.0, 50.0, " cm")
-        self.distance_note = QLabel("Manual / reference measurement")
+        self.distance_note = QLabel()
         self.distance_note.setObjectName("mutedText")
-        dist_layout.addRow("Distance:", self.spin_eye_dist)
+        self.distance_note.setWordWrap(True)
+        dist_layout.addRow(self.check_live_driver_distance)
+        dist_layout.addRow("Fixed distance:", self.spin_eye_dist)
         dist_layout.addRow(self.distance_note)
+        self.check_live_driver_distance.toggled.connect(self._update_driver_distance_controls)
+        self._update_driver_distance_controls()
         layout.addWidget(self.dist_group)
 
         # Manual driver position for Fully Manual and Driver Position Fixed.
@@ -220,10 +228,21 @@ class ControlsPanel(QWidget):
         layout.addWidget(self.manual_driver_group)
 
         # ── Guided distance calibration ──
-        self.calibration_group = PropertyGroupBox("Single-Camera Calibration")
+        self.calibration_group = PropertyGroupBox("Calibration")
         self.calibration_group.setProperty("section", "vision")
         calibration_layout = QVBoxLayout(self.calibration_group)
         calibration_layout.setSpacing(6)
+        self.btn_driver_calibration = QPushButton("2. Calibrate driver camera / ToF...")
+        self.driver_calibration_status = QLabel("Driver camera: not calibrated | ToF: not connected")
+        self.driver_calibration_status.setWordWrap(True)
+        self.btn_rig_calibration = QPushButton("3. Calibrate installed rig / LCD...")
+        self.rig_calibration_status = QLabel("Installed rig: not calibrated")
+        self.rig_calibration_status.setWordWrap(True)
+        self.check_rig_unchanged = ToggleSwitch("Confirm camera identities and unchanged rig mounts")
+        self.check_rig_unchanged.setToolTip("Confirm the same physical LEFT/RIGHT/driver cameras and unchanged mounts each launch. Recalibrate after movement, focus or image-mode changes.")
+        for widget in (self.btn_driver_calibration, self.driver_calibration_status,
+                       self.btn_rig_calibration, self.rig_calibration_status, self.check_rig_unchanged):
+            calibration_layout.addWidget(widget)
         self.btn_guided_calibration = QPushButton(
             "Calibrate Single-Camera Distances")
         self.btn_guided_calibration.setIcon(IconFactory.icon("target"))
@@ -319,11 +338,11 @@ class ControlsPanel(QWidget):
         auto_layout.addRow(self.btn_refresh_cameras)
         auto_layout.addRow(self.camera_scan_status)
         auto_layout.addRow(self.auto_note)
-        self.btn_stereo_calibration = QPushButton("Calibrate road stereo (chessboard)")
+        self.btn_stereo_calibration = QPushButton("1. Calibrate road stereo (chessboard)...")
         self.stereo_status = QLabel("Calibration required before stereo depth is available.")
         self.stereo_status.setWordWrap(True)
-        auto_layout.addRow(self.btn_stereo_calibration)
-        auto_layout.addRow(self.stereo_status)
+        calibration_layout.insertWidget(0, self.btn_stereo_calibration)
+        calibration_layout.insertWidget(1, self.stereo_status)
         layout.addWidget(self.auto_camera_group)
 
         # Driver monitoring reuses the existing Face Mesh result.  It remains
@@ -1012,6 +1031,14 @@ class ControlsPanel(QWidget):
                 f"Enabled with {profile} thresholds; waiting for driver face data.")
         self.drowsiness_settings_changed.emit(settings)
 
+    def _update_driver_distance_controls(self):
+        live = self.check_live_driver_distance.isChecked()
+        self.spin_eye_dist.setEnabled(not live)
+        self.distance_note.setText(
+            "Live distance enabled. Camera IPD estimates can jitter; ToF requires its saved profile and valid live readings."
+            if live else
+            "Fixed distance: measure from the driver camera to the eye plane along its forward axis. Eye tracking stays live; sit at this distance.")
+
     def _update_mode_controls(self):
         policy = self.mode_policy()
         self.mode_description.setText(policy.description)
@@ -1054,11 +1081,15 @@ class ControlsPanel(QWidget):
         self.light_detection_group.setVisible(road)
         self.btn_stereo_calibration.setVisible(road and stereo)
         self.stereo_status.setVisible(road and stereo)
+        self.btn_driver_calibration.setVisible(policy.use_driver_camera)
+        self.driver_calibration_status.setVisible(policy.use_driver_camera)
 
         single_camera = not stereo
-        self.calibration_group.setVisible(
-            (policy.use_driver_camera or road) and single_camera)
+        self.calibration_group.setVisible(True)
         self.btn_guided_calibration.setVisible(single_camera)
+        for widget in (self.check_driver_depth_calibration, self.check_road_range_calibration,
+                       self.calibration_status):
+            widget.setVisible(single_camera)
         self.auto_note.setText(
             "Single camera: the Headlight camera selection is used. In Driver "
             "Position Fixed mode, the Driver camera is not opened. Road distance "

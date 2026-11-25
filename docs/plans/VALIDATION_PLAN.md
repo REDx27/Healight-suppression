@@ -1,12 +1,23 @@
 # GlareTracker Ordered Validation Plan
 
+Integration work is specified in
+[`CAMERA_LCD_AND_TOF_INTEGRATION_PLAN.md`](CAMERA_LCD_AND_TOF_INTEGRATION_PLAN.md)
+(2026-11-24). The development source now implements measured off-panel jig calibration,
+live compatible poses, driver intrinsics, physical LCD marks, and host ToF calibration/
+fusion. The sensor has no controller connected; firmware and hardware tests remain
+open. See the [operator guide](../guides/DRIVER_AND_INSTALLED_RIG_CALIBRATION_GUIDE.md).
+
 > Started: 2026-10-14
 > Rule: complete the stages in order. A written protocol is preparation, not a
 > test pass. Hardware-dependent stages remain open until measurements and
 > evidence files have been collected.
 
-Current software verification: **138 automated tests passed on Python 3.13** on
-2026-11-18. This includes the experimental drowsiness-state logic, configuration-flow,
+Current software verification: **196 automated tests passed on Python 3.13** on
+2026-11-25. Today's 14 checks cover centre-reference redraw/freshness, fixed/live depth,
+native/legacy/preview camera paths, UI feedback and saved preferences. The 44 earlier
+added checks cover installed transforms, held-out calibration,
+ToF protocol/freshness, native driver processing and dialog/state/skip behaviour.
+This includes the experimental drowsiness-state logic, configuration-flow,
 named panel-profile, output polarity/pattern, and Run/Standby/Stop display-lifecycle
 checks, but does not satisfy any open physical exit criterion.
 
@@ -52,7 +63,8 @@ dynamic range, but do not independently locate every emitting lamp. LiDAR may be
 as an external ground-truth reference if available. The preferred driver-depth trial is
 one calibrated iris camera plus a rigidly mounted Time-of-Flight range sensor; compare
 it against IPD-only depth and add driver stereo only if the fused method fails the
-declared error limit. Neither proposal is implemented or validated yet.
+declared error limit. Host camera/ToF fusion is now implemented; the hardware comparison
+and optional driver stereo remain unvalidated/unimplemented respectively.
 
 Preliminary live evidence on 2026-11-04: after rough camera-offset compensation, the
 real road-camera pair automatically detected and associated one, two, and three
@@ -114,7 +126,7 @@ have passed.
 - [x] Run the complete automated regression suite.
 
 Exit evidence: `tests/test_geometry.py`; 15 focused tests pass and the current
-complete suite contains 138 passing tests on Python 3.13.
+complete suite contains 196 passing tests on Python 3.13 (2026-11-25).
 
 ## 2. Timestamped CSV/video logging
 

@@ -59,6 +59,7 @@ class TrackingController:
         ] | None = None
         self._calibration_offset = (0.0, 0.0, 0.0)
         self._baseline_captured = False
+        self.installed_coordinates = False
         self._frame_times: list[float] = []
         self._live_light_sources: tuple[TrackedLightSource, ...] = ()
         self._rough_preview_sources: tuple[TrackedLightSource, ...] = ()
@@ -90,13 +91,11 @@ class TrackingController:
         self._last_observed_eye_cm = observed
         self._last_observed_eyes_cm = None
 
-        if not self._baseline_captured:
+        if not self._baseline_captured and not self.installed_coordinates:
             self._capture_baseline(observed)
 
         adjusted = (
-            x - self._calibration_offset[0],
-            y - self._calibration_offset[1],
-            z - self._calibration_offset[2],
+            observed if self.installed_coordinates else self._apply_calibration_offset(observed)
         )
         self._last_eye_cm = adjusted
         self._last_eyes_cm = None
@@ -118,7 +117,7 @@ class TrackingController:
         self._last_observed_eyes_cm = observed_eyes
         self._last_observed_eye_cm = midpoint
 
-        if not self._baseline_captured:
+        if not self._baseline_captured and not self.installed_coordinates:
             self._capture_baseline(midpoint)
 
         adjusted_eyes = tuple(
@@ -133,6 +132,8 @@ class TrackingController:
         """Called by the camera thread when no face is detected."""
         self._last_eye_cm = None
         self._last_eyes_cm = None
+        self._last_observed_eye_cm = None
+        self._last_observed_eyes_cm = None
         if self._lcd_blocker is not None:
             self._lcd_blocker.clear_output()
         self._scene_3d.hide_tracking()
@@ -338,7 +339,10 @@ class TrackingController:
 
     def calibrate(self):
         """Set the current observed eye position as the centre reference."""
-        if self._last_observed_eye_cm:
+        if self.installed_coordinates:
+            self._readout.set_value("status", "Installed coordinates: centre offset disabled", "#ffb74d")
+            return False
+        if self._last_eye_cm is not None and self._last_observed_eye_cm is not None:
             self._capture_baseline(self._last_observed_eye_cm)
             if self._last_observed_eyes_cm:
                 adjusted_eyes = tuple(
@@ -348,9 +352,14 @@ class TrackingController:
                 self._last_eyes_cm = adjusted_eyes
                 self._last_eye_cm = self._midpoint(adjusted_eyes)
                 self.process_eye_tracking(adjusted_eyes)
+            else:
+                self._last_eye_cm = self._apply_calibration_offset(self._last_observed_eye_cm)
+                self.process_tracking(self._last_eye_cm)
             self._readout.set_value("status", "CALIBRATED ✓", "#4caf50")
+            return True
         else:
             self._readout.set_value("status", "Calibration failed — no face", "#f44336")
+            return False
 
     def _capture_baseline(self, observed):
         ws_h = self._controls.get_windshield_dims()[1]
@@ -362,6 +371,8 @@ class TrackingController:
         self._baseline_captured = True
 
     def _apply_calibration_offset(self, eye):
+        if self.installed_coordinates:
+            return tuple(eye)
         return tuple(
             coordinate - offset
             for coordinate, offset in zip(eye, self._calibration_offset)

@@ -26,6 +26,10 @@ take precedence and the affected document should be corrected.
 
 ### `plans/`
 
+- [`CAMERA_LCD_AND_TOF_INTEGRATION_PLAN.md`](plans/CAMERA_LCD_AND_TOF_INTEGRATION_PLAN.md)
+  - staged integration plan and implementation update: calibration UI, measured
+    camera-to-LCD mapping and host ToF fusion are implemented; controller firmware
+    and physical validation remain outstanding.
 - [`VALIDATION_PLAN.md`](plans/VALIDATION_PLAN.md) — active eight-stage research
   validation plan and completion record.
 - [`FUNCTIONAL_TEST_PLAN.md`](plans/FUNCTIONAL_TEST_PLAN.md) — application-level
@@ -51,6 +55,9 @@ physical test has passed.
 
 ### `guides/`
 
+- [`DRIVER_AND_INSTALLED_RIG_CALIBRATION_GUIDE.md`](guides/DRIVER_AND_INSTALLED_RIG_CALIBRATION_GUIDE.md)
+  - current mode-specific driver camera/ToF and final installed-rig workflow,
+    independent skips, measured target conventions and explicit acceptance limits.
 - [`VISUAL_STEREO_CALIBRATION_GUIDE.md`](guides/VISUAL_STEREO_CALIBRATION_GUIDE.md) —
   illustrated flat-target, pose-coverage, stage-order, and success criteria for road
   stereo calibration.
@@ -61,6 +68,8 @@ physical test has passed.
 
 ### `reference/`
 
+- [`TOF_BRIDGE_PROTOCOL.md`](reference/TOF_BRIDGE_PROTOCOL.md) - exact USB packet,
+  quality, identity, clock and recovery contract; firmware/hardware work is pending.
 - [`PROGRESS_MEETING_TECHNICAL_BRIEF.md`](reference/PROGRESS_MEETING_TECHNICAL_BRIEF.md)
   — current shareable explanation for teammates, presentation preparation, and
   question-answering with another AI.
@@ -73,6 +82,26 @@ physical test has passed.
 
 Generated architecture and technical-guide artifacts in HTML and PDF form. These are
 reference exports and may lag behind the live source.
+
+### `Scripts_doc/`
+
+- [`GlareTracker_Scripts_Code_Explanation.pdf`](Scripts_doc/GlareTracker_Scripts_Code_Explanation.pdf):
+  33-page code-review study presentation covering every file in `scripts/`, its
+  inputs, processing logic, outputs, limitations, and likely examiner questions.
+  Reviewed against the local source on 2026-11-21.
+
+### `GlareTracker_doc/`
+
+- [`GlareTracker_Application_Code_Explanation.pdf`](GlareTracker_doc/GlareTracker_Application_Code_Explanation.pdf):
+  49-page code-review study presentation covering all 30 Python files in
+  `glare_tracker/`, including `widgets/`. Explains file responsibilities, inputs,
+  processing, data handoffs, calibration, tracking, display output, worked examples,
+  current implementation limits, and likely examiner questions. Reviewed against
+  the local source on 2026-11-23.
+
+The code-guide PDFs above are dated snapshots. They predate the installed calibration
+and fixed/live driver-distance changes of 2026-11-24/25; use the current Markdown guides
+and source for those additions.
 
 ### `archive/`
 

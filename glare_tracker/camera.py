@@ -22,6 +22,9 @@ from glare_tracker.calibration import CalibrationResult, load_single_calibration
 from glare_tracker.capture import configure_video_capture, open_video_capture
 from glare_tracker.config import TrackingConfig
 from glare_tracker.drowsiness import DrowsinessDetector, DrowsinessSettings
+from glare_tracker.installation import camera_model, unproject_eye, frontal_pose
+from glare_tracker.extrinsics import RigidTransform3D
+from glare_tracker.tof import eligible_range
 from glare_tracker.geometry import (
     estimate_ipd_depth,
     pixel_to_cm,
@@ -66,6 +69,7 @@ class VideoCaptureThread(QThread):
     frame_ready = pyqtSignal(QImage)
     eye_detected = pyqtSignal(float, float, float)
     eyes_detected = pyqtSignal(float, float, float, float, float, float)
+    eye_observation = pyqtSignal(object)
     eye_lost = pyqtSignal()
     depth_updated = pyqtSignal(float)
     head_pose_updated = pyqtSignal(float, float, float)
@@ -81,6 +85,7 @@ class VideoCaptureThread(QThread):
         self._config = TrackingConfig()
         self._calibration: Optional[CalibrationResult] = None
         self._drowsiness = DrowsinessDetector()
+        self.sensor_service = None
 
         # Try to load existing calibration on init
         self._try_load_calibration()
@@ -210,12 +215,16 @@ class VideoCaptureThread(QThread):
                 capture_started_ns = time.monotonic_ns()
                 ret, frame = cap.read()
                 if not ret:
+                    self.eye_lost.emit()
                     self.msleep(10)
                     continue
                 capture_complete_ns = time.monotonic_ns()
                 frame_number += 1
 
-                frame = cv2.flip(frame, 1)  # mirror for natural feel
+                config = self._config
+                native = config.driver_model is not None
+                if not native:
+                    frame = cv2.flip(frame, 1)  # legacy demo convention
                 h, w, _ = frame.shape
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 if uses_tasks_api:
@@ -241,7 +250,6 @@ class VideoCaptureThread(QThread):
 
                 if faces:
                     lm = faces[0]
-                    config = self._config
                     calib = self._calibration if config.use_calibration else None
 
                     if self._drowsiness.settings.enabled:
@@ -270,7 +278,52 @@ class VideoCaptureThread(QThread):
                     cv2.circle(rgb, (int(lx_px), int(ly_px)), 3, (100, 200, 255), -1)
                     cv2.circle(rgb, (int(rx_px), int(ry_px)), 3, (100, 200, 255), -1)
 
-                    if calib is not None:
+                    valid = True
+                    source = "Fixed/reference distance"
+                    depth_cm = config.eye_dist_cm
+                    range_observed_ns = None
+                    range_sample = None
+                    if native:
+                        model = camera_model(config.driver_model)
+                        valid = model.image_size == (w, h)
+                        pose = self._estimate_head_pose(lm, w, h, model.camera_matrix, model.dist_coeffs) if config.live_driver_distance else None
+                        yaw = pose[1] if pose is not None else 0.
+                        if config.live_driver_distance and config.tof_profile is None:
+                            depth_cm = estimate_ipd_depth((lx_px, ly_px), (rx_px, ry_px),
+                                                          model.focal_length_px, config.ipd_cm, yaw)
+                            source = "IPD / camera-only bench estimate"
+                        if config.live_driver_distance and config.tof_profile is not None:
+                            sensor = self.sensor_service
+                            sample = eligible_range(sensor.history, capture_complete_ns,
+                                config.tof_profile["device_id"]) if sensor else None
+                            range_sample = sample
+                            ray = cv2.undistortPoints(
+                                np.array([[[eye_x_px, eye_y_px]]], float),
+                                model.camera_matrix, model.dist_coeffs)[0, 0]
+                            valid = bool(valid and sample and pose is not None
+                                         and frontal_pose(pose[0], pose[1], config.tof_profile["maximum_pose_deg"])
+                                         and np.linalg.norm(ray) <= np.tan(np.deg2rad(5.)))
+                            if valid:
+                                profile = config.tof_profile
+                                surface = sample["raw_cm"] + profile["bias_cm"]
+                                valid = profile["min_cm"] <= surface <= profile["max_cm"]
+                                depth_cm = surface + profile["sensor_z_cm"] + profile["eye_offset_cm"]
+                                range_observed_ns = sample["observed_ns"]
+                            source = "ToF / calibrated offsets (frontal bench region)"
+                        valid = bool(valid and np.isfinite(depth_cm) and depth_cm > 0)
+                        if valid:
+                            left_cm = unproject_eye((lx_px, ly_px), depth_cm, model)
+                            right_cm = unproject_eye((rx_px, ry_px), depth_cm, model)
+                            if config.installed_pose:
+                                transform = RigidTransform3D.from_dict(config.installed_pose["transform"])
+                                left_cm, right_cm = transform.apply(left_cm), transform.apply(right_cm)
+                            else:
+                                left_cm = (left_cm[0], -left_cm[2], config.screen_h_cm / 2 - left_cm[1])
+                                right_cm = (right_cm[0], -right_cm[2], config.screen_h_cm / 2 - right_cm[1])
+                            self.depth_updated.emit(depth_cm)
+                        else:
+                            self.eye_lost.emit()
+                    elif calib is not None:
                         # ── CALIBRATED MODE ──
                         mtx = calib.camera_matrix
                         dist = calib.dist_coeffs
@@ -278,16 +331,18 @@ class VideoCaptureThread(QThread):
 
                         # Head pose estimation
                         yaw_deg = 0.0
-                        pose = self._estimate_head_pose(lm, w, h, mtx, dist)
+                        pose = self._estimate_head_pose(lm, w, h, mtx, dist) if config.live_driver_distance else None
                         if pose is not None:
                             pitch, yaw_deg, roll, tvec = pose
                             self.head_pose_updated.emit(pitch, yaw_deg, roll)
 
                         # IPD-based depth estimation
-                        depth_cm = estimate_ipd_depth(
-                            (lx_px, ly_px), (rx_px, ry_px),
-                            fx, config.ipd_cm, yaw_deg,
-                        )
+                        if config.live_driver_distance:
+                            depth_cm = estimate_ipd_depth(
+                                (lx_px, ly_px), (rx_px, ry_px),
+                                fx, config.ipd_cm, yaw_deg,
+                            )
+                            source = "IPD / camera-only bench estimate"
                         self.depth_updated.emit(depth_cm)
 
                         # Calibrated unprojection for each eye
@@ -334,6 +389,14 @@ class VideoCaptureThread(QThread):
                         )
                         self.eye_detected.emit(*mid_cm)
                         self.eyes_detected.emit(*left_cm, *right_cm)
+                    self.eye_observation.emit({
+                        "valid": bool(valid), "eyes": (tuple(left_cm), tuple(right_cm)) if valid else None,
+                        "captured_ns": capture_complete_ns, "range_observed_ns": range_observed_ns,
+                        "generation": config.generation,
+                        "frame": "lcd" if config.installed_pose else "demo", "depth_source": source,
+                        "eye_depth_cm": float(depth_cm) if valid else None,
+                        "range_sample": range_sample,
+                        "reason": "valid" if valid else "driver frame size, ToF quality/time/pose or range invalid"})
                 else:
                     self.eye_lost.emit()
                     if self._drowsiness.settings.enabled:
@@ -341,6 +404,8 @@ class VideoCaptureThread(QThread):
                             self._drowsiness.unavailable().as_dict())
 
                 # .copy() so Qt owns the buffer
+                if native:
+                    rgb = cv2.flip(rgb, 1)  # preview only; measurements stay native
                 bytes_per_line = 3 * w
                 q_img = QImage(rgb.data, w, h, bytes_per_line, QImage.Format_RGB888).copy()
                 self.frame_ready.emit(q_img)

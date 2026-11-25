@@ -39,6 +39,13 @@ from glare_tracker.operating_modes import (
 )
 from glare_tracker.styles import DARK_STYLESHEET
 from glare_tracker.widgets.stereo_calibration import StereoCalibrationDialog
+from glare_tracker.installation import (
+    CalibrationStore, camera_model, signature, stereo_signature, rig_compatibility_errors,
+    validate_tof_profile,
+)
+from glare_tracker.widgets.driver_calibration import DriverCalibrationDialog, safe_load
+from glare_tracker.widgets.rig_calibration import RigCalibrationDialog
+from glare_tracker.tof import ToFSerialWorker
 from glare_tracker.tracking import TrackingController
 from glare_tracker.widgets import (
     ApplicationHeader, CameraFeedPanel, ConfigurationSidebar, ControlsPanel,
@@ -121,6 +128,9 @@ class MainWindow(QMainWindow):
         self._load_camera_role_settings()
         self._load_lcd_output_settings()
         self._load_panel_dimension_settings()
+        self._load_driver_distance_settings()
+        self._driver_distance_state = (
+            self.controls.check_live_driver_distance.isChecked(), self.controls.spin_eye_dist.value())
         self.header = ApplicationHeader(__version__)
         self.camera_feeds = CameraFeedPanel()
         self.workspace = SceneWorkspace(self.scene_3d, self.windshield_2d)
@@ -133,6 +143,19 @@ class MainWindow(QMainWindow):
         self._latest_pipeline_timing = {}
         self._maximum_sample_age_ms = 250.0
         self._last_drowsiness_state = "disabled"
+        self.calibration_store = CalibrationStore()
+        self._driver_skips = {"camera": False, "tof": False}
+        self._driver_lens = self._tof_profile = self._rig_profile = None
+        self._installation_stereo = None
+        self._installation_generation = 0
+        self._tof_worker = None
+        self._tof_connection_status = "Not connected"
+        self._last_driver_observed_ns = self._last_road_observed_ns = None
+        self._last_range_observed_ns = None
+        self._driver_lcd_frame_valid = self._road_lcd_frame_valid = False
+        self._observation_epoch_ns = time.monotonic_ns()
+        self._driver_fingerprint = self._stereo_fingerprint = ""
+        self._lcd_test_active = False
 
         # Saved demonstration calibration profiles
         try:
@@ -181,6 +204,11 @@ class MainWindow(QMainWindow):
         self._movement_timer = QTimer(self)
         self._movement_timer.setInterval(50)
         self._movement_timer.timeout.connect(self.tracker.advance_movement)
+        self._expiry_timer = QTimer(self)
+        self._expiry_timer.setInterval(25)
+        self._expiry_timer.timeout.connect(self._expire_installed_observations)
+        self._expiry_timer.start()
+        self._reload_installation_profiles()
 
         # Push initial parameters
         self._operating_mode_changed()
@@ -266,7 +294,7 @@ class MainWindow(QMainWindow):
     def _connect_signals(self):
         # Camera → display + tracker
         self.cap_thread.frame_ready.connect(self._update_driver_frame)
-        self.cap_thread.eyes_detected.connect(self._on_eyes_detected)
+        self.cap_thread.eye_observation.connect(self._on_driver_observation)
         self.cap_thread.eye_lost.connect(self._on_eye_lost)
         self.cap_thread.camera_status.connect(self._on_driver_camera_status)
         self.cap_thread.pipeline_timing.connect(self._on_pipeline_timing)
@@ -294,6 +322,9 @@ class MainWindow(QMainWindow):
         self.controls.btn_refresh_cameras.clicked.connect(
             self._refresh_available_cameras)
         self.controls.btn_stereo_calibration.clicked.connect(self._open_stereo_calibration)
+        self.controls.btn_driver_calibration.clicked.connect(self._open_driver_calibration)
+        self.controls.btn_rig_calibration.clicked.connect(self._open_rig_calibration)
+        self.controls.check_rig_unchanged.toggled.connect(self._installation_confirmation_changed)
         self.controls.spin_single_depth.valueChanged.connect(self._update_single_projection)
         self.controls.spin_camera_hfov.valueChanged.connect(self._update_single_projection)
         self.controls.spin_brightness_threshold.valueChanged.connect(
@@ -343,7 +374,9 @@ class MainWindow(QMainWindow):
             lambda: self._set_session_state(SessionState.STANDBY))
         self.header.btn_stop.clicked.connect(
             lambda: self._set_session_state(SessionState.STOP))
-        self.header.btn_calibrate.clicked.connect(self.tracker.calibrate)
+        self.header.btn_calibrate.clicked.connect(self._calibrate_center)
+        self.controls.check_live_driver_distance.toggled.connect(self._driver_distance_settings_changed)
+        self.controls.spin_eye_dist.valueChanged.connect(self._driver_distance_settings_changed)
         self.header.btn_reset_view.clicked.connect(self._reset_3d_view)
         self.controls.btn_play_movement.clicked.connect(self._toggle_movement)
         self.controls.btn_guided_calibration.clicked.connect(
@@ -392,7 +425,6 @@ class MainWindow(QMainWindow):
         # Parameter spin-boxes / combos → tracker
         for widget in (
             self.controls.spin_ws_w, self.controls.spin_ws_h,
-            self.controls.spin_eye_dist,
             self.controls.spin_camera_x, self.controls.spin_camera_y,
             self.controls.spin_camera_z,
             self.controls.spin_light_x, self.controls.spin_light_y,
@@ -405,6 +437,339 @@ class MainWindow(QMainWindow):
 
     # ── slots ───────────────────────────────────────────────────────
 
+    def _load_driver_distance_settings(self):
+        toggle = self.controls.check_live_driver_distance
+        spin = self.controls.spin_eye_dist
+        toggle_blocked, spin_blocked = toggle.blockSignals(True), spin.blockSignals(True)
+        try:
+            live = str(self._camera_role_settings.value("driver_distance/live", "false")).lower() == "true"
+            toggle.setChecked(live)
+            try:
+                distance = float(self._camera_role_settings.value("driver_distance/fixed_cm", 50.))
+                if np.isfinite(distance):
+                    spin.setValue(distance)
+            except (ValueError, TypeError):
+                pass
+        finally:
+            toggle.blockSignals(toggle_blocked)
+            spin.blockSignals(spin_blocked)
+        self.controls._update_driver_distance_controls()
+
+    def _save_driver_distance_settings(self):
+        self._camera_role_settings.setValue("driver_distance/live", self.controls.check_live_driver_distance.isChecked())
+        self._camera_role_settings.setValue("driver_distance/fixed_cm", self.controls.spin_eye_dist.value())
+
+    def _driver_distance_settings_changed(self, *_):
+        state = (self.controls.check_live_driver_distance.isChecked(), self.controls.spin_eye_dist.value())
+        if state == self._driver_distance_state:
+            return
+        self._driver_distance_state = state
+        self._save_driver_distance_settings()
+        if self._lcd_test_active:
+            self._deactivate_lcd_output("driver distance changed")
+        self._installation_generation += 1
+        self._reset_observation_authority()
+        self.tracker.reset_on_stream_stop()
+        self._latest_pipeline_timing.pop("driver", None)
+        # Reopen road cameras only if this choice changes the coordinate frame.
+        if self.headlight_thread is not None:
+            installed = bool(self._rig_profile and not self._installation_errors())
+            if (isinstance(self.headlight_thread, HeadlightDetectorThread)
+                    and bool(self.headlight_thread.installed_pose) != installed):
+                self._stop_headlight_detection()
+            else:
+                self.headlight_thread.generation = self._installation_generation
+        self._sync_tof_service()
+        self._push_config()
+        if cameras_enabled(self._session_state):
+            self._ensure_required_cameras()
+        self._refresh_installation_status()
+        self._refresh_lcd_configuration()
+        self._update_center_calibration_action()
+        if self._session_state is SessionState.RUN:
+            self._activate_lcd_output()
+            if self.controls.mode_policy().use_driver_camera:
+                self.header.set_tracking("WAITING FOR DRIVER", "warning")
+                self.readout.set_value("status", "WAITING FOR TRACKING", "#ffb74d")
+        source = "Live driver distance enabled" if state[0] else f"Fixed driver distance: {state[1]:.1f} cm"
+        self.statusBar().showMessage(source + "; waiting for fresh eye tracking.", 5000)
+        self.diagnostics.record_event("driver_distance_mode", details={"live": state[0], "fixed_cm": state[1]})
+
+    def _center_calibration_reason(self):
+        if not self.controls.mode_policy().use_driver_camera:
+            return "Manual driver positions are edited under Driver settings."
+        if not calculations_enabled(self._session_state):
+            return "Select Run and wait for fresh driver-eye tracking."
+        if self.tracker.installed_coordinates:
+            return "Installed coordinates use measured rig calibration. Use Cameras > Calibration > Installed rig / LCD."
+        if self._lcd_test_active:
+            return "Close the LCD test output before setting the centre reference."
+        observed = self._last_driver_observed_ns
+        if (self.tracker.last_eye_cm is None or observed is None
+                or not 0 <= time.monotonic_ns() - observed <= 200_000_000):
+            return "No fresh eye observation. Face the driver camera and wait for tracking."
+        return ""
+
+    def _update_center_calibration_action(self):
+        reason = self._center_calibration_reason()
+        self.header.btn_calibrate.setEnabled(not reason)
+        self.header.btn_calibrate.setToolTip("Calibrate Center: " + (reason or
+            "Set the current eye midpoint to the preview's X/Z centre; distance and eye separation stay unchanged."))
+
+    def _calibrate_center(self):
+        reason = self._center_calibration_reason()
+        if reason:
+            self.statusBar().showMessage("Centre reference not changed. " + reason, 6000)
+            self._update_center_calibration_action()
+            return False
+        if not self.tracker.calibrate():
+            self.statusBar().showMessage("Centre reference not changed: eye tracking is unavailable.", 6000)
+            return False
+        self.statusBar().showMessage("Centre reference set. Eye distance and left/right separation are preserved.", 5000)
+        self.diagnostics.record_event("driver_center_reference", details={
+            "observed_midpoint_cm": self.tracker.last_observed_eye_cm,
+            "centered_midpoint_cm": self.tracker.last_eye_cm})
+        return True
+
+    def _sync_tof_service(self):
+        required = (cameras_enabled(self._session_state) and self.controls.mode_policy().use_driver_camera
+                    and self.controls.check_live_driver_distance.isChecked() and self._driver_lens
+                    and self._tof_profile and not self._driver_skips["tof"] and not self._driver_skips["camera"])
+        if required:
+            if self._tof_worker is None or not self._tof_worker.isRunning():
+                self._tof_worker = ToFSerialWorker(self._tof_profile.get("port", ""), self)
+                sensor = self._tof_worker
+                self._tof_worker.status.connect(lambda text, expected=sensor: self._tof_status_changed(text)
+                                                 if expected is self._tof_worker else None)
+                self._tof_worker.start()
+        elif self._tof_worker is not None:
+            if self._tof_worker.stop():
+                self._tof_worker = None
+                self._tof_connection_status = "Not connected"
+
+    def _installation_setup(self):
+        screen = self._selected_lcd_screen()
+        display = ({"name": screen.name(), "logical_resolution": [
+            screen.geometry().width(), screen.geometry().height()]} if screen else None)
+        return {"panel_cm": list(self.controls.get_windshield_dims()),
+                "display": display,
+                "driver_index": self.controls.spin_driver_camera.value(),
+                "road_indices": [self.controls.spin_headlight_camera.value(), self.controls.spin_headlight_camera_2.value()],
+                "driver_fingerprint": self._driver_fingerprint,
+                "stereo_fingerprint": self._stereo_fingerprint}
+
+    def _installation_errors(self, require_confirmation=True):
+        policy = self.controls.mode_policy()
+        if not policy.use_driver_camera and not policy.use_road_camera:
+            return []
+        errors = rig_compatibility_errors(self._rig_profile, self._installation_setup(),
+                                          policy.use_driver_camera, policy.use_road_camera)
+        if policy.use_driver_camera and self._driver_skips["camera"]:
+            errors.append("Driver camera calibration was skipped")
+        if (policy.use_driver_camera and self.controls.check_live_driver_distance.isChecked()
+                and not self._tof_profile and not self._driver_skips["tof"]):
+            errors.append("Calibrate ToF or explicitly Skip ToF for camera-only development")
+        if policy.use_road_camera and not self.controls.is_stereo_detection():
+            errors.append("Installed road output requires stereo")
+        if require_confirmation and not self.controls.check_rig_unchanged.isChecked():
+            errors.append("Confirm physical camera identities and unchanged mounts")
+        return errors
+
+    def _reload_installation_profiles(self):
+        self._driver_lens = safe_load(self.calibration_store, f"driver_{self.controls.spin_driver_camera.value()}")
+        if self._driver_lens:
+            try:
+                camera_model(self._driver_lens)
+            except (ValueError, TypeError, KeyError):
+                self._driver_lens = None
+        self._tof_profile = safe_load(self.calibration_store, "tof")
+        if self._tof_profile:
+            try:
+                validate_tof_profile(self._tof_profile)
+            except (ValueError, KeyError, TypeError):
+                self._tof_profile = None
+        self._rig_profile = safe_load(self.calibration_store, "rig")
+        try:
+            self._installation_stereo = load_stereo_calibration(stereo_profile_name(
+                self.controls.spin_headlight_camera.value(), self.controls.spin_headlight_camera_2.value()))
+        except Exception:
+            self._installation_stereo = None
+        self._driver_fingerprint = signature(self._driver_lens) if self._driver_lens else ""
+        self._stereo_fingerprint = stereo_signature(self._installation_stereo)
+        self._installation_generation += 1
+        self._reset_observation_authority()
+        self._refresh_installation_status()
+
+    def _reset_observation_authority(self):
+        self._observation_epoch_ns = time.monotonic_ns()
+        self._last_driver_observed_ns = self._last_road_observed_ns = None
+        self._last_range_observed_ns = None
+        self._driver_lcd_frame_valid = self._road_lcd_frame_valid = False
+        self.lcd_blocker.tracking_authorized = False
+        self.lcd_blocker.clear_output()
+        self._update_center_calibration_action()
+
+    def _refresh_installation_status(self):
+        camera = "Skipped (development)" if self._driver_skips["camera"] else "Calibrated lens" if self._driver_lens else "Not calibrated"
+        live = self.controls.check_live_driver_distance.isChecked()
+        tof = ("Skipped / IPD bench estimate" if live else "Skipped (development)") if self._driver_skips["tof"] else "Range profile calibrated" if self._tof_profile else "Not connected / not calibrated"
+        distance = "live" if live else f"fixed {self.controls.spin_eye_dist.value():.1f} cm reference"
+        self.controls.driver_calibration_status.setText(f"Camera: {camera}\nToF: {tof}" + (
+            f"\nConnection: {self._tof_connection_status}" if live and self._tof_profile and not self._driver_skips["tof"] else "") + f"\nDriver distance: {distance}")
+        policy = self.controls.mode_policy()
+        if not policy.use_driver_camera and not policy.use_road_camera:
+            calibrated = not rig_compatibility_errors(self._rig_profile, self._installation_setup(), False, False)
+            self.controls.rig_calibration_status.setText("Manual geometry: " + (
+                "saved LCD mapping is compatible" if calibrated else "nominal dimensions; installed LCD mapping is not calibrated"))
+            return
+        errors = self._installation_errors()
+        if errors:
+            self.controls.rig_calibration_status.setText("Needs calibration / confirmation: " + "; ".join(errors))
+        else:
+            self.controls.rig_calibration_status.setText("Installed mapping ready" + (
+                f" - fixed {self.controls.spin_eye_dist.value():.1f} cm eye-depth reference (bench testing)" if policy.use_driver_camera and not live else
+                " - camera-only IPD depth remains a bench estimate" if policy.use_driver_camera and (
+                    self._driver_skips["tof"] or not self._tof_profile) else " - independently verify actual spot accuracy"))
+
+    def _installation_confirmation_changed(self):
+        self._reset_observation_authority()
+        state = self._session_state
+        self.cap_thread.stop()
+        if not self._stop_headlight_detection() or self.cap_thread.isRunning():
+            self.controls.check_rig_unchanged.blockSignals(True)
+            self.controls.check_rig_unchanged.setChecked(False)
+            self.controls.check_rig_unchanged.blockSignals(False)
+            self._deactivate_lcd_output("camera driver still stopping")
+            return
+        self._installation_generation += 1
+        self.tracker.reset_on_stream_stop()
+        self.tracker.installed_coordinates = bool(self._rig_profile and not self._installation_errors())
+        self._refresh_installation_status()
+        if cameras_enabled(state):
+            self._ensure_required_cameras()
+        if state is SessionState.RUN:
+            self._activate_lcd_output()
+
+    def _tof_status_changed(self, text):
+        self._tof_connection_status = text
+        self._refresh_installation_status()
+        if self._session_state is SessionState.RUN and not self._lcd_test_active:
+            self._guard_physical_observation_pair(time.monotonic_ns())
+
+    def _calibration_can_open(self):
+        if self._session_state is not SessionState.STOP:
+            self._set_session_state(SessionState.STOP)
+        if (self.cap_thread.isRunning()
+                or (self.headlight_thread is not None and self.headlight_thread.isRunning())
+                or (self._camera_discovery_thread is not None and self._camera_discovery_thread.isRunning())):
+            QMessageBox.information(self, "Cameras still busy", "Wait for camera scanning/stream shutdown, then open calibration again.")
+            return False
+        if self._tof_worker is not None:
+            if not self._tof_worker.stop():
+                return False
+            self._tof_worker = None
+        self._deactivate_lcd_output("calibration")
+        return True
+
+    def _open_driver_calibration(self):
+        if not self._calibration_can_open():
+            return
+        dialog = DriverCalibrationDialog(self.controls.spin_driver_camera.value(),
+                                         self.calibration_store, self._driver_skips, self)
+        dialog.exec_()
+        self._driver_skips = dialog.skips
+        self.controls.check_rig_unchanged.setChecked(False)
+        self._reload_installation_profiles()
+        dialog.deleteLater()
+
+    def _open_rig_calibration(self):
+        if not self._calibration_can_open():
+            return
+        self._reload_installation_profiles()
+        models = {}
+        policy = self.controls.mode_policy()
+        if policy.use_road_camera:
+            stereo = self._installation_stereo
+            models["road"] = (self.controls.spin_headlight_camera.value(), stereo.cam1 if stereo else None)
+        if policy.use_driver_camera:
+            models["driver"] = (self.controls.spin_driver_camera.value(), camera_model(self._driver_lens) if self._driver_lens else None)
+        dialog = RigCalibrationDialog(self._installation_setup(), models, self.calibration_store,
+                                      self._show_rig_mark, self)
+        dialog.exec_()
+        self._deactivate_lcd_output("rig calibration closed")
+        self._lcd_test_active = False
+        self.controls.check_rig_unchanged.setChecked(False)
+        self._reload_installation_profiles()
+        dialog.deleteLater()
+
+    def _show_rig_mark(self, uv):
+        if not self._activate_lcd_output(force=True):
+            return False
+        self._lcd_test_active = True
+        self.lcd_blocker.show_alignment_mark(uv)
+        return True
+
+    def _on_driver_observation(self, observation):
+        if observation.get("generation") != self._installation_generation or not calculations_enabled(self._session_state):
+            return
+        if self._lcd_test_active:
+            return
+        now = time.monotonic_ns()
+        age = now - observation["captured_ns"]
+        if observation["captured_ns"] < self._observation_epoch_ns:
+            return
+        if not observation["valid"] or not 0 <= age <= 200_000_000:
+            self._last_driver_observed_ns = None
+            self._driver_lcd_frame_valid = False
+            self._guard_physical_observation_pair(now)
+            self.tracker.on_eye_lost()
+            self.diagnostics.record_event("driver_observation_rejected", details={
+                "reason": observation.get("reason", "stale observation"), "age_ns": age,
+                "depth_source": observation.get("depth_source"), "range_sample": observation.get("range_sample")})
+            self.readout.set_value("status", "DRIVER DEPTH / TIMING INVALID", "#ffb74d")
+            self.header.set_tracking("DRIVER SAMPLE INVALID", "warning")
+            self._update_center_calibration_action()
+            return
+        self._last_driver_observed_ns = observation["captured_ns"]
+        self._driver_lcd_frame_valid = observation["frame"] == "lcd"
+        self._last_range_observed_ns = observation.get("range_observed_ns")
+        self.tracker.installed_coordinates = observation["frame"] == "lcd"
+        self._guard_physical_observation_pair(now)
+        eyes = observation["eyes"]
+        self.tracker.on_eyes_detected(*eyes[0], *eyes[1])
+        self._record_geometry_timing("driver", now, time.monotonic_ns())
+        self.diagnostics.record_event("driver_depth_source", details={
+            "source": observation["depth_source"], "captured_ns": observation["captured_ns"],
+            "range_observed_ns": observation.get("range_observed_ns"),
+            "eye_depth_cm": observation.get("eye_depth_cm"), "range_sample": observation.get("range_sample")})
+        self.header.set_tracking("INSTALLED EYES" if observation["frame"] == "lcd" else "DEMO EYES", "active")
+        self._update_center_calibration_action()
+
+    def _guard_physical_observation_pair(self, now):
+        policy = self.controls.mode_policy()
+        valid = not self._installation_errors()
+        if policy.use_driver_camera:
+            valid = valid and self._driver_lcd_frame_valid and self._last_driver_observed_ns is not None and 0 <= now - self._last_driver_observed_ns <= 200_000_000
+        if policy.use_road_camera:
+            valid = valid and self._road_lcd_frame_valid and self._last_road_observed_ns is not None and 0 <= now - self._last_road_observed_ns <= 200_000_000
+        if policy.use_driver_camera and policy.use_road_camera and valid:
+            valid = abs(self._last_driver_observed_ns - self._last_road_observed_ns) <= 50_000_000
+        if (policy.use_driver_camera and self.controls.check_live_driver_distance.isChecked()
+                and self._tof_profile and not self._driver_skips["tof"]):
+            valid = valid and self._last_range_observed_ns is not None and 0 <= now - self._last_range_observed_ns <= 100_000_000
+            latest = getattr(self._tof_worker, "latest", None)
+            valid = bool(valid and latest and latest["valid"]
+                         and latest["device_id"] == self._tof_profile["device_id"]
+                         and 0 <= now - latest["observed_ns"] <= 100_000_000)
+        self.lcd_blocker.tracking_authorized = bool(valid)
+        if not valid:
+            self.lcd_blocker.clear_output()
+
+    def _expire_installed_observations(self):
+        self._update_center_calibration_action()
+        if self._session_state is SessionState.RUN and not self._lcd_test_active:
+            self._guard_physical_observation_pair(time.monotonic_ns())
+
     def _on_eye_detected(self, x, y, z):
         """Compatibility slot for midpoint-only driver sources."""
         if not calculations_enabled(self._session_state):
@@ -415,6 +780,8 @@ class MainWindow(QMainWindow):
             self.header.set_tracking("STALE EYE SAMPLE", "warning")
             return
         self.tracker.on_eye_detected(x, y, z)
+        self._last_driver_observed_ns = callback_started_ns
+        self._update_center_calibration_action()
         self._record_geometry_timing(
             "driver", callback_started_ns, time.monotonic_ns()
         )
@@ -430,6 +797,8 @@ class MainWindow(QMainWindow):
             self.header.set_tracking("STALE EYE SAMPLE", "warning")
             return
         self.tracker.on_eyes_detected(lx, ly, lz, rx, ry, rz)
+        self._last_driver_observed_ns = callback_started_ns
+        self._update_center_calibration_action()
         self._record_geometry_timing(
             "driver", callback_started_ns, time.monotonic_ns()
         )
@@ -437,10 +806,14 @@ class MainWindow(QMainWindow):
 
     def _on_eye_lost(self):
         self.diagnostics.record_event("eye_lost")
-        if not calculations_enabled(self._session_state):
+        if not calculations_enabled(self._session_state) or self._lcd_test_active:
             return
+        self._last_driver_observed_ns = None
+        self._driver_lcd_frame_valid = False
+        self._guard_physical_observation_pair(time.monotonic_ns())
         self.tracker.on_eye_lost()
         self.header.set_tracking("NO FACE", "warning")
+        self._update_center_calibration_action()
 
     def _update_drowsiness_settings(self, settings=None):
         """Push the current monitoring profile to the camera worker."""
@@ -743,6 +1116,10 @@ class MainWindow(QMainWindow):
     def _activate_lcd_output(self, force=False):
         if not force and not self.controls.check_lcd_output.isChecked():
             return False
+        if not force and self._installation_errors():
+            self.lcd_blocker.disable_output()
+            self.controls.lcd_status.setText("Output waiting: " + "; ".join(self._installation_errors()))
+            return False
         screen = self._selected_lcd_screen()
         if screen is None:
             self.lcd_blocker.disable_output()
@@ -771,6 +1148,7 @@ class MainWindow(QMainWindow):
         return True
 
     def _deactivate_lcd_output(self, reason="idle"):
+        self._lcd_test_active = False
         was_enabled = self.lcd_blocker.output_enabled
         self.lcd_blocker.disable_output()
         if self.controls.check_lcd_output.isChecked():
@@ -788,8 +1166,10 @@ class MainWindow(QMainWindow):
     def _show_lcd_test_output(self):
         if not self._activate_lcd_output(force=True):
             return
+        self._stop_movement_simulation()
         pattern = self.controls.combo_lcd_test_pattern.currentData() or "clear"
         self.lcd_blocker.show_test_pattern(pattern)
+        self._lcd_test_active = True
         self.controls.lcd_status.setText(
             f"TEST ACTIVE: {self.controls.combo_lcd_test_pattern.currentText()}. "
             "Select Close Output when alignment is verified."
@@ -810,6 +1190,10 @@ class MainWindow(QMainWindow):
             (geometry.width(), geometry.height()),
             self.controls.spin_lcd_radius.value(),
         )
+        policy = self.controls.mode_policy()
+        mapping = self._rig_profile.get("panel", {}).get("xz_to_uv") if self._rig_profile and not rig_compatibility_errors(
+            self._rig_profile, self._installation_setup(), policy.use_driver_camera, policy.use_road_camera) else None
+        self.lcd_blocker.set_pixel_mapping(mapping)
 
     def _on_driver_camera_status(self, message, available):
         self.diagnostics.record_event(
@@ -849,7 +1233,7 @@ class MainWindow(QMainWindow):
 
     def _on_rough_stereo_lights(self, sources):
         """Display alignment-only matches without geometry or LCD authority."""
-        if not sources or not cameras_enabled(self._session_state):
+        if not sources or not cameras_enabled(self._session_state) or self._lcd_test_active:
             return
         self._road_position_ready = False
         self.camera_feeds.headlight.set_status(
@@ -858,7 +1242,22 @@ class MainWindow(QMainWindow):
             "ROUGH uncalibrated match - visual alignment only", "warning")
         self.tracker.preview_uncalibrated_lights(list(sources))
 
-    def _on_auto_lights(self, sources):
+    def _on_road_observation(self, observation):
+        if (observation["generation"] != self._installation_generation
+                or observation["captured_ns"] < self._observation_epoch_ns
+                or not calculations_enabled(self._session_state) or self._lcd_test_active):
+            return
+        physical = observation["frame"] == "lcd"
+        if (not observation["sources"] or (physical and abs(observation["pair_skew_ns"]) > 50_000_000)):
+            self._last_road_observed_ns = None
+            self._road_lcd_frame_valid = False
+            self._guard_physical_observation_pair(time.monotonic_ns())
+            self.tracker.on_lights_lost()
+            return
+        self._road_lcd_frame_valid = physical
+        self._on_auto_lights(observation["sources"], observation["captured_ns"])
+
+    def _on_auto_lights(self, sources, captured_ns=None):
         """Consume real independent lights without vehicle-offset modeling."""
 
         if (not calculations_enabled(self._session_state)
@@ -907,6 +1306,10 @@ class MainWindow(QMainWindow):
                 },
             )
         sources = fresh_sources
+        self._last_road_observed_ns = captured_ns
+        if self._lcd_test_active:
+            return
+        self._guard_physical_observation_pair(callback_started_ns)
         self._road_position_ready = True
         self._headlight_camera_available = True
         count = len(sources)
@@ -955,6 +1358,13 @@ class MainWindow(QMainWindow):
             self._on_params_changed()
 
     def _operating_mode_changed(self):
+        if hasattr(self, "_observation_epoch_ns"):
+            self._reset_observation_authority()
+            self.cap_thread.stop()
+            self._stop_headlight_detection()
+            self._installation_generation += 1
+        if hasattr(self, "_rig_profile"):
+            self._refresh_installation_status()
         policy = self.controls.mode_policy()
         if policy.manual_driver != self._driver_source_was_manual:
             # A coordinate produced by one source must never leak into a mode
@@ -972,9 +1382,7 @@ class MainWindow(QMainWindow):
         self.controls.btn_play_movement.setEnabled(
             policy.manual_headlight
             and calculations_enabled(self._session_state))
-        self.header.btn_calibrate.setEnabled(
-            policy.use_driver_camera
-            and calculations_enabled(self._session_state))
+        self._update_center_calibration_action()
 
         if not policy.manual_headlight and self._movement_timer.isActive():
             self._stop_movement_simulation()
@@ -1003,6 +1411,11 @@ class MainWindow(QMainWindow):
             state = SessionState(state)
 
         self._session_state = state
+        self._reset_observation_authority()
+        if state is SessionState.STOP:
+            self._installation_generation += 1
+        self._road_position_ready = False
+        self.tracker.installed_coordinates = bool(self._rig_profile and not self._installation_errors())
         self.diagnostics.record_event(
             "session_state", details={"state": state.value}
         )
@@ -1011,15 +1424,22 @@ class MainWindow(QMainWindow):
 
         self.controls.btn_play_movement.setEnabled(
             state is SessionState.RUN and policy.manual_headlight)
-        self.header.btn_calibrate.setEnabled(
-            state is SessionState.RUN and policy.use_driver_camera)
+        self._update_center_calibration_action()
 
         if state is SessionState.RUN:
+            self.diagnostics.record_event("installation_readiness", details={
+                "generation": self._installation_generation, "binding": self._installation_setup(),
+                "skipped": dict(self._driver_skips), "errors": self._installation_errors()})
+            self._guard_physical_observation_pair(time.monotonic_ns())
             self._activate_lcd_output()
         else:
             self._deactivate_lcd_output(state.value)
 
         if state is SessionState.STOP:
+            if self._tof_worker is not None:
+                if self._tof_worker.stop():
+                    self._tof_worker = None
+            self._tof_connection_status = "Not connected"
             self._road_position_ready = False
             self._stop_movement_simulation()
             self.cap_thread.stop()
@@ -1061,14 +1481,18 @@ class MainWindow(QMainWindow):
     def _ensure_required_cameras(self):
         """Start only the camera workers required by the active mode."""
         policy = self.controls.mode_policy()
+        self._sync_tof_service()
 
         if policy.use_driver_camera:
+            self._push_config()
             if not self.cap_thread.isRunning():
-                self._push_config()
                 self.camera_feeds.driver.set_status(
                     "Opening camera...", "warning")
                 self.cap_thread.start()
         else:
+            if self._tof_worker is not None:
+                if self._tof_worker.stop():
+                    self._tof_worker = None
             self.cap_thread.stop()
             self.camera_feeds.driver.set_placeholder(
                 "Driver position supplied manually")
@@ -1099,6 +1523,13 @@ class MainWindow(QMainWindow):
         self.controls.btn_play_movement.setIcon(IconFactory.icon("play"))
 
     def _camera_setup_changed(self):
+        self.cap_thread.stop()
+        self._stop_headlight_detection()
+        self.controls.check_rig_unchanged.blockSignals(True)
+        self.controls.check_rig_unchanged.setChecked(False)
+        self.controls.check_rig_unchanged.blockSignals(False)
+        self._reload_installation_profiles()
+        self.tracker.reset_on_stream_stop()
         policy = self.controls.mode_policy()
         self._road_position_ready = False
         self.camera_feeds.configure_sources(
@@ -1106,8 +1537,8 @@ class MainWindow(QMainWindow):
             policy.use_road_camera,
             policy.use_road_camera and self.controls.is_stereo_detection(),
         )
-        if cameras_enabled(self._session_state) and policy.use_road_camera:
-            self._start_headlight_detection()
+        if cameras_enabled(self._session_state):
+            self._ensure_required_cameras()
         elif not policy.use_road_camera:
             self._stop_headlight_detection()
         self._refresh_calibration_controls()
@@ -1144,6 +1575,8 @@ class MainWindow(QMainWindow):
             self.controls.stereo_status.setText(
                 f"Calibration ready: {dialog.saved_path.name}. "
                 "Standby/Run will load it; verify measured distances next.")
+            self.controls.check_rig_unchanged.setChecked(False)
+            self._reload_installation_profiles()
         dialog.deleteLater()
 
     def _refresh_available_cameras(self):
@@ -1484,11 +1917,14 @@ class MainWindow(QMainWindow):
         was_running = self.cap_thread.isRunning()
         if was_running:
             self.cap_thread.stop()
+            if self.cap_thread.isRunning():
+                self.camera_feeds.driver.set_status("Camera driver still stopping; select Stop and retry", "warning")
+                return
         self.cap_thread.deleteLater()
         self.cap_thread = VideoCaptureThread(
             camera_index=self.controls.spin_driver_camera.value())
         self.cap_thread.frame_ready.connect(self._update_driver_frame)
-        self.cap_thread.eyes_detected.connect(self._on_eyes_detected)
+        self.cap_thread.eye_observation.connect(self._on_driver_observation)
         self.cap_thread.eye_lost.connect(self._on_eye_lost)
         self.cap_thread.camera_status.connect(self._on_driver_camera_status)
         self.cap_thread.pipeline_timing.connect(self._on_pipeline_timing)
@@ -1496,11 +1932,7 @@ class MainWindow(QMainWindow):
             self._on_drowsiness_updated)
         self.cap_thread.update_drowsiness_settings(
             self.controls.get_drowsiness_settings())
-        if was_running:
-            self._push_config()
-            self.camera_feeds.driver.set_status("Opening camera...", "warning")
-            self.cap_thread.start()
-        self._refresh_calibration_controls()
+        self._camera_setup_changed()
 
     def _start_headlight_detection(self):
         if not self._stop_headlight_detection():
@@ -1538,6 +1970,8 @@ class MainWindow(QMainWindow):
                 brightness_threshold=self.controls.spin_brightness_threshold.value(),
                 detection_settings=detection_settings,
             )
+            if self._rig_profile and not self._installation_errors():
+                self.headlight_thread.installed_pose = self._rig_profile["poses"].get("road")
         else:
             self.headlight_thread = MonocularHeadlightDetectorThread(
                 camera_index=cam1,
@@ -1554,13 +1988,19 @@ class MainWindow(QMainWindow):
             self.headlight_thread.stereo_frames_ready.connect(
                 self._update_stereo_frames)
             self.headlight_thread.rough_lights_detected.connect(
-                self._on_rough_stereo_lights)
+                lambda sources, expected=self.headlight_thread: self._on_rough_stereo_lights(sources)
+                if expected is self.headlight_thread else None)
             self.headlight_thread.stereo_stream_status.connect(
                 self._on_stereo_stream_status)
         else:
             self.headlight_thread.frame_ready.connect(self._update_headlight_frame)
-        self.headlight_thread.lights_detected.connect(self._on_auto_lights)
-        self.headlight_thread.headlight_lost.connect(self._on_headlight_lost)
+        self.headlight_thread.generation = self._installation_generation
+        worker = self.headlight_thread
+        self.headlight_thread.light_observation.connect(
+            lambda observation, expected=worker: self._on_road_observation(observation)
+            if expected is self.headlight_thread else None)
+        self.headlight_thread.headlight_lost.connect(lambda expected=worker: self._on_headlight_lost()
+                                                    if expected is self.headlight_thread else None)
         self.headlight_thread.camera_status.connect(self._on_headlight_camera_status)
         self.headlight_thread.camera_controls_report.connect(
             self._on_camera_controls_report)
@@ -1596,6 +2036,11 @@ class MainWindow(QMainWindow):
 
     def _on_headlight_lost(self):
         self.diagnostics.record_event("road_lights_lost")
+        if self._lcd_test_active:
+            return
+        self._last_road_observed_ns = None
+        self._road_lcd_frame_valid = False
+        self._guard_physical_observation_pair(time.monotonic_ns())
         self._road_position_ready = False
         self.tracker.on_lights_lost()
         if (self.controls.is_auto_light() and self.headlight_thread is not None
@@ -1810,6 +2255,11 @@ class MainWindow(QMainWindow):
             and profile.camera_index == self.controls.spin_driver_camera.value()
             and self.controls.check_driver_depth_calibration.isChecked())
         camera_x, camera_y, camera_z = self.controls.get_camera_pos()
+        driver_model = self._driver_lens if not self._driver_skips["camera"] else None
+        if driver_model and driver_model["camera_index"] != self.controls.spin_driver_camera.value():
+            driver_model = None
+        installed_pose = self._rig_profile["poses"].get("driver") if self._rig_profile and not self._installation_errors() else None
+        self.cap_thread.sensor_service = self._tof_worker
         self.cap_thread.update_config(TrackingConfig(
             screen_w_cm=self.controls.spin_ws_w.value(),
             screen_h_cm=self.controls.spin_ws_h.value(),
@@ -1817,16 +2267,24 @@ class MainWindow(QMainWindow):
             camera_x_cm=camera_x,
             camera_y_cm=camera_y,
             camera_z_cm=camera_z,
-            ipd_cm=profile.ipd_cm if profile is not None else 6.3,
+            ipd_cm=driver_model.get("ipd_cm", 6.3) if driver_model else profile.ipd_cm if profile is not None else 6.3,
             use_calibration=use_calibration,
+            live_driver_distance=self.controls.check_live_driver_distance.isChecked(),
+            driver_model=driver_model,
+            installed_pose=installed_pose,
+            tof_profile=self._tof_profile if driver_model and self.controls.check_live_driver_distance.isChecked() and not self._driver_skips["tof"] else None,
+            generation=self._installation_generation,
         ))
 
     def _on_params_changed(self):
+        self._refresh_installation_status()
         self._refresh_lcd_configuration()
+        if self._session_state is SessionState.RUN and not self._lcd_test_active:
+            self._guard_physical_observation_pair(time.monotonic_ns())
         if self.cap_thread.isRunning():
             self._push_config()
         self.tracker.on_params_changed(
-            calculate=self._coordinates_ready_for_calculation())
+            calculate=self._coordinates_ready_for_calculation() and not self._lcd_test_active)
         self._update_single_projection()
 
     def _toggle_movement(self, playing):
@@ -1885,6 +2343,12 @@ class MainWindow(QMainWindow):
     # ── clean shutdown ──────────────────────────────────────────────
 
     def closeEvent(self, event):
+        self._session_state = SessionState.STOP
+        self._reset_observation_authority()
+        self.lcd_blocker.disable_output()
+        if self._tof_worker is not None and not self._tof_worker.stop():
+            event.ignore()
+            return
         self._movement_timer.stop()
         self.lcd_blocker.disable_output()
         if self.diagnostics.is_active:
@@ -1903,6 +2367,7 @@ class MainWindow(QMainWindow):
                 or (self.headlight_thread is not None and self.headlight_thread.isRunning())):
             event.ignore()
             return
+        self._expiry_timer.stop()
         event.accept()
 
     # ── helpers ──────────────────────────────────────────────────────

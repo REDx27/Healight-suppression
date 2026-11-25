@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Iterable
+import numpy as np
 
 from PyQt5.QtCore import QPointF, Qt
 from PyQt5.QtGui import QColor, QPainter, QRadialGradient
@@ -42,6 +43,8 @@ class LCDBlockerWindow(QWidget):
         self._resolution = (1920, 1080)
         self._radius_px = 40.0
         self._clear_state = "white"
+        self._pixel_mapping = None
+        self.tracking_authorized = True
 
     @property
     def output_enabled(self) -> bool:
@@ -119,6 +122,9 @@ class LCDBlockerWindow(QWidget):
         self.update()
 
     def update_intersections(self, intersections_cm: Iterable[tuple[float, float, float]]):
+        if not self.tracking_authorized:
+            self.clear_output()
+            return
         if not self._enabled_output:
             return
         width_px, height_px = self._resolution
@@ -132,10 +138,28 @@ class LCDBlockerWindow(QWidget):
                 height_px,
             )
             if pixel is not None:
+                if self._pixel_mapping is not None:
+                    u, v = self._pixel_mapping @ [intersection[0], intersection[2], 1.]
+                    if not (0 <= u <= 1 and 0 <= v <= 1):
+                        continue
+                    pixel = (min(int(u * width_px), width_px - 1), min(int(v * height_px), height_px - 1))
                 spots.append(
                     BlockerSpot(pixel[0], pixel[1], self._radius_px, 1.0)
                 )
         self._spots = tuple(spots)
+        self.update()
+
+    def set_pixel_mapping(self, mapping):
+        matrix = None if mapping is None else np.asarray(mapping, float)
+        if matrix is not None and (matrix.shape != (2, 3) or not np.isfinite(matrix).all()):
+            raise ValueError("LCD mapping must be a finite 2 x 3 matrix")
+        self._pixel_mapping = matrix
+
+    def show_alignment_mark(self, uv):
+        if not self._enabled_output:
+            return
+        width, height = self._resolution
+        self._spots = (BlockerSpot(int(uv[0] * width), int(uv[1] * height), 7., 1.),)
         self.update()
 
     def clear_output(self):
