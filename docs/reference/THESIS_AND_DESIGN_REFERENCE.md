@@ -3,10 +3,10 @@
 **Project:** Low-Cost Active Windshield Glare Suppression System
 **Software:** GlareTracker v1.3.0 research release
 **Original milestone snapshot:** 2026-10-05
-**Consolidated through:** 2026-11-27 (includes calibrated camera visualization, operator UI, recovery audit and actuator research)
+**Consolidated through:** 2026-11-27 (includes offline calibration guides/QA, persistence recovery, camera visualization, operator UI and actuator research)
 **Prepared for:** Project teammate and later thesis development
 **Reviewed source baseline:** v1.3 release plus prototype-display integration
-**Current automated verification:** 248 tests passed on Python 3.13 (2026-11-27)
+**Current automated verification:** 292 tests passed on Python 3.13 (2026-11-27)
 **Document status:** Long-form design and milestone reference; current execution
 status is maintained in `PROJECT_STATUS.md` and `docs/plans/VALIDATION_PLAN.md`.
 
@@ -19,6 +19,72 @@ status is maintained in `PROJECT_STATUS.md` and `docs/plans/VALIDATION_PLAN.md`.
 ---
 
 ## Document purpose
+
+### Offline calibration workflow and reliability review - 2026-11-27
+
+The calibration instructions were reviewed against the actual dialogs as a first-time
+operator would use them. The revised [offline manual](../../assets/calibration/offline_manual.html)
+contains all written steps and embeds its eight illustrations/examples, so copying
+that HTML file preserves its pictures. It can be read/printed in a browser without
+network access. The updated in-app guide contains the same instructions, resizing
+local images and separate Road, Driver, ToF, Installed rig, LCD and Verify topics.
+Optional MathWorks, Kevin Wood and Adafruit video references are background material;
+they are not bundled videos, app-specific button instructions or required downloads.
+
+`glare_tracker/calibration_help.py` is the shared source of operator text and image
+references. `widgets/calibration_guide.py` handles responsive display, checking local
+assets/PDF/face-model presence, and opening the local manual. The file check explicitly
+does not certify hardware, USB drivers, controller firmware or physical accuracy.
+`scripts/build_offline_calibration_manual.py` rasterizes the code-native figures and
+embeds the local images into printable HTML. The existing packaging specification
+already includes the calibration-assets folder. Printed samples are distinguished from
+actual measurements: users must not copy example board positions or facial offsets.
+
+The correct full order is: identify three physical cameras; save individual road and
+stereo lens geometry; save driver intrinsics; deliberately skip or calibrate ToF;
+configure the extended output display and measured active dimensions in the parent
+window; then open Installed rig + LCD and complete measured poses and physical marks.
+That last dialog is modal and binds its setup on entry. Closing to change the monitor
+after capturing poses discards unsaved work, so the guide now prepares the display
+first. Its first-inner-corner origin/signs, six fit placements over three depths plus
+three new validations per required camera role, final-filter board visibility and nine
+LCD marks are explained. A fit pass is distinct from Save. After saving, dismiss the
+alert and Close to let the parent reload before confirming physical mounts.
+
+The all-three-camera expectation is conditional on Fully Auto and compatible saved
+driver/stereo/installed-pose/LCD records, unchanged panel/display/camera bindings and
+enabled Camera positions visibility. RIGHT remains derived from LEFT plus stereo.
+New cold-start tests serialize actual driver JSON, stereo NPZ and accepted rig JSON,
+construct a fresh MainWindow, and verify three indices, centres, orientations and the
+15.35 cm synthetic baseline. They verify unchanged saved files on restart and rejection
+after display name/resolution changes. These are software reconstruction checks, not
+measurements of the unfinished physical rig or the eye/light/intersection error.
+
+Review also exposed a standalone persistence defect: locating calibration beside
+extracted modules puts it in the temporary one-file executable directory. Updated frozen
+runs instead share `%LOCALAPPDATA%\GlareTracker\calibration` for profiles and evidence.
+Source runs keep the workspace folder. No automatic migration or overwrite occurs;
+operators must back up both locations and transfer the whole folder, including evidence,
+with the app closed. Files lost by an older EXE cannot be promised recoverable.
+
+A second fix verifies a running connection, fresh valid packet and matching sensor
+identity before Use saved ToF profile activates calibration or persists a changed COM
+port. Stale, disconnected, invalid or wrong-sensor evidence preserves the prior profile.
+This is host-side recovery logic. The repository still has no commissioned MCU bridge
+firmware, and the photographed generic module's electrical ratings are not established.
+The [ToF setup guide](../guides/TOF_SENSOR_OFFLINE_SETUP_GUIDE.md) makes these gates explicit,
+provides conditional Uno/classic-Nano wiring and separate signed-offset examples, and
+offers Skip ToF with Live driver distance OFF and an independently measured fixed depth.
+The user selected Arduino Nano or Uno on 2026-11-27; exact board variant, electrical
+compatibility, firmware commissioning and real sensor validation remain to be completed.
+That route is useful bench operation, not a validated moving-driver depth measurement.
+
+The suite passes **292 tests**, 44 more than the preceding 248-test baseline. Added
+coverage includes frozen/source persistence, retained data on failure, ToF port reuse,
+offline resources and missing-file recovery, small-window guides, saved scene restarts
+and picture resizing. Native Qt previews and the local HTML browser render were visually
+reviewed. Final-filter camera geometry, range accuracy, full rig alignment, attenuation
+and physical latency remain open hardware tests. No previous standalone EXE was rebuilt.
 
 ### Saved camera-rig visualization and sidebar refinement - 2026-11-27
 

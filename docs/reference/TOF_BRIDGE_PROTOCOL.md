@@ -6,6 +6,11 @@ Controller selection, firmware implementation/flashing, wiring and physical seri
 validation remain outstanding. This document specifies the firmware interface; it
 does not claim a tested firmware build is included.
 
+Update 2026-11-27: the intended controller is **Arduino Nano or Uno**. Operator wiring
+examples cover the classic ATmega328P Nano/Uno R3; confirm the actual board variant.
+Controller selection does not complete firmware commissioning or physical validation.
+See the [illustrated offline setup guide](../guides/TOF_SENSOR_OFFLINE_SETUP_GUIDE.md).
+
 ## Transport and identity
 
 USB serial, 115200 baud, UTF-8 newline-delimited JSON objects, maximum 512 bytes per

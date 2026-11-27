@@ -1,128 +1,136 @@
 # GlareTracker Functional Test Plan
 
-Use the source application (`py -3.13 run.py`) and record each result as PASS,
-FAIL, or PARTIAL.  The current two-camera mapping is:
+Reviewed: 2026-11-27. Use the updated source (`py -3.13 run.py`) or a newly built
+standalone containing the updated guides. Old executables are unchanged.
 
-- Camera 0: integrated camera, driver/eye tracking
-- Camera 1: USB camera, road/bright-light tracking
+This is a current operator checklist, replacing the earlier single-road-camera
+bring-up instructions. Record PASS, FAIL or NOT TESTED with the date, operator,
+saved paths and evidence. Historical hardware results remain in the validation plan;
+they are not passes for a newly assembled rig.
 
-Do not assign the same camera index to both live workers.
+Read the [complete offline manual](../../assets/calibration/offline_manual.html)
+before calibration. These checks supplement its detailed steps.
 
-## Current evidence
+## 1. Offline preparation and help
 
-| Test | Status | Evidence |
-|---|---|---|
-| Dependency imports | PASS | OpenCV, MediaPipe, PyQt5, pyqtgraph, and OpenGL imported |
-| Main window construction | PASS | Off-screen construction and visible launch succeeded |
-| Camera discovery | PASS | Windows and OpenCV detected camera 0 and camera 1 |
-| Driver frames and iris landmarks | PASS | 94 frames and 93 eye detections in 10 seconds |
-| Road-camera throughput | PASS | Improved from 7 to 81 frames in 12 seconds at 640x480 MJPEG |
-| Bright-source synthetic detection | PASS | Blank rejection, centroid accuracy, smoothing, and dropout hold passed |
-| Automated regression suite | PASS | 27 tests cover mode/state policy, detected-camera assignment, raw preview integrity, zero-tuning lamp selection, immediate stale-track replacement, multi-scale clutter/window rejection, neutral saturated-lamp peak fallback, rejection of red-channel skin highlights, flare-resistant core centroiding, colored lights, static-background rejection, binocular/multi-light intersections, stable source IDs, tuning UI, profiles, and bright-spot observations |
-| Physical road-light detection | PENDING | Requires the revised adaptive detector to be checked in the live preview |
+1. Install dependencies, face model and USB drivers on the test laptop while online.
+2. Open Cameras > Calibration > Calibration guide... and choose Check offline files.
+3. Confirm written steps and all pictures appear. Open complete offline manual.
+4. Disconnect the network and repeat. Open the bundled checkerboard PDF.
+5. Resize the guide; scroll through every relevant tab and its pictures.
 
-## 1. Application and camera startup
+Pass: local instructions/images/manual/PDF remain usable, no required download or
+automatic website opening occurs, and missing files give actionable recovery text.
+Videos are optional online references. A local-file pass does not test USB hardware.
 
-1. Launch `run.py`.
-2. Confirm the window opens without an exception.
-3. Open Configuration, select **Headlight Position Fixed**, and set driver camera to `0`.
-4. Click **Run**.
+## 2. Three camera identities and modes
 
-Pass criteria: the driver card identifies its backend and resolution, shows a
-live image, and the header does not report CAMERA OFFLINE.
+1. Select Stop. Close other apps using cameras and refresh discovery.
+2. Choose Fully Auto in Operation > Operating Mode; expand the collapsed panels.
+3. Assign Driver, Road left and Road right to three different physical cameras.
+4. Use Standby and briefly cover each lens to identify the preview; return to Stop.
+5. Verify the role-relevant calibration commands in each operating mode.
 
-## 2. Eye tracking
+Pass: all required feeds are correctly identified and no two live roles share a
+device. Do not assume that a historical camera index still identifies the same lens.
+Fixed-source modes legitimately expose fewer camera calibration stages.
 
-1. Face camera 0 in even lighting.
-2. Move left/right, then up/down.
-3. Roll the head so one eye is visibly higher than the other.
-4. Move closer and farther from the camera.
+## 3. Road and driver lens calibration
 
-Pass criteria: iris markers remain on both eyes, the header reads BOTH EYES TRACKING,
-and eye/target geometry moves without freezing. Head roll produces two vertically
-separated windshield intersections for one light. Brief blinks may show NO FACE but
-tracking must recover automatically.
+1. Follow the flat-board preparation, measured square size and varied captures.
+2. Collect at least 15 accepted LEFT views and fit; repeat RIGHT.
+3. With cameras rigid, collect at least 15 accepted stereo pairs and fit.
+4. Check baseline against the physical lens-centre measurement; Save stereo profile.
+5. Calibrate the driver camera separately and Save camera profile.
+6. Confirm each saved-success message and saved status; close the dialogs.
 
-## 3. Centre calibration
+Pass: actual native frame sizes match for stereo; every fit passes its quality
+gates and saving succeeds. A Fit message alone is not a saved profile or physical
+accuracy result. Follow rejection messages; do not relax gates to obtain a pass.
 
-1. Look straight ahead from the intended driving position.
-2. Click Calibrate Center.
-3. Move away from centre and return to the same pose.
+## 4. Driver distance: choose the truthful route
 
-Pass criteria: status reports CALIBRATED and the returned centre is repeatable.
+Without a commissioned controller: explicitly Skip ToF for now, close its dialog,
+leave Driver > Driver Distance > Live driver distance OFF, and enter the independently
+measured Fixed distance. Hold the eye plane at that depth during the test.
 
-## 3A. Guided distance calibration
+With commissioned bridge v1: follow the [ToF guide](../guides/TOF_SENSOR_OFFLINE_SETUP_GUIDE.md).
+Capture three fit plus two new validation distances, independently measure both signed
+offsets, save, dismiss the alert and Close. Deliberately select live distance.
 
-1. Open **Single-Camera Calibration → Calibrate Single-Camera Distances**.
-2. Enter the measured driver IPD and camera-lens-to-eye distance.
-3. Hold the driver's head straight and capture after 20 stable samples.
-4. Place the demonstration lamp at a measured reference distance from camera 1.
-5. Hold the lamp centred and steady, then capture after 20 stable diameter samples.
-6. Review and activate both profiles.
+Pass: the indicated route matches what is really connected. Wrong sensor identity,
+stale readings or a failed connection must not activate a saved ToF profile. Reuse
+on a changed COM port requires Connect / reconnect and fresh valid same-sensor
+evidence before Use saved ToF profile.
 
-Pass criteria: both pages reject unstable/insufficient samples, Finish enables both
-profile checkboxes, driver telemetry Y changes when the driver moves closer/farther,
-road telemetry Y changes inversely with apparent lamp size, and the road overlay changes
-from `ASSUMED` to `EST`.
+Current limitation: no controller firmware build is supplied by this repository.
+Software tests do not commission a real sensor.
 
-## 4. Manual light and intersection geometry
+## 5. Installed rig and LCD registration
 
-1. Select **Fully Manual** and click **Run**.
-2. Change light X, Y, and Z individually.
-3. Change windshield width and height.
+1. Fix final cameras, focus, filters and panel mounts.
+2. BEFORE opening Installed rig + LCD, select Extend, the correct Target display
+   and measured active width/height. Choose Fully Auto if all three poses are wanted.
+3. Follow the marked first-inner-corner/level-board procedure. Per required camera
+   role, capture six fit placements over at least three depths and three new validation
+   placements. Fit / validate installed pose. The filtered board must remain visible.
+4. Complete all nine independent physical LCD dot measurements and validate mapping.
+5. Save installed rig profile, dismiss its alert, then Close the window.
+6. Check physical camera order/mounts and confirm them in the parent panel.
 
-Pass criteria: the light marker, ray, 2D intersection, 3D intersection, and
-numeric readouts update consistently without moving the camera feeds.
+Pass: the saved rig is compatible with the actual profiles, camera indices, panel and
+selected display. The scene shows Driver, Road L and Road R at their saved positions
+in Fully Auto. RIGHT is derived from LEFT plus stereo, not manually invented.
+Closing before Save loses unsaved dialog work; display/settings changes require a new
+compatible installed calibration.
 
-## 5. Simulated light movement
+## 6. Independent geometry and output check
 
-In **Fully Manual** or **Headlight Position Fixed** while running, run each movement
-preset and stop it midway.
+1. Hold a measured eye reference and a diffused stationary lamp at known positions.
+2. Independently locate their line's crossing on the panel and compare spot centres.
+3. Repeat for both eyes, multiple lamps/depths, centre and edges.
+4. Record signed X/Z error and error magnitude in mm, not only screenshots.
+5. Run the dedicated physical intersection/LCD/latency protocols for research results.
 
-Pass criteria: the light follows the selected path, the intersection follows
-it, and stopping leaves the UI responsive.
+Pass criteria come from the research protocols. Smooth previews, low reprojection
+error, three plausible camera markers and passing automated tests are not substitutes
+for these measured results.
 
-## 6. USB road-light detection
+## 7. Run / Standby / Stop and failure recovery
 
-1. Select **Stop**, then use **Refresh Available Cameras** in **Camera Selection**.
-2. Select **Driver Position Fixed**, **Single Camera**, and choose the built-in webcam
-   from the **Headlight camera** dropdown. The **Driver camera** selection is not opened
-   in this mode.
-3. Enter the measured light distance in **Assumed depth**, click **Standby**, then select
-   **Load Daylight Phone-Light Preset**.
-4. Choose **Multi-scale saliency** in the feed preview. The phone lamp should be the
-   hottest compact region; broad illumination and long bright edges should be cooler.
-5. Switch to **Detection overlay** and click **Run**. The isolated-phone preset accepts
-   only the highest-ranked source, and the box reports its confidence.
-6. Background capture is optional. If a stationary compact reflection still competes
-   with the lamp, switch the phone off, select **Capture Background Without Test Light**,
-   turn it on again, and inspect **Background difference**.
-7. The preset disables and clears background rejection, selects the detection overlay,
-   sets the saliency floor to 8, confidence to 25%, and maximum sources to one. A
-   saturated-core fallback operates independently of the saliency threshold. Select
-   **Peak-core mask** to verify that a fully exposed white source appears in white.
+1. With the intended setup ready, use Standby to check all required real feeds.
+2. Run: confirm output opens only on the selected secondary display.
+3. Standby and Stop: confirm that output releases the secondary display.
+4. With the rig stationary, test Stop then Run; inspect restored feeds.
+5. Test disconnection/reconnection under the project recovery protocol.
+6. Close during capture/fitting only when the dialog allows camera/thread release.
 
-Pass criteria: preview rate is at least 7 FPS, a green circle follows the light,
-the driver camera remains closed, tracking remains stable, and X/Z change smoothly. If OVEREXPOSED
-appears, move the lamp farther away. Broad stationary lights must not be fixed by
-arbitrarily raising the brightness threshold; verify the saliency, threshold-mask, and
-background-difference stages to identify which rejection gate is responsible.
+Pass: no stale blocking output, hung threads or silent use of invalid measurements.
+A rejected calibration, empty sample buffer or missing device remains a clear failure,
+with a usable retry/skip route. Record hardware recovery behavior separately.
 
-## 7. End-to-end two-camera operation
+## 8. Save, restart and transfer
 
-1. Select **Fully Auto**, choose **Single Camera**, and click **Run**.
-2. Confirm eye tracking is active on camera 0 and road tracking on camera 1.
-3. Move the driver's head, then move the light independently.
+1. Close the app and back up the entire calibration folder including evidence.
+2. Reopen with unchanged devices/mounts; verify saved indicators and camera markers.
+3. Confirm mounts after checking them; no physical confirmation is assumed on restart.
+4. Recheck fixed/live distance choice and output display before Run.
 
-Pass criteria: both previews remain live and either movement updates the
-windshield intersection without one camera disconnecting the other.
+Source profiles are in the workspace's calibration folder. The updated standalone
+uses `%LOCALAPPDATA%\GlareTracker\calibration`. Transfer is manual: back up both
+locations before copying; no automatic migration or overwrite is performed.
+The earlier standalone may have written temporary extraction files.
 
-## 8. Recovery and shutdown
+Pass: matching saved files restore without changing their contents. Changed monitor
+name/resolution, panel dimensions, camera identity or lens/stereo fingerprints invalidate
+affected saved geometry. Never force old coordinates onto a changed rig.
 
-1. Switch from **Run** to **Standby** and confirm previews stay live while geometry freezes.
-2. Click **Stop**, confirm both cameras are released, then click **Run** again.
-3. Switch from **Fully Auto** to **Fully Manual** and back.
-4. Close the application while both cameras are active.
+## Automated and physical evidence
 
-Pass criteria: camera threads stop cleanly, devices reopen, and the process
-exits without hanging.
+The current suite covers geometry, detection/tracking, mode/state policies,
+calibration quality/failure paths, sensor parsing/freshness/identity, persistence,
+saved three-camera scene restoration, offline resources and small-window guide layout.
+Record the final suite count in PROJECT_STATUS.md.
+
+Physical accuracy, final-filter optical performance, ToF commissioning and the
+complete new rig still require the tests above. Mark them NOT TESTED until measured.

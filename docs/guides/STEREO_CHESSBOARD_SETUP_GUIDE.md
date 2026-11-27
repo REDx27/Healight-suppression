@@ -1,149 +1,214 @@
 # Road Stereo Chessboard Setup Guide
 
-Updated: 2026-11-05. Current development priority: calibrate the replacement road cameras
-before adding live driver tracking back into the experiment. This is a stationary
-laboratory procedure, not a moving-vehicle test.
+Updated: 2026-11-27. This is a stationary bench procedure for the two road-facing
+cameras. The third, driver-facing camera has a separate calibration.
 
-## 1. Fix the physical setup first
+**Offline starting point:** open the bundled
+[illustrated calibration manual](../../assets/calibration/offline_manual.html)
+in a browser. It includes the complete sequence and local images; internet access
+is not needed for its instructions. Keep the application, its assets and its
+calibration folder together. Use the application’s **Print A4 chessboard...**
+button, or open the [supplied printable PDF](../../output/pdf/road_stereo_chessboard_A4_9x6_20mm.pdf).
 
-- There are **two road cameras plus one driver camera**, confirmed by the operator.
-- For the current replacement hardware, DirectShow identifies the integrated driver
-  camera as index **0** and the identical external road cameras as indices **1** and
-  **2**. The app now labels the names and locks the integrated device to the driver
-  role. Confirm the labels after reconnecting because Windows can reorder indices.
-- Mount the road cameras rigidly, side by side, with overlapping views. As you look
-  toward the scene from behind the cameras, primary is LEFT and secondary is RIGHT.
-  The supported matcher expects a horizontal left-to-right pair.
-- Measure and record optical-centre separation; do not assume the old 25 cm default.
-- Begin this initial guided pass **without the sunglass filters**, as instructed by
-  the dialog. After a passing stereo profile is saved, fix and label each filter
-  without moving either camera. That bare-camera result is provisional until the
-  planned post-filter geometric verification passes. If a filter changes effective
-  geometry beyond the declared limit, repeat full calibration through the filters
-  using a brighter or backlit target.
-- Lock focus/zoom using the device's supported controls or camera utility. The app
-  does not currently lock autofocus. Changing focus, zoom, lens/filter placement or
-  either mount requires recalibration. Exposure may be adjusted for board visibility,
-  but avoid clipped whites, blurred frames and disappearing dark squares.
-- Photograph the mount and label the cameras. Device indices are not persistent
-  hardware identities: check the feeds again after unplugging/reordering devices.
+## 1. Prepare the equipment
 
-## 2. Prepare the chessboard
+![The full calibration route](../../assets/calibration/offline_workflow.png)
 
-For illustrated examples of the required flat backing, pose coverage, and stage
-sequence, open the
-[Visual Road-Stereo Calibration Guide](VISUAL_STEREO_CALIBRATION_GUIDE.md).
+1. Choose **Stop** on the main toolbar. Wait for camera scanning to finish and
+   close Windows Camera, video-call software and other applications using webcams.
+2. Label the physical devices **Driver**, **Road LEFT** and **Road RIGHT**. Decide
+   LEFT/RIGHT while standing on the driver side and looking toward the road.
+   Do not decide it from a mirrored selfie preview.
+3. Fasten the two road cameras side by side on a rigid bar. Their views must
+   overlap enough to show the same complete board. Move the board during this
+   procedure; keep the cameras and their focus fixed.
+4. Measure between the centres of the two lenses and write down that separation.
+   This is the **baseline**, not the gap between the cases.
+5. Remove the dark filters for this first component-calibration pass. Fit them
+   again only after saving, without shifting or refocusing the cameras. The final
+   filtered setup needs geometric checks before accuracy measurements.
 
-Use a flat black-and-white checkerboard with a white outer margin, firmly attached
-to a flat backing. The default is **10 columns × 7 rows of squares**, giving
-**9 × 6 inner corners**. Enter inner corners, not square counts.
+Camera numbers can change after unplugging. Although one installation used Driver 0
+and Road 1/2, those numbers are not a permanent promise. Check the actual feeds and
+device names every session. This application requests a shared 640 × 480, 15 FPS
+road-camera mode; the preview’s native-size labels show what was actually received.
 
-Use **Print A4 chessboard...** in the calibration window. In the PDF viewer select
-**Actual size / 100%**, A4 landscape, and disable **Fit to page**. The supplied board
-has 9 x 6 inner corners, 10 x 7 squares, and a designed square side of 2.0 cm.
-Measure several printed squares with a ruler and enter the measured average in
-centimetres; never assume the printer preserved the designed size.
-Measure across several squares and divide to reduce ruler error. Printer scaling
-changes metric depth, even when the fitted reprojection error is low.
+## 2. Prepare and measure the board
 
-The corner convention, intrinsic fitting, stereo fitting and rectification follow
-the [OpenCV calibration documentation](https://docs.opencv.org/4.5.2/d9/d0c/group__calib3d.html).
+![Use rigid flat backing rather than curled paper](../../assets/calibration/flat_board.png)
 
-## 3. Capture and fit
+1. Print A4 landscape at **Actual size / 100%**. Turn off **Fit to page**.
+2. Keep the white border. Glue the complete sheet to rigid, flat backing. Do not
+   use a loose, folded or hand-bent sheet.
+3. Count **inner corners**, the crossings inside the pattern: **9 across and
+   6 down**. The sheet has **10 × 7 squares**.
+4. Measure across several squares, then divide. For example, if five square sides
+   span 10.0 cm, enter **2.000 cm** as **Measured square side**. A designed 20 mm
+   square equals 2.0 cm, but use the ruler result after printing.
+5. Check that all black/white boundaries are sharp and that there is no glare,
+   blur, tape, finger or clip over the pattern.
 
-1. Launch `py -3.13 run.py` and select **Stop**. Close other apps using the cameras.
-2. Refresh the available cameras and wait for scanning to finish. Choose **Driver
-   Position Fixed** and **Stereo Cameras**. Assign the left and right road feeds to
-   Headlight camera and Headlight camera 2. Leave the driver camera assigned but idle.
-3. After discovery, choose **Calibrate now** in the startup offer, or click
-   **Calibrate road stereo (chessboard)** later. Confirm indices, inner-corner counts
-   and measured square size.
-4. Complete the three stages in order: collect at least 15 varied LEFT-only views and
-   fit LEFT intrinsics; repeat independently for RIGHT; rigidly fix both cameras and
-   then collect at least 15 paired views visible in BOTH feeds. Move the board, not
-   the cameras. Cover different tilts, distances and positions, including image edges
-   and centre. Avoid nearly identical images, blur or obscured corners.
-5. The application saves only pairs where both boards are detected, rejects near
-   duplicates, and preserves raw capture images without display scaling or mirroring.
-   Both replacement road cameras use the live-verified shared mode of
-   **640 x 480 at 15 FPS**. A simultaneous probe of the real external pair, cameras
-   1 and 2, delivered all 92 sampled frames from each at that mode. The earlier
-   320-versus-352 mismatch came from accidentally combining the integrated camera
-   with one external camera; it was not a mode difference between the identical pair.
-6. Fit each stage when enabled. The paired fit holds the accepted individual
-   intrinsics fixed. A stereo candidate passes the software gates only if its
-   matrices are finite, stereo RMS is at most 1.5 px, the 95th-percentile rectified
-   vertical corner error is at most 2 px, and the horizontal baseline has the expected
-   sign. These are initial engineering gates, not a proven physical accuracy limit.
-7. Compare the reported baseline with your ruler measurement. If inconsistent, do
-   NOT save: check units, board size, camera order and pose diversity; capture again.
-8. Save an accepted profile. A **Stereo calibration complete** alert must appear; if it
-   does not, the profile was not accepted and the calibration is incomplete. The dialog
-   then closes automatically. Install the dark filters without moving the cameras. The
-   current software warns that post-filter verification is
-   still required; do not collect final measurement evidence until that gate is
-   implemented and passed. No active profile is replaced until you explicitly save.
+A low pixel fit error does not prove the printed square size is correct. Wrong
+square units can give a plausible-looking fit with the wrong distance scale.
 
-Ordinary USB camera grabs are sequential, **not hardware-synchronized**. Keep the
-board and later test light still during initial tests. Timing for moving targets
-requires separate validation. A low fit error uses the same images as calibration;
-it is not held-out accuracy evidence.
+## 3. Open the correct controls
 
-## 4. Fine-tune one stationary light
+All settings sections start collapsed. Click a section header to open it; keyboard
+users can focus a header and press Space or Enter.
 
-Keep Driver Position Fixed and one light source initially. Use the two **Original**
-previews to confirm the same lamp is visible and not badly saturated. Then use
-Detection overlay, Threshold mask and other processing views to tune the existing
-brightness, exposure, area and confidence controls. Camera-driver settings may not
-be supported equally by both webcams; visually inspect both feeds.
+1. Open **Operation**, expand **Operating Mode**, and select **Driver Position
+   Fixed** for an initial road-camera bench test. The driver camera remains
+   assigned but is not used for that mode’s live eye measurements.
+2. Select the **Cameras** context icon and expand **Camera Selection**.
+3. Use the fields **Driver**, **Road left** and **Road right** to assign the actual
+   devices. If needed, select **Refresh cameras**, wait, then check the choices
+   again. The normal interface already uses stereo for the road pair; no separate
+   setup selection is needed.
+4. Expand **Calibration**, then choose **1. Road stereo calibration**.
+5. In that window check the LEFT and RIGHT camera numbers, **Inner corner columns
+   = 9**, **Inner corner rows = 6**, and your measured square side.
 
-Use an isolated torch or phone light inside both views. Do not aim the road pair at
-the room's fluorescent tube: the live diagnosis showed both feeds dominated by a long
-saturated ceiling strip instead of a point-like test source. The detector now rejects
-edge-truncated and strongly elongated saliency candidates, but scene preparation is
-still necessary.
+A startup calibration offer may open the same workflow. It does not replace these
+identity and board-size checks.
 
-Before calibration, the status may show **ROUGH UNCALIBRATED** when one candidate in
-each feed can be paired. This is an alignment/tuning aid only: its displayed depth is
-assumed. It can render amber **ROUGH** demo intersections, but these are not valid
-measurement records and can never reach LCD output. A feed showing vertical color
-bars is marked invalid; replug that camera, select Stop, and Run again before
-continuing.
+## 4. Collect LEFT camera views
 
-Read the stereo diagnostics:
+![Move the board across the image and vary its tilt and distance](../../assets/calibration/pose_coverage.png)
 
-- **Calibration required / previews only:** profile missing, wrong camera order,
-  invalid fit, or resolution mismatch. The app intentionally emits no metric light
-  coordinates; the old 900 px focal / 25 cm baseline fallback is removed.
-- **Left > 0, Right = 0** (or the reverse): investigate visibility, filter darkness,
-  saturation, focus, threshold and candidate filtering in the missing view.
-- **Both > 0, Matches = 0:** check common lamp identity, camera order, calibration
-  and disparity. Matching requires positive disparity and vertical error ≤3 px.
-- **Matches > 0:** record range, then compare with independent ruler measurements.
-  A match does not by itself prove accuracy; multiple lights can be ambiguous.
+1. Select **Start LEFT calibration**. Confirm the LEFT feed is the expected camera.
+2. Place the complete board in the centre. Stop moving it, then choose
+   **Capture LEFT view** once.
+3. Check the counter. Only an accepted view increases it. If the message says the
+   board was missing or the view was too similar, correct that condition first.
+4. Capture at least **15 accepted views**. Use the centre, left, right, top and
+   bottom areas, several distances, and gentle horizontal/vertical tilts.
+5. Select **Fit LEFT intrinsics** when enabled. “Intrinsics” means this camera’s
+   lens/image model, including focal length and distortion.
+6. Wait for the LEFT pass alert. The dialog then moves to the RIGHT stage.
 
-Check a stationary lamp at several measured depths and lateral positions, with
-repeated runs. Compare reported depth with distance along the calibrated rig's
-forward axis, not slant distance or distance from an arbitrary laptop location.
-The live coordinate mapping still assumes a centred, aligned rig; camera-to-windshield
-extrinsic profiles are NOT yet applied. Do not claim accurate windshield intersections
-from stereo calibration alone.
+Do not fill the counter by clicking repeatedly on an unchanged board. Fifteen
+accepted views are a minimum, not a reason to keep poor photographs.
 
-After stereo is repeatable, switch to Fully Auto to include the driver camera. Then
-resume the recording soak and the ordered ground-truth/extrinsic/physical protocols.
+## 5. Repeat for RIGHT
 
-## Evidence and limitations
+1. Select **Start RIGHT calibration**. Check that its physical camera and native
+   image dimensions are correct.
+2. Repeat the complete set of at least **15 accepted, varied sharp views**.
+3. Select **Fit RIGHT intrinsics**, then wait for the RIGHT pass alert.
 
-- Each attempt is preserved under `calibration/stereo_sessions/<UTC-session>/`:
-  `setup.json`, LEFT/RIGHT individual images and reports, paired raw
-  `NNN_left.png` / `NNN_right.png`, `report.json` after stereo fitting, and
-  `accepted_calib.npz` after saving. Abandoned attempts remain available.
-- The active profile is `calibration/stereo_<left-index>_<right-index>_calib.npz`.
-  Legacy generic `stereo_calib.npz` files are not automatically applied. Recalibrate
-  through this workflow; an unlabelled profile cannot establish camera identity.
-- Raw sessions and active calibration files are ignored by Git. Back them up
-  separately with setup photographs, actual device/filter identities, measured
-  baseline, held-out distance results and the source commit used.
-- Automated tests cover synthetic geometry and mocked camera/UI paths. The physical
-  chessboard capture, real camera drivers, true range accuracy and synchronization
-  still require operator validation. No physical test is marked passed by this guide.
+Different apparent board sizes can result from different focal lengths or camera
+positions. Each camera keeps its own lens model. Equal width/height does not prove
+identical optics. A native-resolution mismatch warning must be corrected; do not
+resize an image or change the measured square size to make the previews look equal.
+
+## 6. Calibrate the fixed pair
+
+![Hold one board still in the overlapping camera views](../../assets/calibration/stereo_capture.png)
+
+1. Check again that the pair is rigid, ordered correctly and focused. Keep this
+   arrangement unchanged for all remaining pair captures.
+2. Select **Start STEREO calibration**.
+3. Put the board on a stand so that both cameras see the full pattern.
+4. Move it to a new position or gentle tilt, stop touching it, and wait for it to
+   settle. Select **Capture pair**.
+5. Confirm the pair counter increases. Repeat for at least **15 accepted pairs**
+   across different depths and image regions in the overlap.
+6. Select **Fit stereo geometry**.
+
+Ordinary USB webcams are not hardware-synchronized. A stationary supported board
+reduces movement between the two sequential captures.
+
+## 7. Check, then SAVE
+
+| What you see | What it means | What to do |
+| --- | --- | --- |
+| LEFT/RIGHT intrinsic pass | That individual lens fit passed its software limit | Continue to the next stage |
+| STEREO FIT PASSED — NOT SAVED YET | The pair passed fit gates; the active profile is not saved yet | Compare the reported baseline with your ruler result, then save |
+| Fit not accepted / failed | No new active profile has been accepted | Read the message and correct the cause; do not loosen limits to accept bad data |
+| CALIBRATION COMPLETE — STEREO PROFILE SAVED | A passing pair profile was saved | Keep camera identities, focus and mounts unchanged |
+
+The initial software limits are individual/stereo RMS no greater than **1.5 px**,
+rectified vertical-row error p95 no greater than **2.0 px**, finite matrices and the
+required LEFT/RIGHT translation sign. These limits describe software acceptance,
+not an established physical accuracy result.
+
+Here **px** means an image pixel, not a centimetre. RMS summarises how well the
+model matches the image corners. A row-error **p95** of 2 px means 95% of the checked
+corners have vertical mismatch no greater than 2 px. These figures use calibration
+images; independent ruler measurements are still needed.
+
+For example, if a ruler gives about 15.35 cm and the fit gives about 15.4 cm, check
+the measurement uncertainty and other quality messages before saving. If the fit
+gives 1.54 cm or 154 cm, stop and check square units/printing, camera order and
+measurements; do not assume the scale is valid because RMS is small.
+
+Choose **Save stereo profile** only after these checks. The success alert confirms
+saving and the dialog closes. A fit pass alone is not completion.
+
+## 8. Recover from common problems
+
+| Problem | Action |
+| --- | --- |
+| Camera unavailable | Close other camera apps; confirm the selected device, then use the retry connection button. If the driver remains busy, close calibration, reconnect and reopen. |
+| Counter does not increase | Read the message; show the entire sharp board, improve lighting, or move to a genuinely different pose. |
+| Native resolutions differ | Stop and confirm the two intended road cameras and matching actual capture modes. Do not resize samples to hide the mismatch. |
+| High intrinsic error | Check the target is perfectly flat, sharp and measured. If saved views used bent paper, close and start a clean session rather than adding more views to bad data. |
+| High paired vertical-row error | Check both cameras stayed rigid and the same board was stationary in both feeds. Recheck order, focus and pose coverage. |
+| Baseline does not match the ruler | Check square units, actual printer scale, camera identity and LEFT/RIGHT order. Recalibrate before saving. |
+| Cannot write evidence/save | Check writable storage and free space. The prior active profile survives a failed save. Do not leave believing the new one was saved. |
+
+After saving, install the filters carefully. Use a stationary, isolated lamp visible
+in both feeds. Under **Road lights > Light Detection**, start with the existing
+preset; use the road-feed **Detection overlay** or **Original** view to inspect each
+camera. If only one sees the lamp, fix view overlap, exposure/filter darkness or
+detection in that feed before blaming the geometry.
+
+## 9. What comes next: all three cameras in the scene
+
+**Stereo fitting does not locate cameras relative to the LCD.**
+
+For the complete **Fully Auto** installation:
+
+1. Save the road stereo profile.
+2. Save the driver-camera lens profile. Skip ToF explicitly if its controller/
+   compatible firmware is not ready; use a measured fixed driver distance for
+   bench work.
+3. With the final rig and LCD fixed, select **Fully Auto** and complete
+   **3. Installed rig + LCD**: accepted road LEFT pose, accepted driver pose,
+   accepted LCD physical mapping, then **Save installed rig profile**.
+4. Return to Calibration and confirm camera order and unchanged mounts.
+5. Check **Driver**, **Road L** and **Road R** in the 3D scene. Their points use the
+   panel’s world centimetres; arrows indicate viewing direction. Road RIGHT is
+   derived from the saved stereo relation.
+6. If a marker is missing, check the saved profile and matching cameras, image
+   calibration, panel dimensions and selected display. The **Camera positions**
+   switch in 3D view settings must be on.
+
+A road-only **Driver Position Fixed** rig does not require a calibrated driver pose,
+so three physical camera markers are not guaranteed in that mode. Skipping ToF
+does not remove otherwise compatible camera poses. Three markers show saved pose
+data; they do not prove physical spot accuracy.
+
+Continue with the [driver/installed-rig guide](DRIVER_AND_INSTALLED_RIG_CALIBRATION_GUIDE.md)
+and [ordered validation plan](../plans/VALIDATION_PLAN.md).
+
+## Offline records and optional videos
+
+Source runs keep accepted attempts/evidence under
+`calibration/stereo_sessions/<UTC-session>/` beside run.py. Updated standalone runs
+use `%LOCALAPPDATA%\GlareTracker\calibration` instead; paste that path into File Explorer.
+The active ordered-pair file is `stereo_<left-index>_<right-index>_calib.npz` in that
+calibration root. Source-to-standalone transfer is manual; back up both folders first.
+Back up the whole calibration folder including evidence,
+rig photographs, measured board size/baseline and the source version before leaving
+internet access. These local calibration files are not uploaded to Git automatically.
+
+The written steps and bundled pictures above work offline. These videos are
+**optional internet-only references**, not prerequisites or instructions for this
+app’s exact buttons. Prepare any permitted offline copy before the test trip:
+
+- [MathWorks: Camera Calibration with MATLAB — video and transcript](https://www.mathworks.com/videos/camera-calibration-with-matlab-81233.html).
+- [Kevin Wood: camera calibration explanation](https://www.youtube.com/watch?v=H5qbRTikxI4).
+
+Primary technical reference: [OpenCV calibration and pose documentation](https://docs.opencv.org/4.x/d9/d0c/group__calib3d.html).
+The application’s own offline manual is the authority for the workflow and labels.

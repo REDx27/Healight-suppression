@@ -120,6 +120,33 @@ def calibration_quality(result, pairs, pattern, max_rms=1.5, max_row_error=2.0):
 class CalibrationVisualGuideDialog(CalibrationGuideDialog):
     """Illustrated operator guide embedded in the calibration workflow."""
 
+    class _GuideImage(QLabel):
+        """Rescale from the original figure without forcing a wide scroll page."""
+
+        def __init__(self, asset):
+            super().__init__()
+            self._original = QPixmap(str(calibration_guide_asset_path(asset)))
+            self.setAlignment(Qt.AlignCenter)
+            self.setMinimumWidth(0)
+            self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+            if self._original.isNull():
+                self.setText(f"Guide image unavailable: {asset}")
+            else:
+                self._fit_image()
+
+        def _fit_image(self):
+            if self._original.isNull():
+                return
+            pixmap = self._original.scaled(
+                min(680, max(1, self.contentsRect().width())), 300,
+                Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            self.setPixmap(pixmap)
+            self.setFixedHeight(pixmap.height())
+
+        def resizeEvent(self, event):
+            super().resizeEvent(event)
+            self._fit_image()
+
     SECTIONS = (
         (
             "Keep the checkerboard flat",
@@ -155,17 +182,10 @@ class CalibrationVisualGuideDialog(CalibrationGuideDialog):
         content_layout = QVBoxLayout(content)
         for position, (title, asset, instructions) in enumerate(self.SECTIONS, start=1):
             heading = QLabel(f"<h2>{title}</h2>")
+            heading.setWordWrap(True)
             content_layout.addWidget(heading)
-            image_label = QLabel()
+            image_label = self._GuideImage(asset)
             image_label.setObjectName(f"guideImage{position}")
-            image_label.setAlignment(Qt.AlignCenter)
-            pixmap = QPixmap(str(calibration_guide_asset_path(asset)))
-            if pixmap.isNull():
-                image_label.setText(f"Guide image unavailable: {asset}")
-            else:
-                image_label.setPixmap(pixmap.scaled(
-                    min(680, self.width() - 64), 300,
-                    Qt.KeepAspectRatio, Qt.SmoothTransformation))
             content_layout.addWidget(image_label)
             details = QLabel(instructions)
             details.setWordWrap(True)

@@ -5,7 +5,7 @@
 **Software version:** 1.3.0 plus the post-release prototype-display integration
 **Status date:** 2026-11-27
 **Audience:** Project team, supervisor, presentation authors, and AI-assisted study
-**Verification at this state:** 248 automated tests passed on Python 3.13; the earlier
+**Verification at this state:** 292 automated tests passed on Python 3.13; the earlier
 1600 x 900 secondary-display Run/Standby/Stop smoke test passed on the connected
 monitor.
 
@@ -18,6 +18,27 @@ monitor.
 ---
 
 ### Latest update - 2026-11-27
+
+The [complete offline calibration manual](../../assets/calibration/offline_manual.html)
+and in-app guide now contain ordered steps, eight local illustrations/examples,
+exact button names, measured sample plans, recovery instructions and optional videos.
+The HTML embeds its pictures and can be copied/printed without internet. A local-file
+check and offline rehearsal distinguish missing files from hardware readiness. Configure
+the extended monitor/active dimensions before opening installed-rig calibration; Save,
+dismiss the alert and Close before checking loaded camera markers.
+
+The [ToF guide](../guides/TOF_SENSOR_OFFLINE_SETUP_GUIDE.md) explicitly states that no
+commissioned controller firmware is included. Until it exists, Skip ToF and Live driver
+distance OFF with a measured fixed depth is the declared bench route. New fixes persist
+standalone calibration/evidence in local app data and require fresh same-sensor evidence
+to reactivate/rebind a saved ToF COM port. Source profiles are not automatically migrated.
+
+292 tests pass. Added checks verify saved three-camera reconstruction after restart,
+changed-display rejection, offline/missing assets, sensor reuse and small-window guides.
+Native guide/browser previews were reviewed. These are software tests, not new physical
+calibration results, and the older EXE has not been rebuilt.
+
+### Camera markers and sidebar update - 2026-11-27
 
 Settings now start collapsed; rail icons have more separation and expanded panels
 have larger body/row spacing. Profile, bulb, monitor and microscope symbols identify

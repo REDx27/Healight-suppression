@@ -1,5 +1,15 @@
 # GlareTracker System Workflow and Test Guide
 
+> **Historical demonstration reference.** The body below describes the earlier
+> 2026-10 single-road-camera prototype; its use of “current” refers to that snapshot.
+> For today's three-camera/offline calibration, use the
+> [complete illustrated manual](../../assets/calibration/offline_manual.html),
+> [driver/installed-rig guide](DRIVER_AND_INSTALLED_RIG_CALIBRATION_GUIDE.md),
+> [ToF setup guide](TOF_SENSOR_OFFLINE_SETUP_GUIDE.md), and
+> [current functional checklist](../plans/FUNCTIONAL_TEST_PLAN.md).
+> Secondary-display output and installed transforms are now implemented in source;
+> the complete new physical rig and ToF controller still need hardware validation.
+
 > Date: 2026-10-02  
 > Purpose: operating reference for testing the current prototype and planning the
 > final physical glare-suppression system.  

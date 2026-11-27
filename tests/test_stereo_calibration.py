@@ -8,7 +8,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import cv2
 import numpy as np
 import pytest
-from PyQt5.QtWidgets import QApplication, QLabel
+from PyQt5.QtWidgets import QApplication, QLabel, QScrollArea
 
 import glare_tracker.calibration as calibration
 import glare_tracker.capture as capture_module
@@ -345,6 +345,36 @@ def test_visual_calibration_guide_assets_and_dialog():
     assert all(label is not None for label in images)
     assert all(label.pixmap() is not None and not label.pixmap().isNull()
                for label in images)
+    guide.close()
+
+
+def test_visual_calibration_pictures_fit_small_screen_after_resizing():
+    app = QApplication.instance() or QApplication([])
+    guide = wizard.CalibrationVisualGuideDialog()
+    pictures = guide.tabs.widget(guide.tabs.count() - 1)
+    assert isinstance(pictures, QScrollArea)
+    guide.tabs.setCurrentWidget(pictures)
+    guide.show()
+    image_widths = []
+    for width, height in ((640, 520), (1100, 780), (640, 520)):
+        guide.resize(width, height)
+        for _ in range(4):
+            app.processEvents()
+        assert pictures.horizontalScrollBar().maximum() == 0
+        assert pictures.widget().width() <= pictures.viewport().width()
+        labels = [guide.findChild(QLabel, f"guideImage{index}")
+                  for index in range(1, 5)]
+        for label, (_, asset, _) in zip(labels, guide.SECTIONS):
+            pixmap = label.pixmap()
+            original = wizard.QPixmap(str(wizard.calibration_guide_asset_path(asset)))
+            assert pixmap is not None and not pixmap.isNull()
+            assert pixmap.width() <= label.contentsRect().width()
+            assert pixmap.height() <= 300
+            expected_height = original.height() * pixmap.width() / original.width()
+            assert abs(pixmap.height() - expected_height) <= 1.5
+        image_widths.append(labels[0].pixmap().width())
+    assert image_widths[1] > image_widths[0]
+    assert image_widths[2] == image_widths[0]
     guide.close()
 
 

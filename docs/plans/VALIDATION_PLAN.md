@@ -12,8 +12,19 @@ open. See the [operator guide](../guides/DRIVER_AND_INSTALLED_RIG_CALIBRATION_GU
 > test pass. Hardware-dependent stages remain open until measurements and
 > evidence files have been collected.
 
-Current software verification: **248 automated tests passed on Python 3.13** on
-2026-11-27. Seventeen additional cases cover read-only camera-rig pose reconstruction,
+Current software verification: **292 automated tests passed on Python 3.13** on
+2026-11-27. The latest 44 cases cover calibration persistence in frozen/source runs,
+fresh same-sensor ToF COM-port reuse, locally embedded guide assets, missing-file
+recovery, responsive guide pictures and genuine saved-profile camera-scene restarts.
+The complete printable [offline manual](../../assets/calibration/offline_manual.html)
+and separate [ToF setup guide](../guides/TOF_SENSOR_OFFLINE_SETUP_GUIDE.md) now explain
+the required offline rehearsal, measured examples, exact UI order and save/reload.
+No commissioned controller firmware is supplied; use the explicit fixed-distance
+route until hardware integration is ready. Native Qt and local HTML previews were
+reviewed. The older EXE remains unchanged; these additions require updated source or
+a new build. No physical exit criterion is closed by this guide/software review.
+
+Seventeen preceding cases cover read-only camera-rig pose reconstruction,
 centimetre scale/baseline, rotated stereo, invalid/mismatched profiles, marker isolation
 from tracking/LCD state, view/theme updates, default collapsed panels and icon assets.
 Native rig captures use explicitly labelled synthetic poses. No physical accuracy

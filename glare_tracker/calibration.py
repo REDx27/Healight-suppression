@@ -1,13 +1,15 @@
 """Camera calibration utilities — single camera and stereo pair.
 
 Provides interactive calibration using a checkerboard pattern, and
-functions to load/save calibration data.  Calibration results are
-stored as NumPy ``.npz`` files in the ``calibration/`` directory.
+functions to load/save calibration data. Source runs use the project's
+``calibration/`` directory; packaged Windows runs persist data in
+``%LOCALAPPDATA%/GlareTracker/calibration/``.
 """
 
 from __future__ import annotations
 
 import os
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -119,10 +121,21 @@ class MonocularRangeCalibration:
 # ── Calibration file I/O ────────────────────────────────────────────
 
 def _calibration_dir() -> Path:
-    """Return the calibration data directory (project_root/calibration/)."""
-    project_root = Path(__file__).resolve().parent.parent
-    cal_dir = project_root / "calibration"
-    cal_dir.mkdir(exist_ok=True)
+    """Return the shared, persistent root for calibration profiles and evidence.
+
+    A one-file executable extracts its modules into a temporary directory.
+    Never store user calibration beside those extracted modules. Keep source
+    workspace behaviour unchanged, and let write errors propagate instead of
+    silently switching roots or replacing an existing user's data.
+    """
+    if getattr(sys, "frozen", False):
+        local_app_data = os.environ.get("LOCALAPPDATA")
+        user_root = (Path(local_app_data) if local_app_data
+                     else Path.home() / "AppData" / "Local")
+        cal_dir = user_root / "GlareTracker" / "calibration"
+    else:
+        cal_dir = Path(__file__).resolve().parent.parent / "calibration"
+    cal_dir.mkdir(parents=True, exist_ok=True)
     return cal_dir
 
 

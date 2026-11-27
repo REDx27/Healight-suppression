@@ -3,6 +3,19 @@
 This directory is organized by purpose. Start here instead of searching for the
 newest-looking filename.
 
+## Calibrate offline: start here
+
+Open the [complete illustrated offline manual](../assets/calibration/offline_manual.html).
+It is a self-contained, printable HTML file: copying that one file keeps its pictures.
+The same instructions are available in **Cameras > Calibration > Calibration guide...**
+inside the updated source app. Use **Check offline files** and rehearse with Wi-Fi
+disconnected before leaving. Videos are optional online references, not bundled media.
+
+The [driver/installed-rig guide](guides/DRIVER_AND_INSTALLED_RIG_CALIBRATION_GUIDE.md)
+and [ToF setup guide](guides/TOF_SENSOR_OFFLINE_SETUP_GUIDE.md) cover the physical steps.
+There is no commissioned controller firmware in this repository yet. Until that is
+available, explicitly skip ToF and use the measured fixed-distance bench route.
+
 ## Current sources of truth
 
 Use these documents in this order:
@@ -16,8 +29,8 @@ Use these documents in this order:
    completion state, and evidence links.
 4. [`plans/FUNCTIONAL_TEST_PLAN.md`](plans/FUNCTIONAL_TEST_PLAN.md) — concise operator
    checks for the current application.
-5. [`guides/SYSTEM_WORKFLOW_AND_TEST_GUIDE.md`](guides/SYSTEM_WORKFLOW_AND_TEST_GUIDE.md)
-   — detailed setup, operation, troubleshooting, and demonstration workflow.
+5. [Complete offline calibration manual](../assets/calibration/offline_manual.html)
+   — current detailed setup, calibration, troubleshooting and save/reuse workflow.
 
 If documentation disagrees with the source or automated tests, the source and tests
 take precedence and the affected document should be corrected.
@@ -55,6 +68,12 @@ physical test has passed.
 
 ### `guides/`
 
+- [Complete offline manual](../assets/calibration/offline_manual.html) — ordered steps,
+  eight local illustrations/examples, exact app labels, troubleshooting, save/reuse
+  instructions and optional video references. Also available in the in-app guide.
+- [`TOF_SENSOR_OFFLINE_SETUP_GUIDE.md`](guides/TOF_SENSOR_OFFLINE_SETUP_GUIDE.md) —
+  hardware/firmware readiness, conditional wiring, mounting, sample/offset calibration,
+  saved-port recovery, and the no-controller fixed-distance route.
 - [`DRIVER_AND_INSTALLED_RIG_CALIBRATION_GUIDE.md`](guides/DRIVER_AND_INSTALLED_RIG_CALIBRATION_GUIDE.md)
   - current mode-specific driver camera/ToF and final installed-rig workflow,
     independent skips, measured target conventions and explicit acceptance limits.
@@ -64,7 +83,8 @@ physical test has passed.
 - [`STEREO_CHESSBOARD_SETUP_GUIDE.md`](guides/STEREO_CHESSBOARD_SETUP_GUIDE.md) —
   current priority: mount, calibrate and tune the two road cameras.
 - [`SYSTEM_WORKFLOW_AND_TEST_GUIDE.md`](guides/SYSTEM_WORKFLOW_AND_TEST_GUIDE.md) —
-  current operating and test workflow.
+  historical single-road-camera demonstration background; current calibration uses
+  the offline manual and current functional checklist above.
 
 ### `reference/`
 

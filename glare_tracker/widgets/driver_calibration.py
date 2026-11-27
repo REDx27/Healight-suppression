@@ -21,7 +21,7 @@ from glare_tracker.installation import camera_model, camera_record, fit_tof, val
 from glare_tracker.tof import ToFSerialWorker
 from glare_tracker.widgets.stereo_calibration import (
     MIN_SAMPLES, SingleBoardCapture, SingleBoardFit,
-    calibration_guide_asset_path, printable_chessboard_path,
+    printable_chessboard_path,
 )
 from glare_tracker.widgets.calibration_guide import (
     CalibrationActions, CalibrationGuideDialog, DRIVER_STEPS, TOF_STEPS, size_calibration_dialog,
@@ -68,11 +68,7 @@ def session_folder(prefix):
 
 class DriverCalibrationGuide(CalibrationGuideDialog):
     def __init__(self, parent=None, *, current=0):
-        pictures = "".join(
-            f'<p><img width="440" src="{calibration_guide_asset_path(asset).as_uri()}"></p>'
-            for asset in ("flat_board.svg", "pose_coverage.svg")
-        )
-        sections = (("1. Camera", DRIVER_STEPS + pictures), ("2. ToF sensor", TOF_STEPS))
+        sections = (("1. Camera", DRIVER_STEPS), ("2. ToF sensor", TOF_STEPS))
         super().__init__("Driver calibration guide", sections, parent, current=current)
 
 
@@ -390,6 +386,46 @@ class DriverCalibrationDialog(QDialog):
         self._refresh_indicators()
 
     def _use_saved(self, component):
+        if component == "tof":
+            selected_port = self.port.currentText().strip()
+            saved = self.saved_tof
+            if not saved:
+                self.range_message.setText("No saved ToF profile. Complete the ToF calibration or select Skip ToF for now.")
+                return
+            identity = saved["device_id"]
+            worker = self.sensor_worker
+            sample = worker.latest if worker else None
+            reconnect = (f"Select the port for the calibrated sensor {identity}, click Connect / reconnect, "
+                         "wait for a fresh valid range, then click Use saved ToF profile. "
+                         "The existing saved profile has been preserved.")
+            if (not selected_port or not worker or not worker.isRunning()
+                    or worker.port != selected_port or not isinstance(sample, dict)
+                    or sample.get("valid") is not True):
+                self.range_message.setText(reconnect)
+                return
+            if sample.get("device_id") != identity:
+                self.range_message.setText(
+                    f"Connected sensor {sample.get('device_id', 'unknown')} does not match calibrated sensor {identity}. "
+                    "Reconnect the same calibrated sensor, or collect and save a new calibration for the replacement. "
+                    "The existing saved profile has been preserved.")
+                return
+            observed = sample.get("observed_ns")
+            uncertainty = sample.get("uncertainty_ns")
+            # Require current bridge evidence, not a cached range from a disconnected
+            # device. Match the protocol's conservative 100 ms freshness budget.
+            if (type(observed) is not int or type(uncertainty) is not int or uncertainty < 0
+                    or not 0 <= time.monotonic_ns() - observed <= 100_000_000 - uncertainty):
+                self.range_message.setText(reconnect)
+                return
+            if saved.get("port") != selected_port:
+                rebound = dict(saved, port=selected_port)
+                try:
+                    self.store.save("tof", rebound)
+                except (ValueError, OSError) as error:
+                    self.range_message.setText(f"Could not save the confirmed ToF port: {error}. The existing profile has been preserved.")
+                    return
+                self.saved_tof = rebound
+            self.range_message.setText(f"Saved calibration for sensor {identity} is active on {selected_port}.")
         self.skips[component] = False
         self._refresh_indicators()
 

@@ -12,6 +12,39 @@
 
 ## 0. Current Status Snapshot
 
+### Offline calibration operator review - 2026-11-27
+
+The in-app calibration guide now shares its instructions with a self-contained,
+printable [offline manual](assets/calibration/offline_manual.html). It includes ordered
+road/driver/ToF/installed-rig/LCD steps, eight local illustrations/examples, measured
+sample plans, exact control names, recovery cards and optional video references.
+The ToF guide explicitly separates the usable Skip ToF + measured fixed-distance
+route from the future commissioned-controller route. No bridge firmware is supplied.
+The user selected Arduino Nano or Uno; the wiring guide covers classic Nano/Uno R3,
+pending confirmation of the exact board and the generic breakout's voltage ratings.
+
+Display selection, Extend and measured active dimensions must be configured before
+opening the modal installed-rig window. The guide explains first-inner-corner signs,
+final-filter target visibility, fit versus validation versus Save, and Save -> dismiss
+alert -> Close before the parent reloads results. It includes an offline rehearsal,
+resource check, backup/reuse procedure and an explicitly synthetic three-camera example.
+
+Two bugs found during review were corrected. Packaged calibration/evidence now persist
+under `%LOCALAPPDATA%\GlareTracker\calibration`, instead of the one-file EXE's temporary
+extraction directory; source storage is unchanged and migration is manual. Reusing a
+saved ToF profile on a selected COM port requires current valid same-sensor evidence
+before reactivating it or saving a changed port. Rejected reuse preserves the file.
+The stereo Pictures tab now scales without horizontal overflow on a small screen.
+
+**Verification:** 292 tests pass on Python 3.13, including 44 additional cases for
+persistence, port identity/freshness, local guide assets/layout and real serialized
+profile restoration through a fresh MainWindow. All three scene centres/directions
+and stereo baseline restore; changing the display name/resolution invalidates poses.
+Native Qt guide previews and a local headless-browser manual render were reviewed.
+No required media/fonts/scripts are fetched from the internet. Physical camera/ToF/
+LCD accuracy remains unmeasured in this review. The previous EXE has not been rebuilt;
+use the updated source for these changes or make a new standalone build.
+
 ### Sidebar spacing and calibrated camera markers - 2026-11-27
 
 The properties rail now has 32 px buttons, 20 px icons and 12 px separation; expanded

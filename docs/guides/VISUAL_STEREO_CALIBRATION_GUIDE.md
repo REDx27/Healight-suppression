@@ -1,96 +1,135 @@
 # Visual Road-Stereo Calibration Guide
 
-Use this guide for the two road-facing cameras. Calibration must be performed
-without the dark filters first. This is a stationary laboratory procedure.
+Updated: 2026-11-27. For two road-facing cameras on a stationary bench.
 
-## 1. Make the target rigid and flat
+Start with the [complete bundled offline manual](../../assets/calibration/offline_manual.html).
+Its text and local pictures remain available without internet. This page is a shorter
+picture-led companion to the [detailed stereo steps](STEREO_CHESSBOARD_SETUP_GUIDE.md).
 
-![Flat board compared with a curved sheet](../../assets/calibration/flat_board.svg)
+## 1. Find the current controls
 
-The calibration model assumes that every checkerboard corner lies on one flat
-plane. A loose or curved paper target creates false lens distortion and can produce
-a high RMS error even when every corner is detected.
+Settings start collapsed. Click the **Cameras** icon, expand **Camera Selection**,
+and assign **Driver**, **Road left** and **Road right** using the actual device
+identities. Expand **Calibration**, then select **1. Road stereo calibration**.
 
-1. Print the supplied board at **Actual size / 100%** with **Fit to page disabled**.
-2. Glue the complete sheet to foam board, thick card, wood, or acrylic.
-3. Remove bubbles and wrinkles. Confirm the target does not flex when tilted.
-4. Measure several squares with a ruler and enter their average side length.
-5. Keep fingers, clips, tape, glare, and shadows outside the checkerboard pattern.
+Stereo is already the normal road-camera setup; no separate setup selection is needed.
+Use **Stop**, wait for discovery to finish, and close other camera applications
+before opening calibration.
 
-## 2. Capture useful pose coverage
+![The component-to-installed-rig calibration route](../../assets/calibration/offline_workflow.png)
 
-![Required checkerboard pose coverage](../../assets/calibration/pose_coverage.svg)
+## 2. Make the target rigid and flat
 
-Capture 15–20 sharp, genuinely different views for each stage:
+![Flat board compared with a curved sheet](../../assets/calibration/flat_board.png)
+
+1. Select **Print A4 chessboard...** inside calibration.
+2. Print A4 landscape at **Actual size / 100%**, with **Fit to page disabled**.
+3. Glue the complete sheet to rigid backing. Remove bubbles and wrinkles.
+4. Keep all **10 × 7 squares** and the white border visible; the detector uses
+   **9 × 6 inner corners**.
+5. Measure several square sides and divide. For example, five sides measuring
+   10.0 cm mean **Measured square side = 2.000 cm**.
+6. Keep fingers, clips, reflections and shadows away from the pattern.
+
+A loose or curved sheet cannot be corrected by collecting more photographs of it.
+The fitting method assumes all corners are on one flat plane.
+
+## 3. Collect useful views, not repeated clicks
+
+![Board coverage across the image](../../assets/calibration/pose_coverage.png)
+
+Capture at least **15 accepted sharp views for LEFT**, then at least **15 for RIGHT**:
 
 - centre, left, right, top and bottom image regions;
-- near and far views, with several frames filling roughly one-third to one-half
-  of the image;
-- moderate horizontal and vertical tilts;
-- the complete checkerboard and white border visible in every accepted image.
+- several near/far distances;
+- gentle horizontal and vertical tilts;
+- the complete board and border visible each time.
 
-Do not collect many almost identical views. Do not use motion-blurred images,
-extreme angles, a bent sheet, or a board partly outside the image.
+Pause before each capture. The counter increases only for an accepted view. A
+rejected near-duplicate or missing-board message means you should correct that
+condition before clicking again.
 
-## 3. Complete the stages in order
+### LEFT stage
 
-![LEFT, RIGHT, and stereo calibration sequence](../../assets/calibration/stereo_sequence.svg)
+**Start LEFT calibration → Capture LEFT view → Fit LEFT intrinsics.**
 
-### Stage 1 — LEFT intrinsics
+Wait for the LEFT intrinsic-pass alert before continuing. “Intrinsics” means that
+camera’s lens/image model, not its installed position relative to the LCD.
 
-Capture the flat board with only the LEFT road camera. Select **Fit LEFT
-intrinsics** after at least 15 varied views. Continue only after the
-**LEFT intrinsic calibration passed** alert appears.
+### RIGHT stage
 
-### Stage 2 — RIGHT intrinsics
+**Start RIGHT calibration → Capture RIGHT view → Fit RIGHT intrinsics.**
 
-Repeat the complete pose set independently for the RIGHT camera. A different
-apparent zoom or field of view is acceptable because each camera receives its own
-intrinsic calibration. Both cameras must still share enough scene overlap.
-Continue only after the **RIGHT intrinsic calibration passed** alert appears.
+Repeat the coverage independently. Do not change square size or crop images to
+make apparent zoom equal. Each camera has its own focal length/distortion model.
+Correct a native-resolution mismatch before continuing.
 
-### Stage 3 — fixed stereo pair
+## 4. Capture the fixed stereo pair
 
-Rigidly mount the cameras side by side and measure the optical-centre separation.
-Do not move, rotate, refocus, or swap them after this point. Capture at least 15
-paired poses with the same stationary flat board visible in both feeds, then fit
-the stereo geometry.
+![One stationary board in both rigid camera views](../../assets/calibration/stereo_capture.png)
 
-![Rigid camera pair and stationary stereo target](../../assets/calibration/stereo_capture.svg)
+1. Keep both road cameras rigidly fixed. Measure between lens centres and record
+   this **baseline**.
+2. Select **Start STEREO calibration**.
+3. Place the board on a stand in the overlap of both views.
+4. Move it to a new position or gentle tilt, then let it stop completely.
+5. Select **Capture pair** and check the accepted-pair counter.
+6. Collect at least **15 accepted pairs** at varied depths/image regions.
+7. Select **Fit stereo geometry**.
 
-For every paired capture:
+Both images must have the same native dimensions. Ordinary USB captures are
+sequential, not hardware-synchronized, so the stationary board matters.
 
-1. Put the board on a wall, stand, table support, or tripod. Do not hold it by hand.
-2. Move the board to a new position and moderate tilt while keeping it completely
-   visible in both images.
-3. Stop touching it and wait about one second.
-4. Select **Capture pair** while the board and both cameras remain stationary.
-5. Cover the centre, edges, near and far regions of the overlapping view.
+## 5. Tell a fit pass from a saved calibration
 
-Both images must have the same pixel resolution. They do not need identical apparent
-zoom or field of view: separate intrinsic calibration estimates each camera's focal
-length and distortion. A small scale difference is normal if the two views still have
-useful overlap.
+A green **STEREO FIT PASSED — NOT SAVED YET** message is not the final step.
 
-Compare the reported baseline with the ruler measurement. Select **Save stereo
-profile** only when the fit passes and the baseline is physically plausible.
+- Individual/stereo RMS must be at most **1.5 px**.
+- Rectified vertical-row error p95 must be at most **2.0 px**.
+- Matrices must be finite and LEFT/RIGHT translation must have the required sign.
+- The reported baseline must make sense against the ruler measurement.
 
-The software initially requires stereo RMS at most 1.5 px, rectified vertical-row
-error p95 at most 2.0 px, physically correct LEFT/RIGHT translation, and finite
-calibration matrices. A green **STEREO FIT PASSED — NOT SAVED YET** message means the
-fit passed but is not active until **Save stereo profile** is selected.
+Select **Save stereo profile** only after those checks. Look for the saved-success
+alert and **CALIBRATION COMPLETE — STEREO PROFILE SAVED**. The dialog then closes.
+Software fit limits are not proof of physical accuracy.
 
-## 4. Know when calibration is complete
+**px** means an image pixel. RMS summarises the image fit error; row-error p95 is
+the mismatch at or below which 95% of the checked corners fall. They are not
+centimetre-accuracy measurements.
 
-Calibration is complete only when the application displays:
+If a fit fails, read the message. Correct flatness, blur, rigidity, camera order or
+pose coverage. If the session contains bent-board images, start again with a clean
+flat-board session. Do not lower limits to force a pass.
 
-> **Stereo calibration complete — profile saved successfully**
+## 6. Apply final optics, then complete installation
 
-If a fit fails, no active stereo profile is replaced. Do not lower the quality
-limit to accept curved-board data. Correct the board, lighting, sharpness, pose
-coverage, or camera rigidity and repeat the affected calibration from a clean
-session.
+Apply dark filters without moving/refocusing cameras. Independently check the final
+filtered geometry before measurements. If the filters change geometry, repeat the
+necessary calibration with a sharp, visible target through the final optical setup.
 
-After saving, apply the dark filters without moving or refocusing either camera.
-The filtered arrangement still requires the planned geometric verification and
-measured-distance validation before its coordinates are treated as research data.
+![One world origin and measured board corner](../../assets/calibration/rig_coordinates.png)
+
+To see all three calibrated cameras in the scene, use the **Fully Auto** workflow:
+save road stereo, save driver intrinsics, then complete and save
+**3. Installed rig + LCD** with the road LEFT pose, driver pose and LCD mapping.
+Confirm camera order/mounts. Compatible **Driver**, **Road L** and **Road R** markers
+then appear in world centimetres; Road RIGHT uses the saved stereo transform.
+
+Stereo alone cannot establish camera-to-panel positions. Missing or mismatched
+profiles do not create guessed camera locations. The optional ToF can be skipped
+for declared fixed-distance bench work; it does not determine whether saved camera
+poses exist.
+
+See [driver and installed-rig steps](DRIVER_AND_INSTALLED_RIG_CALIBRATION_GUIDE.md)
+for measured placement, save requirements and physical dark-dot verification.
+
+## 7. Optional video references
+
+The following links require internet and are supplemental explanations. The bundled
+manual and pictures contain the instructions needed at the offline test site.
+
+- [MathWorks: Camera Calibration with MATLAB — video and transcript](https://www.mathworks.com/videos/camera-calibration-with-matlab-81233.html).
+- [Kevin Wood: camera calibration](https://www.youtube.com/watch?v=H5qbRTikxI4).
+
+Watch or obtain an authorized offline copy before disconnecting, if desired. These
+videos do not replace this application’s acceptance checks or exact button sequence.
