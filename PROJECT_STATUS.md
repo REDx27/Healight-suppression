@@ -1,6 +1,6 @@
 # GlareTracker — Project Status & Specification
 
-> **Last Updated:** 2026-11-25
+> **Last Updated:** 2026-11-27
 > **Python Version:** 3.13 (current test environment; 3.11 previously verified)
 > **Platform:** Windows 10/11
 > **UI Framework:** PyQt5
@@ -11,6 +11,109 @@
 ---
 
 ## 0. Current Status Snapshot
+
+### Sidebar spacing and calibrated camera markers - 2026-11-27
+
+The properties rail now has 32 px buttons, 20 px icons and 12 px separation; expanded
+panels use 16 px body insets and 8 px rows. All settings start collapsed, with mouse
+and keyboard expansion. Profile/bulb/monitor/microscope icons identify Driver/Lights/
+Geometry/Research; Operation and Camera icons are retained. The added Material Symbols
+are bundled with their Apache 2.0 license, including in the release specification.
+
+The 3D scene can now show the driver and both road camera optical centres/directions
+from compatible installed-rig profiles. Road RIGHT is derived using the full saved
+stereo R/T and raw LEFT-to-panel pose. Camera points use the same world centimetres
+as the LCD rectangle and tracked geometry. Direction arrows are 8 cm orientation aids,
+not measured camera-body dimensions or fields of view. Labels follow viewport rotation;
+camera markers can be hidden in 3D settings and their coordinates inspected on hover
+over the rig status note. Missing/incompatible calibration is labelled uncalibrated;
+unknown poses are not invented. Saved positions and mount confirmation are distinguished.
+
+This is a read-only display addition. Tracking configuration, recentring, measurement
+pipelines, profile schemas and LCD authorization/calculation paths are unchanged.
+**Verification:** 248 tests pass on Python 3.13. Seventeen new checks cover physical
+pose composition/scale, rotated stereo, stale profiles, display isolation and UI defaults.
+Native dark/light OpenGL renders use a labelled synthetic rig; no physical calibration
+or accuracy result is claimed. The packaged executable has not been rebuilt.
+
+### Compact operator UI revision - 2026-11-27
+
+The desktop interface now uses a consistent Segoe UI logical-pixel type scale (12 px
+controls, 11 px hints), 24 px fields, aligned form columns, 12 px section insets/gaps
+and a 48 px session toolbar. Gray surfaces and quieter blue accents distinguish panel
+headers, values and selection. Camera names are concise with full device metadata on
+hover; calibration commands are shorter and the panel preset has a full-width row.
+
+Qt 5 hidden form rows are removed/restored without deleting controls, fixing uneven
+gaps when switching default/custom thresholds or camera modes. Wrapped status text
+now expands its panel rather than clipping. Inactive manual/live driver sections are
+hidden by mode. Camera and telemetry region headers align, all feed viewports share
+a stage row, and long intersection lists scroll independently. Compact layouts reserve
+space for three camera feeds; short viewports keep the windshield inset within bounds.
+
+**Verification:** 231 tests pass on Python 3.13, including ten new UI layout checks.
+Native Windows screenshots covered representative normal/advanced/manual pages from
+960 x 640 through 1920 x 1080, using sample labels without opening cameras or changing
+user settings. See `docs/reference/UI_DESIGN_STANDARD.md` for metrics and previews.
+Tracking, distance estimation, calibration mathematics and LCD mapping algorithms were
+not changed in this revision. The packaged executable has not been rebuilt.
+
+### Recovery and rendering audit - 2026-11-26
+
+Calibration now restores retry controls after a failed camera connection or rejected
+stereo fit. Late status/finished signals from an old capture cannot affect the active
+capture. Fit threads stay tracked until QThread.finished, preventing dialog destruction
+between result delivery and actual thread exit. Failed evidence writes do not advance
+the intrinsic stage or enable profile saving.
+
+Run exits LCD test mode before accepting fresh tracking data. Driver and road capture
+workers honor interruption during startup as well as during capture, fixing a rapid
+Stop/start race. Missing, non-finite or off-image iris coordinates invalidate one frame
+instead of terminating the driver stream; unusable PnP input/solve failures return no
+pose. Fixed/reference distance behavior is preserved.
+
+The LCD skips identical spot sets and empty clears, applies radius edits immediately,
+and clears old pixel positions when panel geometry/mapping changes. Non-finite panel
+dimensions/radii are rejected. Schematic shapes are built once, with vertex uploads
+limited to changed visible models. In deterministic checks, 200 eye updates with eight
+stationary lamps require zero lamp-buffer uploads (previously 1,600); 200 empty LCD
+clears request zero repaints (previously 200). These are avoided operations, not measured
+FPS gains or end-to-end latency claims.
+
+**Verification:** 221 tests passed on Python 3.13, including 18 additional checks for
+these fixes. Startup cancellation also runs actual Qt threads with mocked cameras.
+A bounded native Windows application launch and clean shutdown passed. Camera/ToF/rig
+accuracy was not measured in this audit; physical validation remains open. The source
+version remains 1.3.0 and no standalone executable was rebuilt.
+
+### Stereo preview audit and schematic scene - 2026-11-26
+
+The individual LEFT and RIGHT stages request the same road-camera mode and keep raw
+images for calibration; neither deliberately zooms or undistorts its individual
+preview. A stage-routing race was corrected: preview/sample callbacks now retain their
+physical role and worker identity, so a late LEFT result cannot populate RIGHT after a
+stage change. Both preview canvases now have equal layout weight and show full native
+images with aspect-preserving fit on resize. Raw pixel dimensions are displayed per
+camera. Inconsistent sample sizes and mismatched RIGHT/stereo capture sizes are rejected
+instead of being silently resized or called a normal optical difference.
+
+The saved `stereo_2_1` profile records 640x480 for both cameras, fx approximately
+858.277 LEFT and 896.981 RIGHT: RIGHT fx is about 4.51% greater relative to LEFT.
+This can explain some raw apparent magnification, but does not verify today's mounting,
+focus or optics. A live 1/2 camera probe could not open either device in this session;
+no live hardware comparison or recalibration is claimed.
+
+The 3D viewport now has optional schematic driver and generic lamp outlines, labelled
+as illustrations and switchable through 3D settings. A native offscreen-window OpenGL
+capture was inspected. These objects follow the existing points and do not alter
+camera data, geometry, classification, mappings, LCD output or application architecture.
+
+**Verification:** 203 tests passed on Python 3.13; seven checks added for role routing,
+preview sizing, native samples, mismatched modes, distinct focal lengths and view-only
+illustrations. The Qt test application is retained for the session to avoid deleting
+worker wrappers between test modules. Physical rig/ToF validation remains outstanding.
+The actuator survey is recorded in `docs/reference/MECHANICAL_FLAP_ACTUATOR_OPTIONS.md`;
+no actuator was purchased and no flap hardware/software output path was introduced.
 
 ### Centre-reference fix and fixed driver distance - 2026-11-25
 

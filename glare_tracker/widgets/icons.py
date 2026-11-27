@@ -1,23 +1,82 @@
-"""Dependency-free vector icons used throughout the desktop interface."""
+"""Windows command symbols and application-specific line icons."""
 
 from __future__ import annotations
 
 import math
+from pathlib import Path
+import sys
 from functools import lru_cache
 
 from PyQt5.QtCore import QPointF, QRectF, QSize, Qt
-from PyQt5.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap, QPolygonF
+from PyQt5.QtSvg import QSvgRenderer
+from PyQt5.QtGui import (
+    QColor, QFont, QFontMetricsF, QIcon, QPainter, QPainterPath, QPen,
+    QPixmap, QPolygonF, QRawFont,
+)
+from PyQt5.QtWidgets import (
+    QApplication, QPushButton, QStyle, QSizePolicy, QStyleOptionButton, QStylePainter,
+)
+
+
+ICON_SIZE = QSize(16, 16)
+
+_MATERIAL_ICONS = {"user": "person", "bulb": "lightbulb",
+                   "monitor": "desktop_windows", "research": "biotech"}
+_ICON_ASSETS = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[2])) / "assets" / "icons" / "material"
+
+# Segoe Fluent Icons and Segoe MDL2 Assets share these Windows symbol codes.
+_WINDOWS_SYMBOLS = {
+    "play": 0xE768,
+    "pause": 0xE769,
+    "stop": 0xE71A,
+    "reset": 0xE72C,
+    "panel": 0xE8A0,
+    "settings": 0xE713,
+    "eye": 0xE890,
+    "camera": 0xE722,
+    "display": 0xE7F4,
+    "save": 0xE74E,
+    "delete": 0xE74D,
+    "lock": 0xE72E,
+    "unlock": 0xE785,
+    "help": 0xE897,
+    "print": 0xE749,
+    "undo": 0xE7A7,
+    "close": 0xE711,
+    "fit": 0xE8FB,
+    "folder": 0xE8B7,
+    "connect": 0xE703,
+    "next": 0xE76C,
+    "back": 0xE76B,
+}
+
+_QT_FALLBACKS = {
+    "pause": QStyle.SP_MediaPause,
+    "display": QStyle.SP_DesktopIcon,
+    "help": QStyle.SP_DialogHelpButton,
+    "undo": QStyle.SP_ArrowBack,
+    "close": QStyle.SP_DialogCloseButton,
+    "fit": QStyle.SP_DialogApplyButton,
+    "folder": QStyle.SP_DirOpenIcon,
+    "connect": QStyle.SP_DriveNetIcon,
+    "next": QStyle.SP_ArrowRight,
+    "back": QStyle.SP_ArrowLeft,
+}
 
 
 class IconFactory:
-    """Render a small, consistent line-icon set with Qt primitives."""
+    """Render standard system glyphs with Qt-compatible fallbacks."""
 
-    DEFAULT_COLOR = "#86a9c4"
+    DEFAULT_COLOR = "#dbe3ed"
 
     @classmethod
-    def icon(cls, name: str, color: str | QColor | None = None, size: int = 20) -> QIcon:
-        pixmap = cls.pixmap(name, color, size)
-        return QIcon(pixmap)
+    def icon(cls, name: str, color: str | QColor | None = None, size: int = 16) -> QIcon:
+        result = QIcon()
+        for scale in (1, 2):
+            pixmap = cls.pixmap(name, color, size * scale)
+            pixmap.setDevicePixelRatio(scale)
+            result.addPixmap(pixmap)
+        return result
 
     @classmethod
     def pixmap(cls, name: str, color: str | QColor | None = None, size: int = 20) -> QPixmap:
@@ -34,13 +93,43 @@ class IconFactory:
         pixmap.fill(Qt.transparent)
         painter = QPainter(pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
-        painter.scale(size / 24.0, size / 24.0)
-        pen = QPen(color, 1.8, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
-        painter.setPen(pen)
-        painter.setBrush(Qt.NoBrush)
-        cls._draw(painter, name, color)
+        glyph = _WINDOWS_SYMBOLS.get(name)
+        family = cls._symbol_font(glyph) if glyph is not None else None
+        if name in _MATERIAL_ICONS:
+            renderer = QSvgRenderer(str(_ICON_ASSETS / f"{_MATERIAL_ICONS[name]}.svg"))
+            renderer.render(painter, QRectF(0, 0, size, size))
+            painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+            painter.fillRect(pixmap.rect(), color)
+        elif family:
+            font = QFont(family)
+            font.setPixelSize(max(1, round(size * 0.92)))
+            painter.setFont(font)
+            painter.setPen(color)
+            symbol = chr(glyph)
+            bounds = QFontMetricsF(font).tightBoundingRect(symbol)
+            centre = QPointF(size / 2, size / 2) - bounds.center()
+            painter.drawText(centre, symbol)
+        elif name in _QT_FALLBACKS:
+            icon = QApplication.style().standardIcon(_QT_FALLBACKS[name])
+            icon.paint(painter, pixmap.rect())
+            painter.setCompositionMode(QPainter.CompositionMode_SourceIn)
+            painter.fillRect(pixmap.rect(), color)
+        else:
+            painter.scale(size / 24.0, size / 24.0)
+            painter.setPen(QPen(color, 1.8, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin))
+            painter.setBrush(Qt.NoBrush)
+            cls._draw(painter, name, color)
         painter.end()
         return pixmap
+
+    @staticmethod
+    @lru_cache(maxsize=len(_WINDOWS_SYMBOLS))
+    def _symbol_font(glyph: int) -> str | None:
+        for family in ("Segoe Fluent Icons", "Segoe MDL2 Assets"):
+            font = QRawFont.fromFont(QFont(family))
+            if font.familyName().casefold() == family.casefold() and font.supportsCharacter(glyph):
+                return family
+        return None
 
     @staticmethod
     def _draw(p: QPainter, name: str, color: QColor):
@@ -142,6 +231,10 @@ class IconFactory:
             p.drawRect(QRectF(7, 3, 9, 6))
             p.drawRoundedRect(QRectF(7, 13, 10, 6), 1.2, 1.2)
             p.drawLine(QPointF(14, 4.5), QPointF(14, 7.5))
+        elif name == "print":
+            p.drawRoundedRect(QRectF(3, 8, 18, 9), 2, 2)
+            p.drawRect(QRectF(7, 3, 10, 5))
+            p.drawRect(QRectF(7, 14, 10, 7))
         elif name in ("delete", "remove"):
             p.drawRoundedRect(QRectF(7, 7, 10, 14), 1.5, 1.5)
             p.drawLine(QPointF(5, 7), QPointF(19, 7))
@@ -167,4 +260,40 @@ class IconFactory:
             p.drawRoundedRect(QRectF(4, 4, 16, 16), 3, 3)
 
 
-ICON_SIZE = QSize(18, 18)
+class CommandButton(QPushButton):
+    """A standard Qt command that can shrink gracefully inside a property pane."""
+
+    def __init__(self, text):
+        super().__init__(text)
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+
+    def minimumSizeHint(self):
+        hint = super().minimumSizeHint()
+        hint.setWidth(min(80, hint.width()))
+        return hint
+
+    def paintEvent(self, event):
+        option = QStyleOptionButton()
+        self.initStyleOption(option)
+        if self.width() < self.sizeHint().width():
+            contents = self.style().subElementRect(QStyle.SE_PushButtonContents, option, self)
+            icon_width = option.iconSize.width() + 4 if not option.icon.isNull() else 0
+            option.text = self.fontMetrics().elidedText(
+                option.text, Qt.ElideRight, max(0, contents.width() - icon_width))
+        painter = QStylePainter(self)
+        painter.drawControl(QStyle.CE_PushButton, option)
+
+
+def command_button(
+    text: str, icon: str, *, tooltip: str = "", role: str = "",
+    color: str | None = None,
+) -> QPushButton:
+    """Create a labeled command using the app's shared icon size and style."""
+    button = CommandButton(text)
+    button.setIcon(IconFactory.icon(icon, color))
+    button.setIconSize(ICON_SIZE)
+    if tooltip:
+        button.setToolTip(tooltip)
+    if role:
+        button.setProperty("commandRole", role)
+    return button

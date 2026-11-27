@@ -11,8 +11,8 @@ import numpy as np
 from PyQt5.QtCore import Qt, QUrl
 from PyQt5.QtGui import QDesktopServices, QPixmap
 from PyQt5.QtWidgets import (
-    QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFormLayout, QHBoxLayout,
-    QLabel, QLineEdit, QMessageBox, QPushButton, QTabWidget, QTextBrowser,
+    QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFormLayout,
+    QLabel, QLineEdit, QMessageBox, QTabWidget,
     QVBoxLayout, QWidget, QScrollArea, QFrame,
 )
 
@@ -23,6 +23,10 @@ from glare_tracker.widgets.stereo_calibration import (
     MIN_SAMPLES, SingleBoardCapture, SingleBoardFit,
     calibration_guide_asset_path, printable_chessboard_path,
 )
+from glare_tracker.widgets.calibration_guide import (
+    CalibrationActions, CalibrationGuideDialog, DRIVER_STEPS, TOF_STEPS, size_calibration_dialog,
+)
+from glare_tracker.widgets.icons import command_button
 
 
 def number(value=0., minimum=-1000., maximum=1000., suffix=" cm"):
@@ -62,86 +66,14 @@ def session_folder(prefix):
     return path
 
 
-CAMERA_GUIDE = """
-<h1>1. Driver camera</h1>
-<h2>1.1 Prepare the camera and flat target</h2>
-<p>Select the actual driver webcam. Set its final focus and image mode; do not move
-or refocus it after installed-rig calibration. Print the supplied 9 x 6 INNER-corner
-board (10 x 7 squares) at 100%, not Fit to page. Measure several squares: the supplied
-pattern is 20 mm. Glue it to a completely rigid flat backing.</p>
-<h2>1.2 Collect varied views</h2>
-<p>Open Camera, choose Start camera and hold the whole board visible. Capture at least
-15 sharp views. Cover the centre, all edges and corners, near/far distances and gentle
-horizontal/vertical tilts. Move the BOARD between views. Blur, a curved board and
-15 nearly identical pictures can produce a bad lens model.</p>
-<h2>1.3 Fit, inspect, save</h2>
-<p>Fit driver intrinsics, inspect RMS and image size, then explicitly Save camera
-profile. A successful fit is not saved until this action. Save shows a success alert.
-The preview and fit use native unmirrored pixels; the later face preview may be mirrored.</p>
-<h2>1.4 What this stage establishes</h2>
-<p>This stage calibrates focal length, principal point and lens distortion. It does
-not locate the camera relative to the LCD or establish true eye depth. After mounting
-the final rig, complete Installed Rig Calibration. Skip camera is for development
-previews only and never changes the status to Calibrated.</p>
-<p>For a stable no-ToF bench preview, use Driver &gt; Driver Distance and keep Live driver
-distance OFF. Enter the measured fixed optical-axis distance to the eye plane. Eye
-tracking stays live. ON restores IPD or selected ToF distance estimation.</p>
-"""
-
-TOF_GUIDE = """
-<h1>2. ToF sensor</h1>
-<h2>2.1 Connect and identify the sensor</h2>
-<p>Connect VL53L0X to a suitable microcontroller over I2C and the controller to the PC
-over USB. Use the documented GlareTracker bridge v1 firmware/protocol. An ordinary
-Arduino distance-printing sketch does not provide the required status and timestamps.
-Choose the COM port and Connect. Until real, synchronized valid samples arrive, the
-sensor remains Not connected / Not calibrated. No hardware? Use Skip ToF.</p>
-<h2>2.2 Fix the sensor mount</h2>
-<p>Fix it close to the camera, with parallel axes toward the forehead/upper face.
-Measure sensor Z offset along the driver camera's forward axis. Do not aim through
-the LCD, obstruct the optics or assume a face return is the pupil position. This first
-model is limited to near-frontal poses (within 10 degrees) with the eye midpoint
-within 5 degrees of the camera axis. Validate this small working region physically.</p>
-<h2>2.3 Range bias and held-out checks</h2>
-<p>Use a stable flat target filling the sensing area. Measure distance from the sensor
-reference. At each position wait for at least 20 stable valid readings, enter the
-measured distance, select Fit or Validation and Capture distance. Use three distinct
-fit distances, then two different held-out distances spanning the seating region.
-Invalid returns are excluded. Fit uses only fit samples; validation is never fitted.</p>
-<h2>2.4 Eye-depth correction</h2>
-<p>Measure the facial-surface-to-eye-plane Z correction with a safe rigid reference
-or independently measured eye target; enter a signed offset. Enter the measured
-sensor-to-camera Z offset separately. Confirm both measurements. A zero is acceptable
-only when measured. The sensor is a single-zone range device and can see a hand,
-glasses or background instead of the intended surface.</p>
-<h2>2.5 Save and verify</h2>
-<p>Fit and Save ToF profile only after held-out range limits pass. This is a sensor
-bias/mount profile, not a claim that face/eye accuracy is validated. Verify real faces,
-different depths, pose, glasses and incoming glare independently. Missing eyes, stale
-range or invalid quality must clear ToF-based physical output. Skipping ToF selects
-camera-only IPD when Live driver distance is ON, or the fixed reference when OFF;
-neither is a calibrated ToF result.</p>
-"""
-
-
-class DriverCalibrationGuide(QDialog):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Driver calibration guide - camera, then ToF")
-        self.resize(850, 700)
-        layout = QVBoxLayout(self)
-        tabs = QTabWidget()
-        for title, html in (("1. Camera", CAMERA_GUIDE), ("2. ToF sensor", TOF_GUIDE)):
-            browser = QTextBrowser()
-            browser.setHtml(html)
-            if title.startswith("1"):
-                for asset in ("flat_board.svg", "pose_coverage.svg"):
-                    browser.append(f'<p><img width="680" src="{calibration_guide_asset_path(asset).as_uri()}"></p>')
-            tabs.addTab(browser, title)
-        layout.addWidget(tabs)
-        close = QPushButton("Return to calibration")
-        close.clicked.connect(self.accept)
-        layout.addWidget(close)
+class DriverCalibrationGuide(CalibrationGuideDialog):
+    def __init__(self, parent=None, *, current=0):
+        pictures = "".join(
+            f'<p><img width="440" src="{calibration_guide_asset_path(asset).as_uri()}"></p>'
+            for asset in ("flat_board.svg", "pose_coverage.svg")
+        )
+        sections = (("1. Camera", DRIVER_STEPS + pictures), ("2. ToF sensor", TOF_STEPS))
+        super().__init__("Driver calibration guide", sections, parent, current=current)
 
 
 class DriverCalibrationDialog(QDialog):
@@ -168,27 +100,27 @@ class DriverCalibrationDialog(QDialog):
                 self.saved_tof = None
         self.session_dir = None
         self.setWindowTitle("Driver side - camera and ToF calibration")
-        self.resize(880, 750)
+        size_calibration_dialog(self, 880, 750)
         layout = QVBoxLayout(self)
         self.camera_indicator = note("")
         self.tof_indicator = note("")
         layout.addWidget(self.camera_indicator)
         layout.addWidget(self.tof_indicator)
-        layout.addWidget(note("Calibrate the camera first, then the sensor. Each can be skipped separately for development. Installed rig alignment is a third, separate calibration."))
+        layout.addWidget(note(
+            "Set up the driver camera first. If you have no distance sensor controller, "
+            "open the ToF tab and select Skip ToF for now."))
         self.tabs = QTabWidget()
-        self.tabs.addTab(scroll_page(self._camera_page()), "1. Driver camera")
-        self.tabs.addTab(scroll_page(self._tof_page()), "2. ToF sensor")
+        self.tabs.addTab(self._camera_page(), "1. Driver camera")
+        self.tabs.addTab(self._tof_page(), "2. ToF sensor")
         layout.addWidget(self.tabs, 1)
-        actions = QHBoxLayout()
-        self.guide = QPushButton("Camera and ToF guide...")
-        self.print_board = QPushButton("Print A4 chessboard...")
-        close = QPushButton("Close")
-        for button in (self.guide, self.print_board, close):
-            actions.addWidget(button)
-        self.guide.clicked.connect(lambda: DriverCalibrationGuide(self).exec_())
+        self.guide = command_button("Camera and ToF guide...", "help", role="guide")
+        self.print_board = command_button("Print A4 chessboard...", "print")
+        close = command_button("Close", "close")
+        self.guide.clicked.connect(
+            lambda: DriverCalibrationGuide(self, current=self.tabs.currentIndex()).exec_())
         self.print_board.clicked.connect(self._print)
         close.clicked.connect(self.reject)
-        layout.addLayout(actions)
+        layout.addLayout(CalibrationActions(self.guide, self.print_board, close))
         self._refresh_indicators()
 
     def _refresh_indicators(self):
@@ -200,27 +132,30 @@ class DriverCalibrationDialog(QDialog):
     def _camera_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.addWidget(note(f"Driver camera {self.index}. Native 640 x 480 capture. Supplied board: 9 x 6 inner corners. Measure the square before capture."))
+        body = QWidget()
+        body_layout = QVBoxLayout(body)
+        body_layout.addWidget(note(
+            f"Driver camera {self.index}. Use the flat board with 9 by 6 inner corners. "
+            "Measure the square before capture."))
         self.square = number(2., .1, 20.)
         form = QFormLayout()
+        form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         form.addRow("Measured square side:", self.square)
         self.ipd = number(6.3, 3., 9.)
         form.addRow("Measured eye separation (IPD):", self.ipd)
-        layout.addLayout(form)
+        body_layout.addLayout(form)
         self.preview = QLabel("Camera preview starts only when requested")
         self.preview.setMinimumSize(420, 240)
         self.preview.setAlignment(Qt.AlignCenter)
-        layout.addWidget(self.preview, 1)
+        body_layout.addWidget(self.preview, 1)
+        layout.addWidget(scroll_page(body), 1)
         self.camera_message = note(f"0 / {MIN_SAMPLES} varied views. Start the camera with a rigid flat board.")
         layout.addWidget(self.camera_message)
-        row = QHBoxLayout()
-        self.start = QPushButton("Start camera")
-        self.take = QPushButton("Capture view")
-        self.fit = QPushButton("Fit camera")
-        self.save_camera = QPushButton("Save camera profile")
-        self.skip_camera = QPushButton("Skip camera for now")
-        for button in (self.start, self.take, self.fit, self.save_camera, self.skip_camera):
-            row.addWidget(button)
+        self.start = command_button("Start camera", "play")
+        self.take = command_button("Capture view", "camera")
+        self.fit = command_button("Fit camera", "fit")
+        self.save_camera = command_button("Save camera profile", "save", role="accent")
+        self.skip_camera = command_button("Skip camera for now", "next")
         self.take.setEnabled(False)
         self.fit.setEnabled(False)
         self.save_camera.setEnabled(False)
@@ -229,23 +164,25 @@ class DriverCalibrationDialog(QDialog):
         self.fit.clicked.connect(self._fit_camera)
         self.save_camera.clicked.connect(self._save_camera)
         self.skip_camera.clicked.connect(lambda: self._skip("camera"))
-        layout.addLayout(row)
-        recovery = QHBoxLayout()
-        self.reset_camera = QPushButton("Reset captured camera views")
-        self.use_saved_camera = QPushButton("Use saved camera profile")
+        layout.addLayout(CalibrationActions(
+            self.start, self.take, self.fit, self.save_camera, self.skip_camera))
+        self.reset_camera = command_button("Reset captured camera views", "reset")
+        self.use_saved_camera = command_button("Use saved camera profile", "folder")
         self.use_saved_camera.setEnabled(self.saved_camera is not None)
         self.reset_camera.clicked.connect(self._reset_camera_views)
         self.use_saved_camera.clicked.connect(lambda: self._use_saved("camera"))
-        recovery.addWidget(self.reset_camera)
-        recovery.addWidget(self.use_saved_camera)
-        layout.addLayout(recovery)
+        layout.addLayout(CalibrationActions(self.reset_camera, self.use_saved_camera))
         return page
 
     def _tof_page(self):
         page = QWidget()
         layout = QVBoxLayout(page)
-        layout.addWidget(note("No controller connected yet? Skip ToF and calibrate the camera independently. A saved range profile never replaces a live, valid sensor reading."))
+        body = QWidget()
+        body_layout = QVBoxLayout(body)
+        body_layout.addWidget(note(
+            "If you have no distance sensor controller, select Skip ToF for now."))
         form = QFormLayout()
+        form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         self.port = QComboBox()
         self.port.setEditable(True)
         try:
@@ -267,33 +204,29 @@ class DriverCalibrationDialog(QDialog):
         form.addRow("Surface-to-eye Z correction:", self.eye_offset)
         self.offsets_confirmed = QCheckBox("I independently measured both signed offsets")
         form.addRow(self.offsets_confirmed)
-        layout.addLayout(form)
-        self.sensor_message = note("NOT CONNECTED. No synthetic readings are used by this dialog.")
+        body_layout.addLayout(form)
+        self.sensor_message = note("Distance sensor is disconnected.")
         self.range_message = note("No range samples captured")
-        layout.addWidget(self.sensor_message)
-        layout.addWidget(self.range_message)
-        row = QHBoxLayout()
-        self.connect_sensor = QPushButton("Connect / reconnect")
-        self.capture_range = QPushButton("Capture 20 readings")
-        self.save_tof = QPushButton("Fit and Save ToF")
-        self.skip_tof = QPushButton("Skip ToF for now")
-        for button in (self.connect_sensor, self.capture_range, self.save_tof, self.skip_tof):
-            row.addWidget(button)
+        body_layout.addWidget(self.sensor_message)
+        body_layout.addWidget(self.range_message)
+        body_layout.addStretch()
+        layout.addWidget(scroll_page(body), 1)
+        self.connect_sensor = command_button("Connect / reconnect", "connect")
+        self.capture_range = command_button("Capture 20 readings", "target")
+        self.save_tof = command_button("Fit and Save ToF", "save", role="accent")
+        self.skip_tof = command_button("Skip ToF for now", "next")
         self.connect_sensor.clicked.connect(self._connect_sensor)
         self.capture_range.clicked.connect(self._capture_range)
         self.save_tof.clicked.connect(self._save_tof)
         self.skip_tof.clicked.connect(lambda: self._skip("tof"))
-        layout.addLayout(row)
-        recovery = QHBoxLayout()
-        self.reset_ranges = QPushButton("Reset captured ToF distances")
-        self.use_saved_tof = QPushButton("Use saved ToF profile")
+        layout.addLayout(CalibrationActions(
+            self.connect_sensor, self.capture_range, self.save_tof, self.skip_tof))
+        self.reset_ranges = command_button("Reset captured ToF distances", "reset")
+        self.use_saved_tof = command_button("Use saved ToF profile", "folder")
         self.use_saved_tof.setEnabled(self.saved_tof is not None)
         self.reset_ranges.clicked.connect(self._reset_range_samples)
         self.use_saved_tof.clicked.connect(lambda: self._use_saved("tof"))
-        recovery.addWidget(self.reset_ranges)
-        recovery.addWidget(self.use_saved_tof)
-        layout.addLayout(recovery)
-        layout.addStretch()
+        layout.addLayout(CalibrationActions(self.reset_ranges, self.use_saved_tof))
         return page
 
     def _print(self):

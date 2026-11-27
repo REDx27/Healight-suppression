@@ -3,9 +3,9 @@
 **Project:** Low-Cost Active Windshield Glare Suppression System
 **Application:** GlareTracker
 **Software version:** 1.3.0 plus the post-release prototype-display integration
-**Status date:** 2026-11-25
+**Status date:** 2026-11-27
 **Audience:** Project team, supervisor, presentation authors, and AI-assisted study
-**Verification at this state:** 196 automated tests passed on Python 3.13; the earlier
+**Verification at this state:** 248 automated tests passed on Python 3.13; the earlier
 1600 x 900 secondary-display Run/Standby/Stop smoke test passed on the connected
 monitor.
 
@@ -17,7 +17,66 @@ monitor.
 
 ---
 
-### Latest operator update - 2026-11-25
+### Latest update - 2026-11-27
+
+Settings now start collapsed; rail icons have more separation and expanded panels
+have larger body/row spacing. Profile, bulb, monitor and microscope symbols identify
+Driver, Lights, Geometry and Research. Operation and Camera symbols are unchanged.
+
+Compatible installed-rig calibration now supplies three labelled camera centres and
+viewing directions in the scene's existing centimetre scale. RIGHT uses the inverse
+stereo transform composed with the raw LEFT-to-panel pose. Intrinsics/stereo alone
+do not establish camera-to-LCD positions: complete the installed-rig step. Stale
+bindings remove affected poses; uncalibrated references are explicit. The addition
+only reads calibration data and renders it; tracking and LCD calculations are unchanged.
+
+248 tests pass, including 17 additional offline cases. Native dark/light rig captures
+are labelled synthetic examples, not new physical calibration results. See the
+[camera-rig example](images/camera-rig-offline-example.png) and the thesis reference
+for the coordinate derivation and test boundaries. No executable rebuild is included.
+
+### Compact UI update - 2026-11-27
+
+The operator UI has a compact, consistent type/spacing system, aligned camera roles,
+short calibration commands, clearer section depth and mode-relevant driver panels.
+Hidden settings no longer leave empty form-row gaps, and long calibration messages
+expand instead of clipping. Camera and telemetry headers align, viewports share a
+stage row, and long intersection lists scroll independently. Compact sizing leaves
+room for three feeds and keeps the windshield inset inside a short viewport.
+
+231 tests pass, including ten new layout regressions. Representative native Windows
+renders cover laptop/desktop sizes and advanced/manual pages. These screenshots use
+stopped camera placeholders and sample labels, not new hardware measurements. The
+[design standard and previews](UI_DESIGN_STANDARD.md) record the final appearance.
+Core vision, calibration and geometry algorithms remain as previously documented.
+
+### Recovery audit - 2026-11-26
+
+The recovery/rendering audit fixes calibration connection/fit retries, unfinished-fit
+thread lifetime, evidence-write failures, rapid camera startup cancellation and Run
+remaining stuck in LCD test mode. Bad iris frames and unusable PnP inputs now recover
+without ending driver capture. LCD radius edits update existing spots; geometry/map
+changes clear old pixel coordinates. Repeated empty/identical LCD frames and unchanged
+or hidden schematic models avoid unnecessary painting/buffer uploads.
+
+The suite passes 221 tests, including 18 added regression checks. A bounded native
+Windows launch/close check passed. In deterministic operation counts, 200 eye updates
+with eight stationary lamps avoided 1,600 lamp uploads, and 200 empty LCD clears avoided
+200 repaint requests. These are software checks, not physical accuracy/latency results.
+No executable rebuild is included.
+
+### Stereo previews and presentation update - 2026-11-26
+
+Calibration previews now retain physical camera/worker identity across stage changes,
+show raw dimensions and fit full images into equal canvases. Mismatched native samples
+are rejected. The saved road profile has two 640x480 models and about 4.5% greater RIGHT
+fx; current cameras could not be opened for a live optical check. Optional schematic
+driver/lamp outlines improve explanation without changing positions, rays, classification
+or output. The suite passes 203 tests. See the dated
+[actuator survey](MECHANICAL_FLAP_ACTUATOR_OPTIONS.md) for local sub-LKR-1,000 options,
+quantity budgets and the recommendation to test two servo flaps before scaling.
+
+### Previous operator update - 2026-11-25
 
 Calibrate Center now redraws immediately, discards lost-eye observations and requires
 fresh Run-state driver data. Installed-rig positions cannot be shifted with that demo
@@ -100,7 +159,7 @@ The current application has reached a useful integration milestone:
   profile: 44.28 cm by 24.91 cm;
 - Run opens the armed prototype output, while Standby, Stop, display removal, and
   application shutdown clear and release it;
-- 196 automated tests pass; the earlier physical multi-monitor lifecycle smoke test passed.
+- 203 automated tests pass; the earlier physical multi-monitor lifecycle smoke test passed.
 
 This proves substantial software readiness. It does **not** yet prove centimetre-level
 intersection accuracy or optical glare attenuation. Those claims require final rigid
@@ -438,7 +497,8 @@ or final panel-intersection accuracy.
 
 ### 6.3 Automated evidence
 
-The complete Python 3.13 suite contains 196 passing tests. Coverage includes centre-reference
+The complete Python 3.13 suite contains 203 passing tests. Coverage includes stereo-preview
+role/size isolation, schematic-object isolation, centre-reference
 freshness/redraw, fixed/live driver distance and persistence, as well as geometry
 boundaries, camera-role policy, session states, detector behaviour, multiple sources,
 stereo fitting/profile guards, calibration UI, recording, stale-data rejection,

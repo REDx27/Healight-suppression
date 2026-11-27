@@ -148,6 +148,9 @@ def test_property_sections_are_real_collapsible_panels(panel):
     section = panel.mode_group
     assert isinstance(section, PropertyGroupBox)
     assert section.title() == "Operating Mode"
+    assert not section.isExpanded()
+
+    section.setExpanded(True)
     assert section.isExpanded()
 
     section.setExpanded(False)

@@ -1157,12 +1157,15 @@ class MonocularHeadlightDetectorThread(QThread):
     def stop(self):
         self._running = False
         if self.isRunning():
+            self.requestInterruption()
             self.wait(5000)
 
     def run(self):
         self._running = True
         cap = None
         try:
+            if self.isInterruptionRequested():
+                return
             cap, backend_name = open_video_capture(self.camera_index)
             if cap is None:
                 self.camera_status.emit(
@@ -1188,7 +1191,7 @@ class MonocularHeadlightDetectorThread(QThread):
             measured_fps = 0.0
             fps_frames = 0
             fps_started = time.monotonic()
-            while self._running:
+            while self._running and not self.isInterruptionRequested():
                 capture_started_ns = time.monotonic_ns()
                 ok, frame = cap.read()
                 if not ok:
@@ -1389,6 +1392,7 @@ class HeadlightDetectorThread(QThread):
     def stop(self):
         self._running = False
         if self.isRunning():
+            self.requestInterruption()
             self.wait(5000)
 
     def update_detection_threshold(self, value: int):
@@ -1420,6 +1424,8 @@ class HeadlightDetectorThread(QThread):
         cap1, cap2 = None, None
 
         try:
+            if self.isInterruptionRequested():
+                return
             if self.cam1_idx == self.cam2_idx:
                 raise ValueError("Stereo requires two different camera indices")
             cap1, backend1 = open_video_capture(self.cam1_idx)
@@ -1456,7 +1462,7 @@ class HeadlightDetectorThread(QThread):
             read_failures = 0
             stream_healthy = [True, True]
             stream_mode_announced = False
-            while self._running:
+            while self._running and not self.isInterruptionRequested():
                 # Sequential grabs reduce readout delay but do not synchronize exposure.
                 capture_started_ns = time.monotonic_ns()
                 grabbed1, grabbed2 = cap1.grab(), cap2.grab()

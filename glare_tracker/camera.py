@@ -110,6 +110,8 @@ class VideoCaptureThread(QThread):
         """Request the thread to stop and wait for it to finish."""
         self._running = False
         if self.isRunning():
+            # run() may not have reached its initial _running assignment yet.
+            self.requestInterruption()
             self.wait(5000)
 
     # ── helpers ─────────────────────────────────────────────────────
@@ -166,17 +168,24 @@ class VideoCaptureThread(QThread):
 
         Returns (pitch, yaw, roll, tvec) or None.
         """
+        if len(landmarks) <= max(_HEAD_LANDMARK_INDICES):
+            return None
         image_points = np.array([
             [landmarks[idx].x * img_w, landmarks[idx].y * img_h]
             for idx in _HEAD_LANDMARK_INDICES
         ], dtype=np.float64)
+        if not np.isfinite(image_points).all():
+            return None
 
-        success, rvec, tvec = cv2.solvePnP(
-            _HEAD_MODEL_POINTS_CM, image_points,
-            camera_matrix, dist_coeffs,
-            flags=cv2.SOLVEPNP_ITERATIVE,
-        )
-        if not success:
+        try:
+            success, rvec, tvec = cv2.solvePnP(
+                _HEAD_MODEL_POINTS_CM, image_points,
+                camera_matrix, dist_coeffs,
+                flags=cv2.SOLVEPNP_ITERATIVE,
+            )
+        except cv2.error:
+            return None
+        if not success or not np.isfinite(rvec).all() or not np.isfinite(tvec).all():
             return None
 
         R, _ = cv2.Rodrigues(rvec)
@@ -186,6 +195,19 @@ class VideoCaptureThread(QThread):
 
         return (float(pitch), float(yaw), float(roll), tvec.flatten())
 
+    @staticmethod
+    def _iris_pixels(landmarks, width, height):
+        """Reject unusable landmarks for this frame without ending capture."""
+        if len(landmarks) <= 473:
+            return None
+        pixels = tuple(value for index in (468, 473) for value in (
+            landmarks[index].x * width, landmarks[index].y * height))
+        if (not np.isfinite(pixels).all()
+                or not all(0 <= pixels[i] < (width if i % 2 == 0 else height)
+                           for i in range(4))):
+            return None
+        return pixels
+
     # ── thread body ─────────────────────────────────────────────────
 
     def run(self):  # noqa: C901
@@ -194,6 +216,8 @@ class VideoCaptureThread(QThread):
         face_mesh = None
 
         try:
+            if self.isInterruptionRequested():
+                return
             cap, backend_name = open_video_capture(self.camera_index)
             if cap is None:
                 self.camera_status.emit(
@@ -211,7 +235,7 @@ class VideoCaptureThread(QThread):
             face_mesh, uses_tasks_api = self._create_face_tracker()
             frame_number = 0
 
-            while self._running:
+            while self._running and not self.isInterruptionRequested():
                 capture_started_ns = time.monotonic_ns()
                 ret, frame = cap.read()
                 if not ret:
@@ -238,6 +262,7 @@ class VideoCaptureThread(QThread):
                 else:
                     results = face_mesh.process(rgb)
                     faces = [face.landmark for face in results.multi_face_landmarks or []]
+                iris_pixels = self._iris_pixels(faces[0], w, h) if faces else None
                 detection_complete_ns = time.monotonic_ns()
                 self.pipeline_timing.emit({
                     "stream": "driver",
@@ -245,10 +270,10 @@ class VideoCaptureThread(QThread):
                     "capture_started_ns": capture_started_ns,
                     "capture_complete_ns": capture_complete_ns,
                     "detection_complete_ns": detection_complete_ns,
-                    "observation_valid": bool(faces),
+                    "observation_valid": iris_pixels is not None,
                 })
 
-                if faces:
+                if iris_pixels is not None:
                     lm = faces[0]
                     calib = self._calibration if config.use_calibration else None
 
@@ -256,15 +281,8 @@ class VideoCaptureThread(QThread):
                         metrics = self._drowsiness.update(lm, w, h)
                         self.drowsiness_updated.emit(metrics.as_dict())
 
-                    # MediaPipe iris-centre landmarks: left 468, right 473
-                    left_iris = lm[468]
-                    right_iris = lm[473]
-
-                    # Pixel positions of each iris
-                    lx_px = left_iris.x * w
-                    ly_px = left_iris.y * h
-                    rx_px = right_iris.x * w
-                    ry_px = right_iris.y * h
+                    # MediaPipe iris-centre landmarks: left 468, right 473.
+                    lx_px, ly_px, rx_px, ry_px = iris_pixels
 
                     # Midpoint (used for backward compat)
                     eye_x_px = (lx_px + rx_px) / 2

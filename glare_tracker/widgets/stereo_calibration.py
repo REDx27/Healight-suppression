@@ -11,8 +11,8 @@ import numpy as np
 from PyQt5.QtCore import QThread, Qt, QUrl, pyqtSignal
 from PyQt5.QtGui import QDesktopServices, QImage, QPixmap
 from PyQt5.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel, QPushButton,
-    QSpinBox, QDoubleSpinBox, QMessageBox, QScrollArea, QWidget,
+    QDialog, QVBoxLayout, QHBoxLayout, QFormLayout, QLabel,
+    QSpinBox, QDoubleSpinBox, QMessageBox, QScrollArea, QWidget, QSizePolicy,
 )
 
 from glare_tracker.capture import open_video_capture, configure_road_stereo_capture, configure_video_capture
@@ -21,6 +21,10 @@ from glare_tracker.calibration import (
     detect_checkerboard, save_single_calibration, save_stereo_calibration,
     stereo_profile_name,
 )
+from glare_tracker.widgets.calibration_guide import (
+    CalibrationActions, CalibrationGuideDialog, ROAD_STEPS, size_calibration_dialog,
+)
+from glare_tracker.widgets.icons import command_button
 
 
 MIN_SAMPLES = 15
@@ -56,6 +60,30 @@ def _image(frame):
         rgb.data, width, height, rgb.strides[0], QImage.Format_RGB888).copy()
 
 
+class CalibrationPreview(QLabel):
+    """Full native image, letterboxed into a layout-independent preview canvas."""
+
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self.native_image = QImage()
+        self.setMinimumSize(320, 240)
+        self.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        self.setAlignment(Qt.AlignCenter)
+
+    def set_image(self, image):
+        self.native_image = QImage(image)
+        self._fit_image()
+
+    def _fit_image(self):
+        if not self.native_image.isNull():
+            self.setPixmap(QPixmap.fromImage(self.native_image).scaled(
+                self.contentsRect().size(), Qt.KeepAspectRatio, Qt.SmoothTransformation))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit_image()
+
+
 def calibration_quality(result, pairs, pattern, max_rms=1.5, max_row_error=2.0):
     """Fit diagnostics only; these do not constitute held-out physical accuracy."""
     errors = []
@@ -89,55 +117,38 @@ def calibration_quality(result, pairs, pattern, max_rms=1.5, max_row_error=2.0):
             "note": "Fit-set diagnostics only; verify measured distances independently."}
 
 
-class CalibrationVisualGuideDialog(QDialog):
+class CalibrationVisualGuideDialog(CalibrationGuideDialog):
     """Illustrated operator guide embedded in the calibration workflow."""
 
     SECTIONS = (
         (
-            "1. Use a rigid, perfectly flat target",
+            "Keep the checkerboard flat",
             "flat_board.svg",
-            "Glue the print to foam board, thick card, wood, or acrylic. A loose or "
-            "curved sheet violates the calibration model and creates false distortion. "
-            "Keep fingers and tape outside the checkerboard.",
+            "Glue the print to stiff, flat backing. Keep the pattern and its "
+            "white border clear of tape and fingers.",
         ),
         (
-            "2. Capture 15–20 genuinely varied views",
+            "Move the checkerboard between pictures",
             "pose_coverage.svg",
-            "Cover the centre, edges and corners. Include near, far, horizontal-tilt "
-            "and vertical-tilt views. Keep the complete board visible and sharp; do not "
-            "save many almost identical poses.",
+            "Take sharp pictures at the centre, sides and corners. Bring the "
+            "board near and far, and tilt it a little.",
         ),
         (
-            "3. Complete LEFT, RIGHT, then the fixed stereo pair",
+            "Work through LEFT, RIGHT and the pair",
             "stereo_sequence.svg",
-            "Fit each camera independently first. Then rigidly mount the pair and capture "
-            "the same stationary board in both feeds. Calibration is final only after the "
-            "saved-profile success alert appears.",
+            "Fit LEFT and RIGHT separately. Then fit the pair together and select "
+            "Save stereo profile.",
         ),
         (
-            "4. Stereo stage: rigid cameras and a stationary board",
+            "Keep the board still for paired pictures",
             "stereo_capture.svg",
-            "Mount both cameras on one rigid bar, confirm physical LEFT/RIGHT order, "
-            "and measure optical-centre spacing. Put the board on a wall or stand. "
-            "After moving it, wait about one second before Capture pair; do not hold "
-            "or move it while the two USB frames are acquired.",
+            "Fix both cameras on one bar. Put the board on a stand, wait about "
+            "one second after each move, then select Capture pair.",
         ),
     )
 
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Visual road-stereo calibration guide")
-        self.resize(880, 760)
-        outer = QVBoxLayout(self)
-        warning = QLabel(
-            "<b>Most important:</b> the checkerboard must remain completely flat. "
-            "A detected board can still produce an invalid calibration if the paper bends.")
-        warning.setWordWrap(True)
-        warning.setStyleSheet(
-            "background:#3a2512; color:#ffd38a; border:1px solid #b87928; "
-            "border-radius:6px; padding:10px;")
-        outer.addWidget(warning)
-
+        super().__init__("Road stereo calibration guide", [("Steps", ROAD_STEPS)], parent)
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         content = QWidget()
@@ -153,18 +164,15 @@ class CalibrationVisualGuideDialog(QDialog):
                 image_label.setText(f"Guide image unavailable: {asset}")
             else:
                 image_label.setPixmap(pixmap.scaled(
-                    800, 390, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                    min(680, self.width() - 64), 300,
+                    Qt.KeepAspectRatio, Qt.SmoothTransformation))
             content_layout.addWidget(image_label)
             details = QLabel(instructions)
             details.setWordWrap(True)
-            details.setStyleSheet("font-size:14px; padding:4px 10px 14px 10px;")
             content_layout.addWidget(details)
         content_layout.addStretch(1)
         scroll.setWidget(content)
-        outer.addWidget(scroll)
-        close = QPushButton("I understand — return to calibration")
-        close.clicked.connect(self.accept)
-        outer.addWidget(close)
+        self.tabs.addTab(scroll, "Pictures")
 
 
 class SingleBoardCapture(QThread):
@@ -334,15 +342,25 @@ class StereoCalibrationDialog(QDialog):
         self.indices = (primary, secondary)
         self.stage = "left"
         self.capture_worker = self.fit_worker = None
+        # result_ready precedes QThread.finished. Keep every fit alive until
+        # finished so closing the dialog cannot destroy a running QThread.
+        self._fit_jobs = set()
         self.individual_frames = {"left": [], "right": []}
         self.individual_corners = {"left": [], "right": []}
         self.intrinsics = {"left": None, "right": None}
         self.pairs, self.corner_pairs = [], []
         self.calibration_result = self.report = self.session_dir = None
         self.saved_path = None
+        self.native_sizes = {}
         self.setWindowTitle("Road cameras - guided calibration")
-        self.resize(900, 680)
-        layout = QVBoxLayout(self)
+        size_calibration_dialog(self, 900, 680)
+        outer = QVBoxLayout(self)
+        body = QWidget()
+        layout = QVBoxLayout(body)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setWidget(body)
+        outer.addWidget(scroll, 1)
         self.intro = QLabel(
             f"Step 1 of 3: calibrate LEFT road camera {primary} without the dark filter.\n"
             f"Then calibrate RIGHT camera {secondary}, followed by the fixed stereo pair. "
@@ -351,12 +369,9 @@ class StereoCalibrationDialog(QDialog):
         self.intro.setWordWrap(True)
         layout.addWidget(self.intro)
         board_warning = QLabel(
-            "IMPORTANT: mount the printed sheet on a rigid, completely flat backing. "
-            "Do not calibrate with loose, curled, folded, or hand-bent paper.")
+            "Glue the printed checkerboard to a stiff, flat board before capturing views.")
+        board_warning.setObjectName("calibrationTip")
         board_warning.setWordWrap(True)
-        board_warning.setStyleSheet(
-            "background:#3a2512; color:#ffd38a; border:1px solid #b87928; "
-            "border-radius:5px; padding:7px;")
         layout.addWidget(board_warning)
         form = QFormLayout()
         self.columns, self.rows = QSpinBox(), QSpinBox()
@@ -373,12 +388,19 @@ class StereoCalibrationDialog(QDialog):
         form.addRow("Measured square side:", self.square)
         layout.addLayout(form)
         previews = QHBoxLayout()
-        self.left, self.right = QLabel("LEFT feed"), QLabel("RIGHT: starts in step 2")
-        for label in (self.left, self.right):
-            label.setMinimumSize(320, 240)
-            label.setAlignment(Qt.AlignCenter)
-            previews.addWidget(label)
-        layout.addLayout(previews)
+        self.left = CalibrationPreview("LEFT feed")
+        self.right = CalibrationPreview("RIGHT: starts in step 2")
+        self.preview_captions = {}
+        for side, index, label in (("left", primary, self.left), ("right", secondary, self.right)):
+            column = QVBoxLayout()
+            caption = QLabel(f"{side.upper()} camera {index}: waiting for native frame")
+            caption.setWordWrap(True)
+            caption.setFixedHeight(36)
+            self.preview_captions[side] = caption
+            column.addWidget(caption)
+            column.addWidget(label, 1)
+            previews.addLayout(column, 1)
+        layout.addLayout(previews, 1)
         self.counter = QLabel(f"0 / {MIN_SAMPLES} minimum LEFT views")
         self.frame_comparison = QLabel("")
         self.frame_comparison.setWordWrap(True)
@@ -394,22 +416,15 @@ class StereoCalibrationDialog(QDialog):
         layout.addWidget(self.frame_comparison)
         layout.addWidget(self.fit_status)
         layout.addWidget(self.message)
-        resources = QHBoxLayout()
-        self.visual_guide = QPushButton("Visual calibration guide...")
-        self.print_board = QPushButton("Print A4 chessboard...")
-        resources.addWidget(self.visual_guide)
-        resources.addWidget(self.print_board)
-        resources.addStretch(1)
-        layout.addLayout(resources)
-        actions = QHBoxLayout()
-        self.start = QPushButton("Start LEFT calibration")
-        self.take = QPushButton("Capture LEFT view")
-        self.fit = QPushButton("Fit LEFT intrinsics")
-        self.save = QPushButton("Save stereo profile")
-        close = QPushButton("Close")
-        for button in (self.start, self.take, self.fit, self.save, close):
-            actions.addWidget(button)
-        layout.addLayout(actions)
+        self.visual_guide = command_button("Visual calibration guide...", "help", role="guide")
+        self.print_board = command_button("Print A4 chessboard...", "print")
+        outer.addLayout(CalibrationActions(self.visual_guide, self.print_board, stretch=False))
+        self.start = command_button("Start LEFT calibration", "play")
+        self.take = command_button("Capture LEFT view", "camera")
+        self.fit = command_button("Fit LEFT intrinsics", "fit")
+        self.save = command_button("Save stereo profile", "save", role="accent")
+        close = command_button("Close", "close")
+        outer.addLayout(CalibrationActions(self.start, self.take, self.fit, self.save, close))
         self.take.setEnabled(False)
         self.fit.setEnabled(False)
         self.save.setEnabled(False)
@@ -470,6 +485,11 @@ class StereoCalibrationDialog(QDialog):
             return False
 
     def _start(self):
+        if any(job.isRunning() for job in self._fit_jobs):
+            self.message.setText("Calibration is still fitting; wait for the result.")
+            return
+        if self.capture_worker is not None and self.capture_worker.isRunning():
+            return
         if self.indices[0] == self.indices[1]:
             self.message.setText("Select two different road cameras.")
             return
@@ -480,35 +500,100 @@ class StereoCalibrationDialog(QDialog):
         if self.stage in ("left", "right"):
             index = self.indices[0 if self.stage == "left" else 1]
             self.capture_worker = SingleBoardCapture(index, self.pattern, self.stage, self)
-            self.capture_worker.preview.connect(self._single_preview)
-            self.capture_worker.sample.connect(self._sample_single)
+            worker, side = self.capture_worker, self.stage
+            worker.preview.connect(lambda image, role=side, owner=worker:
+                                   self._single_preview(image, role) if owner is self.capture_worker else None)
+            worker.sample.connect(lambda payload, role=side, owner=worker:
+                                  self._sample_single(payload, role) if owner is self.capture_worker else None)
         else:
             self.capture_worker = StereoBoardCapture(self.indices, self.pattern, self)
-            self.capture_worker.preview.connect(self._preview)
-            self.capture_worker.sample.connect(self._sample)
-        self.capture_worker.status.connect(self.message.setText)
-        self.capture_worker.finished.connect(lambda: self.take.setEnabled(False))
+            worker = self.capture_worker
+            worker.preview.connect(lambda left, right, owner=worker:
+                                   self._preview(left, right) if owner is self.capture_worker else None)
+            worker.sample.connect(lambda payload, owner=worker:
+                                  self._sample(payload) if owner is self.capture_worker else None)
+        worker, side = self.capture_worker, self.stage
+        worker.status.connect(lambda message, owner=worker, role=side:
+                              self.message.setText(message)
+                              if owner is self.capture_worker and role == self.stage else None)
+        worker.finished.connect(lambda owner=worker, role=side: self._capture_finished(owner, role))
         self.take.setEnabled(True)
         self.capture_worker.start()
+
+    def _enable_stage_retry(self):
+        self.start.setText(f"Capture more {self.stage.upper()} views")
+        self.start.setEnabled(True)
+        count = len(self.pairs) if self.stage == "stereo" else len(self.individual_frames[self.stage])
+        self.fit.setEnabled(count >= MIN_SAMPLES)
+
+    def _capture_finished(self, worker, side):
+        if worker is not self.capture_worker or side != self.stage:
+            return
+        self.take.setEnabled(False)
+        if self.fit_worker is None and not any(job.isRunning() for job in self._fit_jobs):
+            self._enable_stage_retry()
+            if not (self.pairs if side == "stereo" else self.individual_frames[side]):
+                self.start.setText(f"Retry {side.upper()} camera connection")
 
     def _request_capture(self):
         if self.capture_worker is not None:
             self.capture_worker.capture_requested.set()
 
-    def _single_preview(self, image):
-        label = self.left if self.stage == "left" else self.right
-        label.setPixmap(QPixmap.fromImage(image).scaled(
-            400, 300, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+    def _show_native_preview(self, side, image):
+        label = self.left if side == "left" else self.right
+        label.set_image(image)
+        size = (image.width(), image.height())
+        index = self.indices[0 if side == "left" else 1]
+        self.preview_captions[side].setText(f"{side.upper()} camera {index}: raw {size[0]}×{size[1]} px · full frame")
+        if self.native_sizes.get(side) != size:
+            self.native_sizes[side] = size
+            self._update_frame_comparison()
+
+    def _single_preview(self, image, side=None):
+        side = side or self.stage
+        if side not in ("left", "right") or side != self.stage:
+            return  # A queued LEFT frame must never become a RIGHT preview.
+        self._show_native_preview(side, image)
 
     def _preview(self, left, right):
-        for label, image in ((self.left, left), (self.right, right)):
-            label.setPixmap(QPixmap.fromImage(image).scaled(
-                400, 300, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        self._show_native_preview("left", left)
+        self._show_native_preview("right", right)
 
-    def _sample_single(self, payload):
-        if self.fit_worker is not None:
+    def _update_frame_comparison(self):
+        sizes = {side: self.native_sizes.get(side) or (camera.image_size if camera else None)
+                 for side, camera in self.intrinsics.items()}
+        if not all(sizes.values()):
+            self.frame_comparison.setText("Compare raw pixel dimensions after both cameras have supplied a frame. Previews show the full image, without optical correction or cropping.")
+            return
+        left, right = sizes["left"], sizes["right"]
+        matched = left == right
+        text = (f"Frame resolution {'MATCHED' if matched else 'MISMATCHED'}: "
+                f"LEFT {left[0]}×{left[1]}, RIGHT {right[0]}×{right[1]}. ")
+        if not matched:
+            text += "Stop and use matching native modes; samples are not resized to hide a mismatch."
+        else:
+            text += "Equal pixel size does not establish equal optical field of view."
+            if all(self.intrinsics.values()):
+                focal = [self.intrinsics[side].focal_length_px for side in ("left", "right")]
+                text += f" Fitted fx differs by {abs(focal[0] - focal[1]) / max(abs(focal[0]), 1e-9) * 100:.1f}% relative to LEFT; check the same stationary target and unchanged focus."
+        self.frame_comparison.setText(text)
+
+    def _sample_size_valid(self, side, frame):
+        size = (frame.shape[1], frame.shape[0])
+        frames = self.individual_frames[side]
+        expected = (frames[0].shape[1], frames[0].shape[0]) if frames else None
+        other = self.intrinsics["right" if side == "left" else "left"]
+        if (expected and size != expected) or (other and size != other.image_size):
+            self.message.setText(f"View not accepted: native {side.upper()} size {size} differs from the existing calibration samples. Restart with matching camera modes; no resizing is applied.")
+            return False
+        return True
+
+    def _sample_single(self, payload, side=None):
+        if self.fit_worker is not None or (side is not None and side != self.stage):
             return
         frame, corners = payload
+        if not self._sample_size_valid(self.stage, frame):
+            return
         previous = self.individual_corners[self.stage]
         if any(np.sqrt(np.mean((corners - saved) ** 2)) < 8 for saved in previous):
             self.message.setText("Similar pose already saved. Move or tilt the board before capturing.")
@@ -534,6 +619,14 @@ class StereoCalibrationDialog(QDialog):
         if self.fit_worker is not None:
             return
         left, right, corners1, corners2 = payload
+        if left.shape[:2] != right.shape[:2]:
+            self.message.setText("Pair not accepted: LEFT and RIGHT native resolutions differ; use matching camera modes.")
+            return
+        for side, frame in (("left", left), ("right", right)):
+            model = self.intrinsics[side]
+            if model is not None and (frame.shape[1], frame.shape[0]) != model.image_size:
+                self.message.setText("Pair not accepted: native frame size changed after individual calibration. Restart using the same camera modes; no scaling is applied.")
+                return
         if any(max(np.sqrt(np.mean((corners1 - saved1) ** 2)),
                    np.sqrt(np.mean((corners2 - saved2) ** 2))) < 8
                for saved1, saved2 in self.corner_pairs):
@@ -564,10 +657,15 @@ class StereoCalibrationDialog(QDialog):
         return True
 
     def _fit(self):
+        if any(job.isRunning() for job in self._fit_jobs):
+            return
         if not self._stop_capture():
             return
+        self.start.setEnabled(False)
         self.take.setEnabled(False)
         self.fit.setEnabled(False)
+        self.save.setEnabled(False)
+        self.calibration_result = self.report = None
         if self.stage in ("left", "right"):
             self.message.setText(f"Fitting {self.stage.upper()} camera intrinsics...")
             self.fit_worker = SingleBoardFit(
@@ -580,10 +678,15 @@ class StereoCalibrationDialog(QDialog):
                 (self.intrinsics["left"], self.intrinsics["right"]), self)
             self.fit_worker.result_ready.connect(self._fit_done)
         self.fit_worker.failed.connect(self._fit_failed)
+        worker = self.fit_worker
+        self._fit_jobs.add(worker)
+        worker.finished.connect(lambda owner=worker: self._fit_jobs.discard(owner))
         self.fit_worker.start()
 
     def _fit_failed(self, message):
         self.fit_worker = None
+        self.calibration_result = self.report = None
+        self.save.setEnabled(False)
         self.fit_status.setText("FIT FAILED — no calibration was saved")
         self.fit_status.setStyleSheet(
             "background:#461f27; color:#ffb5bf; border:1px solid #a94756; "
@@ -592,14 +695,14 @@ class StereoCalibrationDialog(QDialog):
             f"Fit failed: {message}. If any saved view used loose or curved paper, "
             "close this calibration and restart with a rigid flat board; adding more "
             "views does not remove the invalid ones.")
-        self.start.setText(f"Capture more {self.stage.upper()} views")
-        self.start.setEnabled(True)
-        count = len(self.pairs) if self.stage == "stereo" else len(self.individual_frames[self.stage])
-        self.fit.setEnabled(count >= MIN_SAMPLES)
+        self._enable_stage_retry()
 
     def _single_fit_done(self, result):
         completed = self.stage
-        self.intrinsics[completed] = result
+        if (completed == "right" and self.intrinsics["left"] is not None
+                and result.image_size != self.intrinsics["left"].image_size):
+            self._fit_failed("LEFT/RIGHT native resolutions differ; repeat with matching camera modes")
+            return
         try:
             save_single_calibration(
                 result, f"stereo_sessions/{self.session_dir.name}/{completed}_intrinsic")
@@ -609,9 +712,9 @@ class StereoCalibrationDialog(QDialog):
             (self.session_dir / f"{completed}_report.json").write_text(
                 json.dumps(report, indent=2))
         except OSError as error:
-            self.message.setText(f"Cannot archive {completed} calibration: {error}")
-            self.fit_worker = None
+            self._fit_failed(f"Cannot archive {completed} calibration: {error}")
             return
+        self.intrinsics[completed] = result
         self.fit_worker = None
         self.capture_worker = None
         if completed == "left":
@@ -625,18 +728,7 @@ class StereoCalibrationDialog(QDialog):
             self.intro.setText(
                 "Step 3 of 3: both individual calibrations passed. Rigidly fix both cameras, "
                 "confirm LEFT/RIGHT order, and capture the same stationary board in BOTH feeds.")
-            left = self.intrinsics["left"]
-            right = self.intrinsics["right"]
-            focal_delta = abs(
-                left.focal_length_px - right.focal_length_px) / max(
-                    left.focal_length_px, right.focal_length_px) * 100.0
-            resolution_state = (
-                "MATCHED" if left.image_size == right.image_size else "MISMATCHED")
-            self.frame_comparison.setText(
-                f"Frame resolution {resolution_state}: LEFT {left.image_size[0]}×"
-                f"{left.image_size[1]}, RIGHT {right.image_size[0]}×"
-                f"{right.image_size[1]}. Fitted focal lengths differ by "
-                f"{focal_delta:.1f}%; a small apparent zoom/FOV difference is normal.")
+            self._update_frame_comparison()
             self.fit_status.setText(
                 "INDIVIDUAL CALIBRATIONS PASSED — stereo fitting still required")
             self.fit_status.setStyleSheet(
@@ -655,8 +747,8 @@ class StereoCalibrationDialog(QDialog):
             next_step = (
                 f"LEFT camera calibration passed at {result.rms_error:.3f} px.\n\n"
                 f"Next: calibrate RIGHT camera {self.indices[1]} using the same rigid, "
-                "flat board. A different apparent zoom is acceptable because each camera "
-                "is calibrated independently.")
+                "flat board. Compare native pixel dimensions; compare apparent zoom only "
+                "with the same stationary target and unchanged focus.")
         else:
             next_step = (
                 f"RIGHT camera calibration passed at {result.rms_error:.3f} px.\n\n"
@@ -671,12 +763,13 @@ class StereoCalibrationDialog(QDialog):
 
     def _fit_done(self, result, report):
         self.fit_worker = None
-        self.calibration_result, self.report = result, report
         try:
             (self.session_dir / "report.json").write_text(json.dumps(report, indent=2))
         except OSError as error:
-            self.message.setText(f"Cannot save fit report: {error}")
+            self._fit_failed(f"Cannot save fit report: {error}")
             return
+        self.calibration_result, self.report = result, report
+        self._enable_stage_retry()
         self.message.setText(
             f"Stereo RMS {report['stereo_rms_px']:.3f} px; "
             f"row error p95 {report['fit_rectified_row_p95_px']:.3f} px; "
@@ -736,7 +829,8 @@ class StereoCalibrationDialog(QDialog):
             self.message.setText(f"Save failed: {error}")
 
     def done(self, code):
-        if self.fit_worker and self.fit_worker.isRunning():
+        if (any(job.isRunning() for job in self._fit_jobs)
+                or (self.fit_worker and self.fit_worker.isRunning())):
             self.message.setText("Calibration is still fitting; close after it finishes.")
             return
         if self._stop_capture():

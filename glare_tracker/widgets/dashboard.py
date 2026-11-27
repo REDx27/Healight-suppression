@@ -6,11 +6,12 @@ from PyQt5.QtCore import QElapsedTimer, Qt, pyqtSignal
 from PyQt5.QtGui import QImage, QPixmap
 from PyQt5.QtWidgets import (
     QBoxLayout, QButtonGroup, QComboBox, QFrame, QHBoxLayout, QLabel, QLayout,
-    QScrollArea, QSizePolicy, QTabWidget, QPushButton, QTabBar, QToolButton,
+    QScrollArea, QSizePolicy, QTabWidget, QTabBar, QToolButton,
     QVBoxLayout, QWidget,
 )
 
-from glare_tracker.widgets.icons import ICON_SIZE, IconFactory
+from glare_tracker.widgets.icons import ICON_SIZE, IconFactory, command_button
+from glare_tracker.styles import CONTROL_HEIGHT
 from glare_tracker.headlight_detector import PREVIEW_MODES
 
 
@@ -20,6 +21,7 @@ class StatusBadge(QLabel):
     def __init__(self, text: str, state: str = "idle", parent=None):
         super().__init__(text, parent)
         self.setObjectName("statusBadge")
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
         self.setAlignment(Qt.AlignCenter)
         self._state = ""
         self.set_status(text, state)
@@ -54,8 +56,8 @@ class CameraPreviewCard(QFrame):
         self._render_clock.start()
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 7, 8, 7)
-        layout.setSpacing(4)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(6)
 
         title_row = QHBoxLayout()
         title_icon = QLabel()
@@ -74,6 +76,7 @@ class CameraPreviewCard(QFrame):
         self.preview_combo.setToolTip(
             "Choose which image-processing stage is shown in this feed")
         self.preview_combo.setMinimumWidth(108)
+        self.preview_combo.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
         self.preview_combo.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self.preview_combo.setVisible(feed == "road")
         self.preview_combo.currentTextChanged.connect(
@@ -99,7 +102,20 @@ class CameraPreviewCard(QFrame):
         self.detail.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Preferred)
 
         layout.addLayout(title_row)
-        layout.addWidget(self.preview_combo)
+        self.mode_row = QWidget()
+        self.mode_row.setObjectName("cameraModeRow")
+        self.mode_row.setFixedHeight(CONTROL_HEIGHT)
+        mode_layout = QHBoxLayout(self.mode_row)
+        mode_layout.setContentsMargins(0, 0, 0, 0)
+        if feed == "road":
+            mode_layout.addWidget(self.preview_combo)
+        else:
+            self.preview_combo.setParent(self.mode_row)
+            self.preview_combo.hide()
+            caption = QLabel("Eye tracking")
+            caption.setObjectName("mutedText")
+            mode_layout.addWidget(caption)
+        layout.addWidget(self.mode_row)
         layout.addWidget(self.viewport, 1)  # stretch factor 1
         layout.addWidget(self.detail)
 
@@ -141,17 +157,17 @@ class ApplicationHeader(QFrame):
     def __init__(self, version: str, parent=None):
         super().__init__(parent)
         self.setObjectName("appHeader")
-        self.setFixedHeight(54)
+        self.setFixedHeight(48)
         layout = QHBoxLayout(self)
         layout.setSizeConstraint(QLayout.SetNoConstraint)
         layout.setContentsMargins(12, 4, 12, 4)
-        layout.setSpacing(5)
+        layout.setSpacing(6)
 
         title_stack = QVBoxLayout()
         title_stack.setSpacing(2)
         title = QLabel("GlareTracker")
         title.setObjectName("appTitle")
-        self.subtitle = QLabel(f"ACTIVE GLARE SUPPRESSION  //  v{version}")
+        self.subtitle = QLabel(f"Glare suppression  |  v{version}")
         self.subtitle.setObjectName("appSubtitle")
         title_stack.addWidget(title)
         title_stack.addWidget(self.subtitle)
@@ -165,32 +181,31 @@ class ApplicationHeader(QFrame):
             "Run", "run", "Start required cameras and real-time calculations")
         self.btn_standby = self._session_button(
             "Standby", "standby", "Show required camera previews without calculations")
+        self.btn_standby.setAccessibleName("Standby")
         self.btn_stop = self._session_button(
             "Stop", "stop", "Stop calculations and release all cameras")
         self.btn_stop.setChecked(True)
         for button in (self.btn_run, self.btn_standby, self.btn_stop):
             self.session_buttons.addButton(button)
 
-        self.btn_calibrate = QPushButton("Calibrate Center")
-        self.btn_calibrate.setObjectName("headerAction")
-        self.btn_calibrate.setProperty("role", "calibrate")
-        self.btn_calibrate.setIcon(IconFactory.icon("target", "#75b7f5"))
-        self.btn_calibrate.setIconSize(ICON_SIZE)
-        self.btn_calibrate.setToolTip("Use the current eye position as the center reference")
+        self.btn_calibrate = command_button(
+            "Calibrate Center", "target",
+            tooltip="Center the current eye position in the preview")
+        self.btn_calibrate.setAccessibleName("Calibrate Center")
 
-        self.btn_reset_view = QPushButton("Reset View")
-        self.btn_reset_view.setObjectName("headerAction")
-        self.btn_reset_view.setProperty("role", "reset")
-        self.btn_reset_view.setIcon(IconFactory.icon("reset", "#a8b6c1"))
-        self.btn_reset_view.setIconSize(ICON_SIZE)
-        self.btn_reset_view.setToolTip("Restore the default 3D camera angle")
+        self.btn_reset_view = command_button(
+            "Reset view", "reset", tooltip="Restore the default 3D view")
+        self.btn_reset_view.setAccessibleName("Reset 3D view")
 
         self.panel_toggle = QToolButton()
         self.panel_toggle.setObjectName("panelToggle")
-        self.panel_toggle.setText("PANEL")
+        self.panel_toggle.setText("Panel")
+        self.panel_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
         self.panel_toggle.setIcon(IconFactory.icon("panel"))
         self.panel_toggle.setIconSize(ICON_SIZE)
         self.panel_toggle.setToolTip("Show or hide the operations sidebar")
+        self.panel_toggle.setAccessibleName("Operations sidebar")
+        self.panel_toggle.setFocusPolicy(Qt.StrongFocus)
         self.panel_toggle.setCheckable(True)
         self.panel_toggle.setChecked(True)
         layout.addLayout(title_stack)
@@ -209,22 +224,18 @@ class ApplicationHeader(QFrame):
         layout.addWidget(self.tracking_badge)
 
     def _session_button(self, text: str, role: str, tooltip: str):
-        button = QPushButton(text)
+        icon = {"run": "play", "standby": "pause", "stop": "stop"}[role]
+        button = command_button(text, icon, tooltip=tooltip)
         button.setObjectName("sessionStateAction")
         button.setProperty("sessionRole", role)
         button.setCheckable(True)
-        button.setToolTip(tooltip)
-        if role == "run":
-            button.setIcon(IconFactory.icon("play", "#dffaff"))
-        elif role == "stop":
-            button.setIcon(IconFactory.icon("stop", "#fff1f2"))
-        button.setIconSize(ICON_SIZE)
         return button
 
     def set_mode(self, mode_text: str):
         compact = mode_text.replace(" Position", "").upper()
         state = "active" if mode_text == "Fully Auto" else "info"
         self.mode_badge.set_status(compact, state)
+        self._fit_command_labels()
 
     def set_session_state(self, state: str):
         mapping = {
@@ -236,16 +247,31 @@ class ApplicationHeader(QFrame):
         button.setChecked(True)
 
     def set_tracking(self, text: str, state: str):
+        changed = text != self.tracking_badge.text()
         self.tracking_badge.set_status(text, state)
+        if changed:
+            self._fit_command_labels()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        compact = self.width() < 1260
-        very_compact = self.width() < 820
-        self.btn_calibrate.setText("" if compact else "Calibrate Center")
-        self.btn_reset_view.setText("" if compact else "Reset View")
-        self.panel_toggle.setText("" if compact else "PANEL")
-        self.subtitle.setVisible(not very_compact)
+        self._fit_command_labels()
+
+    def _fit_command_labels(self):
+        optional = ((self.panel_toggle, "Panel"), (self.btn_reset_view, "Reset view"),
+                    (self.btn_calibrate, "Calibrate Center"), (self.btn_standby, "Standby"))
+        self.subtitle.show()
+        self.mode_badge.show()
+        for button, label in optional:
+            button.setText(label)
+        layout = self.layout()
+        if layout.sizeHint().width() > self.width():
+            self.subtitle.hide()
+        for button, _ in optional:
+            if layout.sizeHint().width() <= self.width():
+                break
+            button.setText("")
+        if layout.sizeHint().width() > self.width():
+            self.mode_badge.hide()
 
 
 class CameraFeedPanel(QWidget):
@@ -266,19 +292,27 @@ class CameraFeedPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(4)
         heading = QLabel("VISION INPUTS")
-        heading.setObjectName("appSubtitle")
-        self._cards = QBoxLayout(QBoxLayout.LeftToRight)
+        heading.setObjectName("editorRegionTitle")
+        heading.setFixedHeight(28)
+        heading.setContentsMargins(12, 0, 12, 0)
+        self._card_content = QWidget()
+        self._cards = QBoxLayout(QBoxLayout.LeftToRight, self._card_content)
+        self._cards.setContentsMargins(0, 0, 0, 0)
         self._cards.setSpacing(4)
-        self.driver = CameraPreviewCard("DRIVER / EYES", "Driver camera", "eye")
+        self.driver = CameraPreviewCard("Driver", "Driver camera", "eye")
         self.headlight = CameraPreviewCard(
-            "ROAD / LEFT", "Left road camera", "road")
+            "Road left", "Left road camera", "road")
         self.headlight_secondary = CameraPreviewCard(
-            "ROAD / RIGHT", "Right road camera", "road")
+            "Road right", "Right road camera", "road")
         self._cards.addWidget(self.driver, 1)
         self._cards.addWidget(self.headlight, 1)
         self._cards.addWidget(self.headlight_secondary, 1)
+        card_scroll = QScrollArea()
+        card_scroll.setWidgetResizable(True)
+        card_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        card_scroll.setWidget(self._card_content)
         layout.addWidget(heading)
-        layout.addLayout(self._cards)
+        layout.addWidget(card_scroll, 1)
         self.headlight_secondary.hide()
 
     def configure_sources(self, driver: bool, road: bool, stereo: bool):
@@ -290,6 +324,7 @@ class CameraFeedPanel(QWidget):
             self.driver, self.headlight, self.headlight_secondary,
         ):
             card.setMaximumWidth(16777215)
+        self._fit_cards()
 
     def set_stereo_frames(self, primary: QImage, secondary: QImage):
         self.headlight.set_frame(primary)
@@ -297,12 +332,20 @@ class CameraFeedPanel(QWidget):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
-        direction = (
-            QBoxLayout.TopToBottom if self.width() < 640
-            else QBoxLayout.LeftToRight
-        )
+        self._fit_cards()
+
+    def _fit_cards(self):
+        cards = (self.driver, self.headlight, self.headlight_secondary)
+        visible = [card for card in cards if not card.isHidden()]
+        spacing = max(0, len(visible) - 1) * self._cards.spacing()
+        stacked = self.width() < sum(card.minimumWidth() for card in visible) + spacing
+        direction = QBoxLayout.TopToBottom if stacked else QBoxLayout.LeftToRight
         if self._cards.direction() != direction:
             self._cards.setDirection(direction)
+        for card in cards:
+            card.setMinimumHeight(card.minimumSizeHint().height() if stacked else 0)
+        self._card_content.setMinimumHeight(
+            sum(card.minimumHeight() for card in visible) + spacing if stacked else 0)
 
 
 class SceneWorkspace(QFrame):
@@ -331,7 +374,9 @@ class SceneWorkspace(QFrame):
         super().resizeEvent(event)
         # Scale the overlay proportionally but with sensible bounds
         width = min(420, max(240, int(self.width() * 0.32)))
-        height = int(width * 0.58)
+        height_limit = max(120, self.height() - 64)
+        width = min(width, max(200, int(height_limit / .58)))
+        height = min(height_limit, max(120, int(width * 0.58)))
         margin = 12
         self.overlay.setGeometry(margin, margin, width, height)
         self.overlay.raise_()
@@ -360,9 +405,9 @@ class ConfigurationSidebar(QFrame):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         heading = QLabel("PROPERTIES")
-        heading.setObjectName("appSubtitle")
-        heading.setFixedHeight(30)
-        heading.setContentsMargins(10, 0, 10, 0)
+        heading.setObjectName("editorRegionTitle")
+        heading.setFixedHeight(28)
+        heading.setContentsMargins(12, 0, 12, 0)
         heading.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         layout.addWidget(heading)
         layout.addWidget(controls, 1)

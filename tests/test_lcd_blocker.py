@@ -131,3 +131,58 @@ def test_lcd_clear_state_and_alignment_patterns_are_explicit():
         blocker.set_clear_state("transparent")
     blocker.disable_output()
     app.processEvents()
+
+
+def test_unchanged_lcd_frames_and_empty_clears_do_not_request_repaint(monkeypatch):
+    app = _application()
+    blocker = LCDBlockerWindow()
+    blocker.enable_for_testing()
+    paints = []
+    monkeypatch.setattr(blocker, "update", lambda: paints.append(True))
+    for _ in range(200):
+        blocker.clear_output()
+    assert not paints
+    blocker.update_intersections([(0., 0., 10.)])
+    for _ in range(200):
+        blocker.update_intersections([(0., 0., 10.)])
+    assert len(paints) == 1
+    blocker.clear_output()
+    blocker.clear_output()
+    assert len(paints) == 2
+    blocker.set_clear_state("black")
+    assert len(paints) == 3  # Background changes must paint even without spots.
+    blocker.close()
+    app.processEvents()
+
+
+def test_panel_configuration_updates_radius_and_invalidates_old_pixel_geometry():
+    app = _application()
+    blocker = LCDBlockerWindow()
+    blocker.configure_panel(40., 20., (1600, 900), 30.)
+    blocker.enable_for_testing()
+    blocker.update_intersections([(0., 0., 10.)])
+    blocker.configure_panel(40., 20., (1600, 900), 45.)
+    assert blocker.spots[0].radius_px == 45.
+    blocker.show_alignment_mark((.5, .5))
+    blocker.configure_panel(40., 20., (1600, 900), 45.)
+    assert blocker.spots[0].radius_px == 7.  # Reapplying config preserves jig marks.
+    blocker.configure_panel(40., 20., (1920, 1080), 45.)
+    assert blocker.spots == ()
+    blocker.update_intersections([(0., 0., 10.)])
+    mapping = [[1 / 40., 0., .5], [0., -1 / 20., 1.]]
+    blocker.set_pixel_mapping(mapping)
+    assert blocker.spots == ()
+    blocker.close()
+    app.processEvents()
+
+
+@pytest.mark.parametrize("width,height,radius", [(float("nan"), 20., 30.),
+                                                  (40., float("inf"), 30.),
+                                                  (40., 20., float("nan"))])
+def test_nonfinite_panel_dimensions_and_radius_are_rejected(width, height, radius):
+    app = _application()
+    blocker = LCDBlockerWindow()
+    with pytest.raises(ValueError):
+        blocker.configure_panel(width, height, (1600, 900), radius)
+    blocker.close()
+    app.processEvents()

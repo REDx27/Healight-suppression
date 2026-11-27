@@ -1,6 +1,6 @@
 # Driver and installed-rig calibration
 
-Updated 2026-11-25. This describes the development source, not a new standalone release.
+Updated 2026-11-26. This describes the development source, not a new standalone release.
 The procedures also appear inside the calibration dialogs. Your VL53L0X currently
 has no controller connected; use **Skip ToF for now** to test the camera separately.
 
@@ -28,6 +28,19 @@ with it OFF, the fixed reference is used instead. If the camera lacks intrinsics
 unprojection remains an approximate preview and live IPD is unavailable.
 
 ## 1. Choose the mode, then open Cameras > Calibration
+
+Settings start collapsed. Select the Camera icon, then click the Calibration header
+(or focus it and press Space/Enter) to reveal its buttons. Expanded settings now have
+more spacing; Driver, Road lights, Geometry and Research use profile, bulb, monitor
+and microscope icons respectively.
+
+Road preview check: both panes show the full raw image with equal canvas sizing and
+aspect-preserving letterboxing. Read each camera's raw pixel dimensions above its
+pane. LEFT may be a frozen last view while RIGHT is live; different board poses at
+those stages cannot be used to compare zoom. Compare the same stationary board in the
+paired stage instead. Equal resolutions do not guarantee equal focal length/FOV.
+Native mode mismatches are rejected rather than hidden by rescaling. The dialog body
+scrolls on smaller screens while capture/fit/save/close actions remain accessible.
 
 | Mode | Component calibration buttons | Installed rig calibration |
 |---|---|---|
@@ -141,6 +154,26 @@ Optical filters must pass geometric verification before measurement claims.
 Changes to camera selection, intrinsic/stereo calibration, selected display mode or
 panel dimensions invalidate the relevant binding. Remounting/refocusing must be
 reported by the operator; software cannot physically detect every mount change.
+
+### Reading the camera rig in the 3D view
+
+After saving the third, installed-rig calibration, compatible saved camera poses
+appear automatically. You should see Driver, Road L and Road R when both driver and
+road roles have accepted profiles. Their optical-centre points use the same centimetre
+coordinates as the LCD plane; arrows show camera viewing direction. They do not depict
+measured camera-body size or lens field of view. RIGHT is positioned/oriented through
+the saved stereo R/T, not by guessing half the baseline from a manual camera position.
+
+Hover over the rig-status text at the bottom of the scene to read X/Y/Z coordinates.
+In 3D view settings, Camera positions hides/shows the markers. Saved poses awaiting
+mount confirmation are identified separately; confirm camera order and unchanged
+mounts before Run. Changing the selected cameras, their calibration, panel dimensions
+or display invalidates affected saved markers. If calibration is incomplete, the scene
+keeps an explicitly uncalibrated/demo reference instead of inventing real positions.
+
+Lens/stereo fitting alone does not establish camera-to-panel locations. Finish the
+installed-rig workflow, then independently verify physical intersections. The example
+image in the thesis reference uses synthetic test poses and is marked OFFLINE EXAMPLE.
 
 ## 5. What passes, and what still needs measurement
 

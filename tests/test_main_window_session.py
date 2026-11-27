@@ -134,9 +134,9 @@ def test_editor_regions_expand_and_reflow_without_outer_card_margins():
     margins = window.centralWidget().layout().contentsMargins()
     assert (margins.left(), margins.top(), margins.right(), margins.bottom()) == (
         0, 0, 0, 0)
-    assert window.header.height() == 54
+    assert window.header.height() == 48
     assert window.main_splitter.orientation() == Qt.Horizontal
-    assert window.sidebar.width() >= 390
+    assert 360 <= window.sidebar.width() <= 480
 
     window.resize(1000, 700)
     app.processEvents()
@@ -246,8 +246,8 @@ def test_available_camera_dropdowns_assign_roles_with_fixed_driver():
 
     policy = window.controls.mode_policy()
     assert window.controls.spin_driver_camera.count() == 2
-    assert "1280×720" in window.controls.spin_driver_camera.currentText()
-    assert "640×480" in window.controls.spin_headlight_camera.currentText()
+    assert "1280×720" in window.controls.spin_driver_camera.toolTip()
+    assert "640×480" in window.controls.spin_headlight_camera.toolTip()
     assert window.controls.spin_driver_camera.value() == 2
     assert window.controls.spin_headlight_camera.value() == 0
     assert policy.manual_driver is True

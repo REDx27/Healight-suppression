@@ -1,10 +1,19 @@
-"""Centralized visual design system for the GlareTracker desktop UI.
-
-Provides a cohesive simulation-studio theme with elevated gray surfaces,
-blue interaction accents, and restrained green semantic state colors.
-"""
+"""Shared visual styles for the GlareTracker desktop controls."""
 
 from dataclasses import dataclass
+from pathlib import Path
+import sys
+
+
+_CONTROL_ASSETS = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parents[1])) / "assets" / "controls"
+
+# Logical pixels scale with Qt's high-DPI support. Point-sized stylesheet
+# fonts depend on the desktop's font DPI independently of our layout metrics.
+CONTROL_HEIGHT = 24
+PANEL_HEADER_HEIGHT = 28
+PANEL_PADDING = 16
+FORM_LABEL_WIDTH = 104
+ROW_SPACING = 8
 
 
 @dataclass(frozen=True)
@@ -24,14 +33,18 @@ class ThemePalette:
     border_glow: str = "#4b83c3"     # prominent accent border
 
     # ── Text ──
-    text: str = "#d8dadd"            # primary text
-    text_muted: str = "#a9adb2"      # secondary text
-    text_dim: str = "#6f747a"        # disabled / hint text
+    text: str = "#d9dde3"            # primary text
+    text_muted: str = "#a2aab5"      # secondary text
+    text_dim: str = "#858d98"        # disabled text
 
     # ── Accent spectrum ──
     accent: str = "#4779bd"          # primary blue interaction accent
     accent_bright: str = "#78a9e6"   # bright variant
     accent_dim: str = "#345d8d"      # dimmed variant
+    action: str = "#215eae"          # filled command button
+    action_hover: str = "#2b6bc1"
+    action_pressed: str = "#1b4d90"
+    focus: str = "#abd4ff"           # keyboard focus ring
 
     # ── Semantic ──
     success: str = "#35c46f"         # green
@@ -52,13 +65,16 @@ class ThemeManager:
 
     def stylesheet(self) -> str:
         p = self.palette
+        down = (_CONTROL_ASSETS / "chevron-down.svg").as_posix()
+        up = (_CONTROL_ASSETS / "chevron-up.svg").as_posix()
+        check = (_CONTROL_ASSETS / "check.svg").as_posix()
         return f"""
         /* ── Base ── */
         QMainWindow, QWidget {{
             background-color: {p.canvas};
             color: {p.text};
-            font-family: "Segoe UI Variable", "Segoe UI", "Inter", sans-serif;
-            font-size: 9pt;
+            font-family: "Segoe UI";
+            font-size: 12px;
         }}
 
         QToolTip {{
@@ -80,24 +96,43 @@ class ThemeManager:
             border-radius: 0;
         }}
         QLabel#appTitle {{
-            font-size: 13pt;
-            font-weight: 700;
+            font-size: 17px;
+            font-weight: 600;
             color: {p.text};
-            letter-spacing: 0.2px;
         }}
         QLabel#appSubtitle, QLabel#mutedText {{
             color: {p.text_muted};
-            font-size: 8pt;
-            letter-spacing: 0.25px;
+            font-size: 11px;
         }}
         QLabel#propertyPageTitle {{
-            color: #9da1a6;
-            font-size: 8pt;
-            font-weight: 700;
-            letter-spacing: 0.7px;
+            color: {p.text_muted};
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 1px;
             background: transparent;
-            padding: 2px 4px 3px 4px;
+            padding: 0;
             border: none;
+        }}
+        QLabel#editorRegionTitle {{
+            background: #282a2e;
+            color: {p.text_muted};
+            font-size: 10px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            border: none;
+            border-bottom: 1px solid #1b1d20;
+        }}
+        QFrame#telemetryPanel {{
+            background: #25272b;
+            border: none;
+        }}
+        QWidget#telemetryContent, QWidget#telemetryIntersections {{
+            background: #25272b;
+        }}
+        QWidget#panelPresetRow, QWidget#cameraModeRow,
+        QWidget#advancedShortcuts, QWidget#detectionAdvancedContainer,
+        QWidget#lcdTestButtons {{
+            background: transparent;
         }}
         QWidget#propertyEditor,
         QWidget#propertyPageContent,
@@ -109,15 +144,13 @@ class ThemeManager:
             border-right: 1px solid #111214;
         }}
         QToolButton#propertyContextButton {{
-            min-width: 34px;
-            max-width: 34px;
-            min-height: 34px;
-            max-height: 34px;
+            min-width: 0;
+            min-height: 0;
             padding: 0;
             background: transparent;
             border: 1px solid transparent;
             border-left: 2px solid transparent;
-            border-radius: 3px;
+            border-radius: 4px;
         }}
         QToolButton#propertyContextButton:hover {{
             background: #303338;
@@ -128,19 +161,6 @@ class ThemeManager:
             border-color: #4779bd;
             border-left: 2px solid #78a9e6;
         }}
-        QPushButton#propertyLinkButton {{
-            min-height: 24px;
-            padding: 1px 7px;
-            color: #a9c9ed;
-            background: #2d3e50;
-            border-color: #3e6289;
-        }}
-        QPushButton#propertyLinkButton:hover {{
-            color: #e3f0ff;
-            background: #385572;
-            border-color: #5c8fc8;
-        }}
-
         /* ── Camera Cards ── */
         QFrame#cameraCard {{
             background: #25272b;
@@ -151,10 +171,9 @@ class ThemeManager:
             border-color: #4b83c3;
         }}
         QLabel#cameraTitle {{
-            font-weight: 700;
-            font-size: 8.5pt;
+            font-weight: 600;
+            font-size: 11px;
             color: {p.text_muted};
-            letter-spacing: 0.8px;
         }}
         QFrame#cameraCard QLabel#cameraTitle {{
             color: #9dc2ef;
@@ -163,19 +182,18 @@ class ThemeManager:
             background: #111214;
             border: none;
             border-radius: 0;
-            color: {p.text_dim};
-            font-size: 9pt;
+            color: {p.text_muted};
+            font-size: 11px;
         }}
 
         /* ── Status Badges ── */
         QLabel#statusBadge {{
-            border-radius: 2px;
-            padding: 2px 7px;
-            font-size: 7pt;
-            font-weight: 700;
-            letter-spacing: 0.3px;
+            border-radius: 4px;
+            padding: 2px 5px;
+            font-size: 10px;
+            font-weight: 600;
             background: {p.surface_raised};
-            color: {p.text_dim};
+            color: {p.text_muted};
         }}
         QLabel#statusBadge[state="active"] {{
             background: {p.success_bg};
@@ -193,6 +211,9 @@ class ThemeManager:
             background: {p.info_bg};
             color: {p.info};
         }}
+        QLabel#statusBadge[state="idle"] {{
+            background: transparent;
+        }}
 
         /* ── Group Boxes ── */
         QGroupBox {{
@@ -200,11 +221,11 @@ class ThemeManager:
             border: 1px solid #3b3e43;
             border-bottom-color: #191a1d;
             border-radius: 4px;
-            margin-top: 18px;
-            padding: 16px 8px 8px 8px;
+            margin-top: 14px;
+            padding: 12px 8px 8px 8px;
             font-weight: 600;
-            font-size: 8.5pt;
-            color: #c8cbd0;
+            font-size: 12px;
+            color: {p.text};
         }}
         QGroupBox::title {{
             subcontrol-origin: margin;
@@ -212,7 +233,7 @@ class ThemeManager:
             left: 8px;
             padding: 1px 6px;
             background: #2b2d31;
-            border-radius: 2px;
+            border-radius: 4px;
         }}
         QGroupBox[section="results"] {{
             background: #27292d;
@@ -223,6 +244,9 @@ class ThemeManager:
             background: #27292d;
             color: #b8bcc1;
         }}
+        QGroupBox[section="telemetry"] QLabel {{
+            font-size: 11px;
+        }}
         QGroupBox[overlay="true"] {{
             background: rgba(14, 23, 31, 218);
             border: 1px solid rgba(91, 136, 168, 190);
@@ -232,15 +256,13 @@ class ThemeManager:
             background: rgba(14, 23, 31, 235);
         }}
         QGroupBox[propertyPanel="true"] {{
-            background: #303236;
-            border: 1px solid #18191c;
-            border-right-color: #3f4247;
-            border-bottom-color: #121315;
+            background: #2c2e32;
+            border: 1px solid #1c1e21;
             border-radius: 4px;
             margin: 0;
             padding: 0;
             font-weight: 400;
-            color: #c8cbd0;
+            color: #c8cdd4;
         }}
         QGroupBox[propertyPanel="true"]:disabled {{
             background: #292b2e;
@@ -250,21 +272,38 @@ class ThemeManager:
 
         /* ── Inputs ── */
         QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox {{
-            min-height: 26px;
-            background: #3a3c41;
-            border: 1px solid #202124;
-            border-radius: 2px;
-            padding: 1px 8px;
+            min-height: 18px;
+            background: #3b3e43;
+            border: 1px solid #484c53;
+            border-radius: 3px;
+            padding: 2px 7px;
             color: {p.text};
             selection-background-color: {p.accent_dim};
         }}
         QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {{
-            border: 1px solid {p.accent};
+            border-color: {p.focus};
             background: #34383e;
         }}
         QComboBox::drop-down {{
             border: none;
-            width: 22px;
+            width: 24px;
+        }}
+        QComboBox {{
+            padding-right: 26px;
+        }}
+        QComboBox::down-arrow {{
+            image: url("{down}");
+            width: 12px;
+            height: 12px;
+        }}
+        QSpinBox, QDoubleSpinBox {{
+            padding-right: 16px;
+        }}
+        QAbstractSpinBox QLineEdit {{
+            min-height: 0;
+            background: transparent;
+            border: none;
+            padding: 0;
         }}
         QSpinBox::up-button, QDoubleSpinBox::up-button {{
             subcontrol-origin: border;
@@ -283,13 +322,50 @@ class ThemeManager:
             border: none;
             border-left: 1px solid #25262a;
         }}
+        QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{
+            image: url("{up}");
+            width: 9px;
+            height: 9px;
+        }}
+        QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{
+            image: url("{down}");
+            width: 9px;
+            height: 9px;
+        }}
+        QComboBox#cameraPreviewMode {{
+            min-height: 16px;
+            padding-top: 2px;
+            padding-bottom: 2px;
+            font-size: 11px;
+        }}
+        QCheckBox {{
+            spacing: 7px;
+        }}
+        QCheckBox::indicator {{
+            width: 14px;
+            height: 14px;
+            border: 1px solid #89929e;
+            border-radius: 3px;
+            background: #292c30;
+        }}
+        QCheckBox::indicator:checked {{
+            background: {p.action};
+            image: url("{check}");
+        }}
+        QCheckBox::indicator:focus, QCheckBox::indicator:hover {{
+            border-color: {p.focus};
+        }}
+        QCheckBox::indicator:disabled {{
+            border-color: #4b5058;
+            background: #222428;
+        }}
         QWidget#vectorEditor {{
             background: transparent;
         }}
         QLabel#vectorAxisLabel {{
             background: transparent;
             color: #c3c6ca;
-            font-size: 8pt;
+            font-size: 11px;
             font-weight: 400;
             padding: 0;
         }}
@@ -297,20 +373,20 @@ class ThemeManager:
         QGroupBox[propertyPanel="true"] QSpinBox,
         QGroupBox[propertyPanel="true"] QDoubleSpinBox,
         QGroupBox[propertyPanel="true"] QComboBox {{
-            min-height: 22px;
-            background: #484a4e;
-            border-color: #27282b;
-            border-bottom-color: #202124;
-            border-radius: 2px;
-            padding-top: 0;
-            padding-bottom: 0;
+            min-height: 18px;
+            background: #3b3e43;
         }}
         QGroupBox[propertyPanel="true"] QLineEdit:hover,
         QGroupBox[propertyPanel="true"] QSpinBox:hover,
         QGroupBox[propertyPanel="true"] QDoubleSpinBox:hover,
         QGroupBox[propertyPanel="true"] QComboBox:hover {{
-            background: #505256;
-            border-color: #5b5e63;
+            background: #43464c;
+        }}
+        QGroupBox[propertyPanel="true"] QLineEdit:focus,
+        QGroupBox[propertyPanel="true"] QSpinBox:focus,
+        QGroupBox[propertyPanel="true"] QDoubleSpinBox:focus,
+        QGroupBox[propertyPanel="true"] QComboBox:focus {{
+            border-color: {p.focus};
         }}
         QToolButton#vectorLockButton,
         QToolButton#vectorResetButton {{
@@ -319,7 +395,7 @@ class ThemeManager:
             padding: 0;
             background: transparent;
             border: 1px solid transparent;
-            border-radius: 2px;
+            border-radius: 4px;
             color: #a7aaae;
         }}
         QToolButton#vectorLockButton:hover,
@@ -333,7 +409,7 @@ class ThemeManager:
             border-color: #526a83;
         }}
         QToolButton#vectorResetButton {{
-            font-size: 10pt;
+            font-size: 12px;
             color: #c6c9cd;
         }}
         QComboBox QAbstractItemView {{
@@ -347,76 +423,57 @@ class ThemeManager:
 
         /* ── Buttons ── */
         QPushButton, QToolButton {{
-            min-height: 27px;
+            min-height: 18px;
             background: {p.surface_raised};
-            border: 1px solid #18191b;
+            border: 1px solid #494d54;
             border-radius: 3px;
-            padding: 2px 10px;
+            padding: 2px 8px;
             color: {p.text};
-            font-weight: 600;
+            font-weight: 400;
         }}
-        QPushButton:hover, QToolButton:hover {{
+        QPushButton:hover:enabled, QToolButton:hover:enabled {{
             background: {p.surface_hover};
-            border-color: {p.accent_dim};
-            color: {p.accent_bright};
+            border-color: #85909e;
         }}
-        QPushButton:pressed, QPushButton:checked {{
+        QPushButton:pressed, QPushButton:checked, QToolButton:pressed {{
             background: {p.surface_glow};
             border-color: {p.accent};
         }}
-        QPushButton:disabled {{
+        QPushButton:disabled, QToolButton:disabled,
+        QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled {{
             color: {p.text_dim};
             background: #222428;
-            border-color: #1c1d20;
+            border-color: #383a40;
+        }}
+        QPushButton[commandRole="guide"] {{
+            color: #b9d2f1;
+            background: #2e3b4c;
+            border-color: #48617d;
+        }}
+        QPushButton[commandRole="guide"]:hover {{
+            background: #34506e;
+        }}
+        QPushButton[commandRole="step"], QPushButton[commandRole="guide"] {{
+            text-align: left;
         }}
 
-        /* Primary action */
-        QPushButton#primaryAction {{
-            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 #1d4ed8, stop:1 #2563eb);
-            border: 1px solid #3b82f6;
+        /* Primary commands and session states */
+        QPushButton[commandRole="accent"]:enabled,
+        QPushButton#sessionStateAction[sessionRole="run"]:!checked,
+        QPushButton#simulationAction:!checked {{
+            background: {p.action};
+            border-color: #6b9cda;
             color: white;
-            font-weight: 700;
-            font-size: 10pt;
         }}
-        QPushButton#primaryAction:hover {{
-            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 #2563eb, stop:1 #3b82f6);
-            border-color: #93c5fd;
+        QPushButton[commandRole="accent"]:enabled:hover,
+        QPushButton#sessionStateAction[sessionRole="run"]:!checked:hover,
+        QPushButton#simulationAction:!checked:hover {{
+            background: {p.action_hover};
         }}
-        QPushButton#primaryAction:checked {{
-            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 #7f1d1d, stop:1 #991b1b);
-            border-color: {p.danger};
-        }}
-        QPushButton#sessionAction {{
-            min-height: 30px;
-            background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                stop:0 #1d4ed8, stop:1 #2563eb);
-            border: 1px solid #3b82f6;
-            color: white;
-            font-weight: 700;
-        }}
-        QPushButton#sessionAction:hover {{
-            border-color: #93c5fd;
-            background: #3171ed;
-        }}
-        QPushButton#sessionAction:checked {{
-            background: {p.danger_bg};
-            border-color: {p.danger};
-            color: #fecdd3;
-        }}
-        QPushButton#sessionStateAction {{
-            min-height: 27px;
-            padding-left: 9px;
-            padding-right: 9px;
-            background: #33353a;
-            border: 1px solid #17181a;
-            color: #d0d2d5;
-            font-weight: 600;
-        }}
-        QPushButton#sessionStateAction:hover {{
-            border-color: #6da9d6;
+        QPushButton[commandRole="accent"]:enabled:pressed,
+        QPushButton#sessionStateAction[sessionRole="run"]:!checked:pressed,
+        QPushButton#simulationAction:!checked:pressed {{
+            background: {p.action_pressed};
         }}
         QPushButton#sessionStateAction[sessionRole="run"]:checked {{
             background: #166534;
@@ -429,47 +486,9 @@ class ThemeManager:
             color: #fef9c3;
         }}
         QPushButton#sessionStateAction[sessionRole="stop"]:checked {{
-            background: #7f1d1d;
-            border-color: #f87171;
-            color: #fee2e2;
-        }}
-        QPushButton#headerAction {{
-            min-height: 27px;
-            background: #33353a;
-            color: {p.text_muted};
-        }}
-        QPushButton#headerAction:hover {{
-            background: {p.surface_hover};
-        }}
-        QPushButton#headerAction[role="calibrate"] {{
-            color: #c4d0d8;
-            border-color: #18191b;
-            background: #33353a;
-        }}
-        QPushButton#headerAction[role="calibrate"]:hover {{
-            color: #dceeff;
-            border-color: #4779bd;
-            background: #384b60;
-        }}
-        QPushButton#headerAction[role="reset"] {{
-            color: #c4d0d8;
-            border-color: #18191b;
-            background: #33353a;
-        }}
-        QPushButton#headerAction[role="reset"]:hover {{
-            color: #dceeff;
-            border-color: #4779bd;
-            background: #384b60;
-        }}
-        QPushButton#simulationAction {{
-            color: white;
-            border-color: #3b82f6;
-            background: #2563eb;
-        }}
-        QPushButton#simulationAction:hover {{
-            color: white;
-            border-color: #93c5fd;
-            background: #3171ed;
+            background: #442d32;
+            border-color: #805058;
+            color: #edc3ca;
         }}
         QPushButton#simulationAction:checked {{
             color: #fecdd3;
@@ -477,16 +496,25 @@ class ThemeManager:
             background: {p.danger_bg};
         }}
         QToolButton#panelToggle {{
-            min-height: 24px;
-            padding: 2px 10px;
-            color: {p.text_muted};
-            font-size: 8pt;
-            letter-spacing: 0.8px;
+            padding: 2px 8px;
         }}
         QToolButton#panelToggle:checked {{
             color: {p.accent_bright};
             background: #173450;
             border-color: {p.accent_dim};
+        }}
+        QPushButton:focus, QToolButton:focus,
+        QPushButton[commandRole="guide"]:focus,
+        QPushButton[commandRole="accent"]:focus:enabled,
+        QPushButton#simulationAction:focus:checked,
+        QPushButton#simulationAction:focus:!checked,
+        QPushButton#sessionStateAction[sessionRole]:focus:checked,
+        QPushButton#sessionStateAction[sessionRole]:focus:!checked,
+        QToolButton#panelToggle:focus,
+        QToolButton#propertyContextButton:focus,
+        QToolButton#vectorLockButton:focus,
+        QToolButton#vectorResetButton:focus {{
+            border-color: {p.focus};
         }}
 
         /* ── Tabs ── */
@@ -502,8 +530,7 @@ class ThemeManager:
             padding: 7px 10px;
             min-width: 0;
             font-weight: 600;
-            font-size: 8pt;
-            letter-spacing: 0.35px;
+            font-size: 12px;
         }}
         QTabBar::tab:first {{
             border-radius: 0;
@@ -520,6 +547,21 @@ class ThemeManager:
         QTabBar::tab:hover:!selected {{
             background: {p.surface_hover};
             color: {p.text};
+        }}
+
+        QLabel#calibrationTip {{
+            color: #e2edfd;
+            background: #27384d;
+            border: 1px solid #546e8b;
+            border-radius: 4px;
+            padding: 8px 10px;
+        }}
+        QTextBrowser#calibrationGuideText {{
+            background: {p.surface};
+            border: 1px solid #454b54;
+            border-radius: 4px;
+            selection-background-color: {p.accent_dim};
+            selection-color: white;
         }}
 
         /* ── Scroll ── */
@@ -572,19 +614,20 @@ class ThemeManager:
         }}
 
         QToolButton#sceneToolButton {{
-            min-width: 34px;
-            max-width: 34px;
-            min-height: 34px;
-            max-height: 34px;
+            min-width: 0;
+            min-height: 0;
             padding: 0;
             background: rgba(20, 30, 39, 235);
             border: 1px solid #3b5366;
-            border-radius: 3px;
+            border-radius: 4px;
         }}
         QToolButton#sceneToolButton:hover,
         QToolButton#sceneToolButton:checked {{
             background: #345574;
             border-color: #4779bd;
+        }}
+        QToolButton#sceneToolButton:focus {{
+            border-color: {p.focus};
         }}
 
         /* ── Slider ── */

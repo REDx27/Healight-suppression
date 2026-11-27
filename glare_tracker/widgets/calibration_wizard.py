@@ -6,7 +6,7 @@ from collections import deque
 import numpy as np
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
-    QDoubleSpinBox, QFormLayout, QLabel, QPushButton,
+    QDoubleSpinBox, QFormLayout, QLabel,
     QVBoxLayout, QWizard, QWizardPage,
 )
 
@@ -17,6 +17,7 @@ from glare_tracker.calibration import (
     save_monocular_range_calibration,
     save_single_calibration,
 )
+from glare_tracker.widgets.icons import ICON_SIZE, IconFactory, command_button
 from glare_tracker.widgets.toggle import ToggleSwitch
 
 
@@ -86,7 +87,7 @@ class DriverDepthPage(_RequiredCalibrationPage):
         self.live.setWordWrap(True)
         layout.addWidget(self.live)
 
-        self.capture = QPushButton("Capture Stable Driver Reference")
+        self.capture = command_button("Capture stable driver reference", "camera")
         self.capture.clicked.connect(self._capture)
         layout.addWidget(self.capture)
 
@@ -173,7 +174,7 @@ class RoadRangePage(_RequiredCalibrationPage):
         self.live.setWordWrap(True)
         layout.addWidget(self.live)
 
-        self.capture = QPushButton("Capture Stable Road-Light Reference")
+        self.capture = command_button("Capture stable road-light reference", "camera")
         self.capture.clicked.connect(self._capture)
         layout.addWidget(self.capture)
 
@@ -313,6 +314,11 @@ class GuidedCalibrationWizard(QWizard):
         self.addPage(self.driver_page)
         self.addPage(self.road_page)
         self.addPage(self.review_page)
+        for role, icon in ((QWizard.BackButton, "back"), (QWizard.NextButton, "next"),
+                           (QWizard.FinishButton, "save"), (QWizard.CancelButton, "close")):
+            button = self.button(role)
+            button.setIcon(IconFactory.icon(icon))
+            button.setIconSize(ICON_SIZE)
 
         self.driver_thread.eye_pixels_detected.connect(self._on_eye_pixels)
         self.road_thread.light_observed.connect(self._on_light_observed)

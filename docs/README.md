@@ -68,6 +68,8 @@ physical test has passed.
 
 ### `reference/`
 
+- [`MECHANICAL_FLAP_ACTUATOR_OPTIONS.md`](reference/MECHANICAL_FLAP_ACTUATOR_OPTIONS.md) -
+  dated Sri Lankan actuator prices, 17/50-unit budgets, mechanism tradeoffs and trial plan.
 - [`TOF_BRIDGE_PROTOCOL.md`](reference/TOF_BRIDGE_PROTOCOL.md) - exact USB packet,
   quality, identity, clock and recovery contract; firmware/hardware work is pending.
 - [`PROGRESS_MEETING_TECHNICAL_BRIEF.md`](reference/PROGRESS_MEETING_TECHNICAL_BRIEF.md)

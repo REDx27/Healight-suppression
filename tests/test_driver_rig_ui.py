@@ -17,6 +17,7 @@ from glare_tracker.installation import CalibrationStore, camera_record
 from glare_tracker.lcd_blocker import LCDBlockerWindow
 from glare_tracker.light_sources import TrackedLightSource
 from glare_tracker.operating_modes import OperatingMode, SessionState
+from glare_tracker.widgets.calibration_guide import CalibrationGuideDialog
 from glare_tracker.widgets.controls import ControlsPanel
 from glare_tracker.widgets.driver_calibration import DriverCalibrationDialog, DriverCalibrationGuide
 from glare_tracker.widgets.rig_calibration import PanelMappingPage, RigCalibrationDialog
@@ -48,18 +49,49 @@ def model():
                              np.zeros(5), (640, 480), .2)
 
 
+def test_run_exits_lcd_test_mode_and_accepts_live_driver_data(window, monkeypatch):
+    window.controls.combo_operating_mode.setCurrentText(OperatingMode.HEADLIGHT_FIXED.value)
+    window._lcd_test_active = True
+    window.lcd_blocker.enable_for_testing()
+    window.lcd_blocker.show_test_pattern("center")
+    window._set_session_state(SessionState.RUN)
+    assert not window._lcd_test_active
+    observed = []
+    monkeypatch.setattr(window.tracker, "on_eyes_detected", lambda *args, **kwargs: observed.append(args))
+    window._on_driver_observation({
+        "generation": window._installation_generation, "captured_ns": time.monotonic_ns(),
+        "valid": True, "eyes": ((-3., -50., 12.), (3., -50., 12.)),
+        "frame": "demo", "range_observed_ns": None, "depth_source": "Fixed/reference distance",
+        "eye_depth_cm": 50., "range_sample": None, "reason": "valid"})
+    assert observed
+
+
 @pytest.mark.parametrize("mode, road, driver", [
     (OperatingMode.FULLY_AUTO, True, True),
     (OperatingMode.DRIVER_FIXED, True, False),
     (OperatingMode.HEADLIGHT_FIXED, False, True),
     (OperatingMode.FULLY_MANUAL, False, False),
 ])
-def test_calibration_actions_follow_mode(app, mode, road, driver):
+def test_calibration_actions_follow_mode(app, mode, road, driver, monkeypatch):
     controls = ControlsPanel()
     controls.combo_operating_mode.setCurrentText(mode.value)
     assert controls.btn_stereo_calibration.isHidden() is not road
     assert controls.btn_driver_calibration.isHidden() is not driver
     assert not controls.btn_rig_calibration.isHidden()
+    assert not controls.btn_calibration_guide.isHidden()
+    assert not controls.btn_calibration_guide.icon().isNull()
+
+    opened = []
+    monkeypatch.setattr(CalibrationGuideDialog, "exec_", lambda dialog: opened.append(dialog))
+    controls.btn_calibration_guide.click()
+    guide, = opened
+    tabs = [guide.tabs.tabText(i) for i in range(guide.tabs.count())]
+    assert tabs[0] == "Start here"
+    assert ("Road cameras" in tabs) is road
+    assert ("Driver camera" in tabs) is driver
+    assert ("Installed rig" in tabs) is (road or driver)
+    assert tabs[-2:] == ["LCD mapping", "Verify"]
+    assert mode.value in guide.tabs.currentWidget().toPlainText()
     controls.close()
 
 

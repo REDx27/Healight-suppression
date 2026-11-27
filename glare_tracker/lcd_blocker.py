@@ -71,7 +71,8 @@ class LCDBlockerWindow(QWidget):
         if clear_state == self._clear_state:
             return
         self._clear_state = clear_state
-        self.clear_output()
+        self._spots = ()
+        self.update()
 
     def configure_panel(
         self,
@@ -81,16 +82,26 @@ class LCDBlockerWindow(QWidget):
         radius_px: float,
     ):
         width_px, height_px = (int(resolution[0]), int(resolution[1]))
-        if width_cm <= 0 or height_cm <= 0:
+        if not np.isfinite([width_cm, height_cm]).all() or width_cm <= 0 or height_cm <= 0:
             raise ValueError("LCD physical dimensions must be positive")
         if width_px <= 0 or height_px <= 0:
             raise ValueError("LCD resolution must be positive")
-        if radius_px <= 0:
+        if not np.isfinite(radius_px) or radius_px <= 0:
             raise ValueError("Blocker radius must be positive")
+        geometry_changed = (
+            (float(width_cm), float(height_cm), (width_px, height_px))
+            != (self._panel_width_cm, self._panel_height_cm, self._resolution))
+        radius_changed = float(radius_px) != self._radius_px
         self._panel_width_cm = float(width_cm)
         self._panel_height_cm = float(height_cm)
         self._resolution = (width_px, height_px)
         self._radius_px = float(radius_px)
+        if geometry_changed:
+            # Existing pixel coordinates belong to the previous panel geometry.
+            self.clear_output()
+        elif radius_changed and self._spots:
+            self._set_spots(tuple(BlockerSpot(s.x_px, s.y_px, self._radius_px, s.opacity)
+                                  for s in self._spots))
 
     def enable_on_screen(self, screen):
         if screen is None:
@@ -146,14 +157,18 @@ class LCDBlockerWindow(QWidget):
                 spots.append(
                     BlockerSpot(pixel[0], pixel[1], self._radius_px, 1.0)
                 )
-        self._spots = tuple(spots)
-        self.update()
+        self._set_spots(tuple(spots))
 
     def set_pixel_mapping(self, mapping):
         matrix = None if mapping is None else np.asarray(mapping, float)
         if matrix is not None and (matrix.shape != (2, 3) or not np.isfinite(matrix).all()):
             raise ValueError("LCD mapping must be a finite 2 x 3 matrix")
-        self._pixel_mapping = matrix
+        if ((matrix is None and self._pixel_mapping is None)
+                or (matrix is not None and self._pixel_mapping is not None
+                    and np.array_equal(matrix, self._pixel_mapping))):
+            return
+        self._pixel_mapping = None if matrix is None else matrix.copy()
+        self.clear_output()
 
     def show_alignment_mark(self, uv):
         if not self._enabled_output:
@@ -163,7 +178,12 @@ class LCDBlockerWindow(QWidget):
         self.update()
 
     def clear_output(self):
-        self._spots = ()
+        self._set_spots(())
+
+    def _set_spots(self, spots):
+        if spots == self._spots:
+            return
+        self._spots = spots
         self.update()
 
     def show_test_pattern(self, pattern: str):

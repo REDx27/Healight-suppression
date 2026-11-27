@@ -12,8 +12,27 @@ open. See the [operator guide](../guides/DRIVER_AND_INSTALLED_RIG_CALIBRATION_GU
 > test pass. Hardware-dependent stages remain open until measurements and
 > evidence files have been collected.
 
-Current software verification: **196 automated tests passed on Python 3.13** on
-2026-11-25. Today's 14 checks cover centre-reference redraw/freshness, fixed/live depth,
+Current software verification: **248 automated tests passed on Python 3.13** on
+2026-11-27. Seventeen additional cases cover read-only camera-rig pose reconstruction,
+centimetre scale/baseline, rotated stereo, invalid/mismatched profiles, marker isolation
+from tracking/LCD state, view/theme updates, default collapsed panels and icon assets.
+Native rig captures use explicitly labelled synthetic poses. No physical accuracy
+measurement or new hardware dependency is introduced.
+The preceding ten layout checks cover aligned camera-role fields at three
+widths, non-clipped notes, default/custom row restoration, profile dimensions,
+metadata tooltips, toolbar bounds, independently scrolling telemetry and the short-
+viewport inset. Representative native Windows UI renders were reviewed between
+960 x 640 and 1920 x 1080. This review used stopped placeholders and sample camera
+names, with no new physical measurements or standalone executable rebuild.
+The preceding eighteen additional checks cover real-thread startup cancellation with
+mocked cameras, invalid-iris frame recovery, unusable head poses, calibration retries,
+fit-thread lifetime, evidence-write failure, LCD test-to-Run recovery, non-finite panel
+inputs, geometry/radius updates and avoided rendering work. A bounded native Windows
+launch/close check passed; no camera/ToF hardware accuracy was measured in this audit.
+Seven preceding checks cover stereo preview role identity, matching canvases,
+native sample sizes, independent focal lengths and schematic-object isolation. A live
+probe could not open road cameras 1/2, so current optical equality is not verified.
+The previous 14 checks cover centre-reference redraw/freshness, fixed/live depth,
 native/legacy/preview camera paths, UI feedback and saved preferences. The 44 earlier
 added checks cover installed transforms, held-out calibration,
 ToF protocol/freshness, native driver processing and dialog/state/skip behaviour.
@@ -126,7 +145,7 @@ have passed.
 - [x] Run the complete automated regression suite.
 
 Exit evidence: `tests/test_geometry.py`; 15 focused tests pass and the current
-complete suite contains 196 passing tests on Python 3.13 (2026-11-25).
+complete suite contains 203 passing tests on Python 3.13 (2026-11-26).
 
 ## 2. Timestamped CSV/video logging
 

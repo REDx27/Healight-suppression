@@ -3,10 +3,10 @@
 **Project:** Low-Cost Active Windshield Glare Suppression System
 **Software:** GlareTracker v1.3.0 research release
 **Original milestone snapshot:** 2026-10-05
-**Consolidated through:** 2026-11-25 (includes calibration and distance-control updates)
+**Consolidated through:** 2026-11-27 (includes calibrated camera visualization, operator UI, recovery audit and actuator research)
 **Prepared for:** Project teammate and later thesis development
 **Reviewed source baseline:** v1.3 release plus prototype-display integration
-**Current automated verification:** 196 tests passed on Python 3.13 (2026-11-25)
+**Current automated verification:** 248 tests passed on Python 3.13 (2026-11-27)
 **Document status:** Long-form design and milestone reference; current execution
 status is maintained in `PROJECT_STATUS.md` and `docs/plans/VALIDATION_PLAN.md`.
 
@@ -19,6 +19,180 @@ status is maintained in `PROJECT_STATUS.md` and `docs/plans/VALIDATION_PLAN.md`.
 ---
 
 ## Document purpose
+
+### Saved camera-rig visualization and sidebar refinement - 2026-11-27
+
+The scene previously displayed one generic camera reference driven by the manual
+Camera Position controls. It now has an independent display path for accepted,
+compatible installed-rig camera poses. Lens and stereo calibration alone do not
+locate cameras relative to the LCD: the third, installed-rig calibration supplies
+those world-frame transforms. Existing saved profiles are reused without schema
+changes. Loading profiles, changing setup parameters or confirming mounts refreshes
+the display. A changed panel/display binding removes affected saved poses; changed
+camera IDs or intrinsic/stereo fingerprints remove that role's poses. Missing roles
+are omitted rather than assigned assumed physical positions.
+
+The panel world frame remains bottom-centre at Y=0, X lateral, Y roadward, Z up,
+with distances in centimetres. A camera-to-panel transform maps its local optical
+origin to the translation vector; its rotation maps the camera's forward +Z axis.
+The installed road pose describes the raw LEFT camera. OpenCV stereo uses
+`p_right = R p_left + T`, so RIGHT is obtained by composing the inverse stereo
+transform with LEFT-to-panel: its world centre is `R_left (-R.T T) + t_left`, and
+its orientation is `R_left R.T`. Rectified projection matrices and an absolute
+baseline alone cannot replace this composition for a rotated camera pair.
+
+The viewport draws three labelled centres and viewing-direction arrows when both
+roles are available. All physical vertex positions share the panel's existing world
+centimetres; no camera-specific scale factor is introduced. The 8 cm arrows indicate
+orientation and are not measured body sizes or calibrated field-of-view boundaries.
+Names are projected as Qt annotations so they remain readable while the viewport
+rotates. The camera centres themselves remain unchanged. Hover over the scene's rig
+status for X/Y/Z coordinates; use 3D settings > Camera positions to hide the markers.
+The status distinguishes saved poses awaiting mount confirmation from confirmed mounts.
+It does not certify complete eye/light/optical accuracy. With no compatible pose the
+legacy reference remains available and is explicitly labelled uncalibrated/demo.
+
+`scene_geometry.py` produces immutable display records from the existing accepted
+profiles. `Scene3DWidget` renders them; `MainWindow` refreshes this view from existing
+profile/setup events. It does not update capture configuration, live eye/light values,
+centering offsets, saved calibration, geometry calculations or LCD authorization.
+The legacy `update_camera` API remains intact and cannot overwrite displayed calibrated
+markers. Static camera items are pooled and unchanged poses skip vertex uploads.
+
+The same update increases rail spacing (32 px buttons, 20 px icons, 12 px gaps), body
+insets to 16 px and form gaps to 8 px. Settings start collapsed. Header activation by
+mouse or Space/Enter preserves values, conditional visibility and keyboard focus rules.
+Operation/Camera symbols remain; Driver/Lights/Geometry/Research use profile, bulb,
+monitor and microscope SVGs from Google's Apache-licensed Material Symbols collection.
+They are bundled assets rather than a new Python dependency or runtime download.
+
+248 tests pass, including 17 added tests/cases for centimetre scale and the 15.35 cm
+synthetic stereo baseline, non-parallel stereo composition, rejected/missing/stale
+profiles, read-only main-window refresh, view rotation, theme/visibility and UI behavior.
+Native screenshots were inspected for collapsed/expanded panels and dark/light rig
+views. The [saved rig screenshot](images/camera-rig-offline-example.png) is marked
+OFFLINE EXAMPLE and uses synthetic test poses; it is not a current hardware measurement.
+Physical rig verification and an executable rebuild remain separate work.
+
+### Operator UI density, alignment and responsive layout - 2026-11-27
+
+The interface review addressed oversized text, inconsistent form rows and clipped
+calibration messages. The shared stylesheet now uses Segoe UI at 12 logical pixels
+for controls and 11 for hints, coordinated with 24 px input/command heights, 28 px
+section headers and consistent 12 px section insets/gaps. This replaces the mixture
+of point-sized styling and fixed widget dimensions. Qt still scales logical pixels
+through its high-DPI support. Labels remain transparent; sections use subtle gray
+surface changes, values have recessed backgrounds and selection/focus use blue.
+
+Camera-role fields stay in aligned columns rather than wrapping only selected rows.
+Their compact display names retain the same integer camera IDs; full device name,
+resolution and backend remain in tooltips. Calibration commands have concise labels
+and explanatory tooltips. Saved panel profiles occupy a full-width row, with aligned
+dimension fields and the existing save/delete safeguards. Binary settings retain their
+keyboard-accessible toggle behavior, with a smaller consistent track and row height.
+
+Two Qt layout issues required more than color/font changes. Qt 5 preserves row spacing
+when form children are hidden, so conditional rows are now taken out of the layout
+and restored in order without deleting their widgets or values. Property panels also
+used a maximum vertical policy, which capped wrapped notes at an unconstrained size
+hint. A preferred policy, height-for-width calculation and propagated layout requests
+allow the panels and scroll pages to expand. Default/custom and mode transitions are
+covered by regression checks. Inactive manual/live driver sections are hidden by mode.
+
+Camera and telemetry regions have consistent caption bars. All camera viewports share
+the same stage-row height; the driver row uses plain Eye tracking text. Telemetry
+scrolls independently when many intersections are present. Compact desktop layouts
+reduce telemetry width to preserve the three camera feeds. Narrow windows retain the
+existing vertical reflow; the windshield inset scales with available height, and the
+illustration note is hidden below 240 px viewport height to leave space for the legend.
+These changes do not change ray endpoints or intersection/LCD calculations.
+
+231 tests pass on Python 3.13, including ten new layout checks. Native Windows renders
+covered representative normal, custom, advanced and manual pages at sizes between
+960 x 640 and 1920 x 1080. The review used sample camera labels and stopped placeholders,
+without opening cameras, enabling HDMI output or changing the user's saved settings.
+This is software UI verification, not a new physical measurement or packaged release.
+The [UI design standard](UI_DESIGN_STANDARD.md) records the metrics and saved previews.
+
+### Recovery, input validation and rendering audit - 2026-11-26
+
+The software audit found several lifecycle failures. A capture ending before a fit
+could leave the stereo wizard's Start button disabled; rejected stereo fits similarly
+lacked a usable retry path. Start/fit controls now recover, and old capture status or
+finished callbacks are checked against their worker and stage before changing the UI.
+OpenCV fit results arrive before their QThread finishes. The dialog now tracks all
+unfinished fits independently of the result pointer and refuses closure while one is
+still running. Archive/report write failures keep the stage retryable, do not accept
+new intrinsics prematurely and cannot enable a stale passing profile for saving.
+
+LCD alignment tests set a flag that excludes live observations. Run now explicitly
+clears that flag before resetting freshness authority, so fresh camera observations
+can resume. Both driver and road workers request Qt interruption on Stop and check it
+before opening devices and in their loops. This prevents run() from overwriting the
+stop flag when Stop happens during thread startup. A blocked OS camera call still
+depends on the camera driver returning; no forced thread termination was introduced.
+
+Missing iris indices, NaN/infinite coordinates and iris points outside the image now
+produce an unavailable frame while capture/preview continue. The next valid frame can
+track normally. Pipeline validity reflects usable irises rather than the presence of
+a face alone. Non-finite head-pose points and PnP solve errors return no pose instead
+of terminating capture; selected ToF still requires its existing valid frontal pose,
+range and timing checks. No new physical distance or eye accuracy claim follows.
+
+Rendering now skips unchanged LCD spot sets and repeated empty clears. Radius edits
+update existing blockers; changed physical dimensions, resolution or pixel mapping
+clear pixel positions from the previous configuration. Clear-state changes still
+request painting even if no spots exist, and unchanged configuration preserves small
+rig-alignment marks. Non-finite panel dimensions/radii are rejected before assignment.
+Driver/lamp illustration shapes are built once and translated only when their visible
+position or theme changes. Hidden illustrations do no geometry-upload work and catch
+up to current positions when enabled again. Ray/intersection calculations are unchanged.
+
+The suite passes 221 tests, including 18 new recovery/performance regression checks.
+Three cancellation tests use actual QThreads with deterministic mocked cameras. With
+eight stationary lamps, 200 eye-only updates request zero lamp-buffer uploads versus
+1,600 in the previous implementation. Two hundred empty LCD clears request zero paints
+versus 200 previously. These counts quantify avoided work; they do not establish frame
+rate or physical response latency. A bounded native Windows launch/close check passed.
+The rig, ToF bridge and real optical accuracy remain hardware-validation work. This
+audit updates source and documentation, not the packaged v1.3 executable.
+
+### Stereo preview, simulation presentation and actuator study - 2026-11-26
+
+The road calibration stages use the same requested mode, and neither raw individual
+preview is zoomed by the calibration algorithm. The display callbacks previously chose
+a pane using the mutable current stage. They now bind physical side and worker identity,
+preventing delayed LEFT data from appearing under RIGHT. Equal-weight preview canvases
+fit the whole image at its original aspect ratio and adapt to window resizing. Native
+dimensions are shown, and incompatible sample/capture modes are rejected early.
+
+The saved stereo_2_1 profile contains two 640x480 models with fx 858.277 and 896.981 px.
+That is about 4.51% greater fx on RIGHT relative to LEFT, a possible source of raw
+apparent magnification. Matching image width/height in Windows Camera does not establish
+identical intrinsics. No artificial crop/zoom was added to equalize appearances: separate
+intrinsics and the existing rectification/reconstruction handle the two cameras. The
+live probe could not access indices 1 and 2, so present optics remain unverified.
+
+Optional schematic driver and lamp housings now help explain the existing geometric
+simulation. Their visibility switch and label make clear they are illustrations.
+They follow displayed coordinates, preserve ray endpoints and create no vehicle-class
+prediction. The viewport remains a geometric simulation, not a traffic/photometric
+renderer; accuracy still requires the planned quantitative experiments.
+
+A dated [actuator survey](MECHANICAL_FLAP_ACTUATOR_OPTIONS.md) compares local positional
+SG90 servos (LKR 350), MG90S servos (LKR 580) and JF-0530B linear solenoids (LKR 980),
+plus unpriced bistable rotary-solenoid and custom magnetic alternatives. Prices are
+supplier listings, not bulk quotes. Bistable rotary solenoids most closely match pulse-
+operated angular shutters, but no qualifying local sub-LKR-1,000 item was verified.
+The recommended first trial is two light, independently driven servo flaps, followed
+by loaded timing/current/thermal tests before buying 17-50. Row/column actuation does
+not by itself prove arbitrary independent multi-spot masking. LCD remains the current
+software output; no flap controller/firmware or replacement architecture was added.
+
+203 tests passed, including seven new calibration/display regression checks. The native
+OpenGL scene was captured and inspected. The first full run exposed a Qt test-application
+lifetime issue; retaining that early-created application through the session resolved
+test-only C++ wrapper deletion. This is not a physical accuracy or actuator test pass.
 
 ### Centre-reference and driver-distance update - 2026-11-25
 
@@ -393,7 +567,7 @@ The current software includes:
 - guarded camera-to-windshield extrinsic fitting and analysis tools;
 - stale-sample rejection and fail-safe clearing;
 - session-controlled prototype secondary-display output; and
-- 196 automated regression tests at the current milestone.
+- 203 automated regression tests at the current milestone.
 
 The current software does **not** yet provide a validated end-to-end glare-blocking
 system. The main missing items are physical evidence and controller integration:
@@ -1337,7 +1511,8 @@ The detector-era checkpoint contained twenty-seven tests covering:
 - immediate replacement of a stale false single-source track when the lamp appears at
   a different image position.
 
-The current Python 3.13 suite contains **196 passing tests**, including today's 14
+The current Python 3.13 suite contains **203 passing tests**, including seven stereo/
+schematic-view checks and the previous 14
 centre/distance-control checks and the 44 previous
 installed-geometry, ToF protocol, native-driver and calibration UI checks plus automatic
 two-source rough association and calibrated triangulation, plus synthetic stereo
@@ -2039,7 +2214,7 @@ Suggested tables:
 The project team should continue with the following actions in order:
 
 1. Use `docs/plans/VALIDATION_PLAN.md` as the active work queue and retain the current
-   196-test software baseline.
+   203-test software baseline.
 2. Rigidly mount the now-available road pair with final filters; verify or repeat the
    chessboard, check baseline and independent stationary-light distances, then tune
    stereo in Driver Position Fixed mode. Reintroduce the driver camera and complete
@@ -2117,7 +2292,7 @@ stereo foundations, timestamped research recording, guarded extrinsic-calibratio
 tools, timing/stale-data instrumentation, an experimental fail-safe LCD renderer, and
 a testable ray-intersection model. Road-pair chessboard calibration is now exposed
 in the UI alongside driver intrinsics, ToF host calibration and installed rig/LCD
-mapping; a strict timestamped-recording soak verifier is also available; 196
+mapping; a strict timestamped-recording soak verifier is also available; 203
 automated tests pass on Python 3.13.
 
 The most important scientific work remains physical: completing the dual-camera soak,
@@ -2160,4 +2335,4 @@ incorporated into this reference as follows:
 Conflicts were resolved using current source and automated tests first, followed by
 `PROJECT_STATUS.md`, maintained documentation, Git history, dated physical evidence,
 and finally the chat summaries. Historical 4-, 11-, 12-, and 27-test checkpoints remain
-development provenance; the authoritative current software result is 196 passing tests.
+development provenance; the authoritative current software result is 203 passing tests.

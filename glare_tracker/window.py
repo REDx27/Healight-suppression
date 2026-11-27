@@ -38,6 +38,7 @@ from glare_tracker.operating_modes import (
     OperatingMode, SessionState, calculations_enabled, cameras_enabled,
 )
 from glare_tracker.styles import DARK_STYLESHEET
+from glare_tracker.scene_geometry import installed_camera_scene_poses
 from glare_tracker.widgets.stereo_calibration import StereoCalibrationDialog
 from glare_tracker.installation import (
     CalibrationStore, camera_model, signature, stereo_signature, rig_compatibility_errors,
@@ -223,8 +224,8 @@ class MainWindow(QMainWindow):
 
     def _build_layout(self):
         self.sidebar = ConfigurationSidebar(self.controls)
-        self.sidebar.setMinimumWidth(390)
-        self.sidebar.setMaximumWidth(560)
+        self.sidebar.setMinimumWidth(360)
+        self.sidebar.setMaximumWidth(480)
 
         self.visual_column = QWidget()
         visual_layout = QVBoxLayout(self.visual_column)
@@ -252,7 +253,7 @@ class MainWindow(QMainWindow):
         self.bottom_splitter.addWidget(self.readout)
         self.bottom_splitter.setStretchFactor(0, 1)
         self.bottom_splitter.setStretchFactor(1, 0)
-        available_visual_width = max(760, self.width() - 430)
+        available_visual_width = max(760, self.width() - 400)
         telemetry_width = min(340, max(260, available_visual_width // 3))
         self.bottom_splitter.setSizes([
             max(480, available_visual_width - telemetry_width),
@@ -262,7 +263,7 @@ class MainWindow(QMainWindow):
         self.visual_splitter.addWidget(self.bottom_splitter)
         self.visual_splitter.setStretchFactor(0, 1)
         self.visual_splitter.setStretchFactor(1, 0)
-        available_visual_height = max(540, self.height() - 54)
+        available_visual_height = max(540, self.height() - self.header.height())
         lower_height = min(340, max(230, available_visual_height // 3))
         self.visual_splitter.setSizes([
             max(310, available_visual_height - lower_height), lower_height,
@@ -273,7 +274,7 @@ class MainWindow(QMainWindow):
         self.main_splitter = QSplitter(Qt.Horizontal)
         self.main_splitter.addWidget(self.visual_column)
         self.main_splitter.addWidget(self.sidebar)
-        sidebar_width = min(460, max(390, self.width() // 3))
+        sidebar_width = min(420, max(360, int(self.width() * .27)))
         self.main_splitter.setSizes([
             max(570, self.width() - sidebar_width), sidebar_width,
         ])
@@ -513,8 +514,11 @@ class MainWindow(QMainWindow):
     def _update_center_calibration_action(self):
         reason = self._center_calibration_reason()
         self.header.btn_calibrate.setEnabled(not reason)
-        self.header.btn_calibrate.setToolTip("Calibrate Center: " + (reason or
-            "Set the current eye midpoint to the preview's X/Z centre; distance and eye separation stay unchanged."))
+        help_text = (reason or "Center the current eye position in the preview.") + (
+            " For camera and LCD setup, open Cameras > Calibration > Calibration guide.")
+        if self.header.btn_calibrate.toolTip() != help_text:
+            self.header.btn_calibrate.setToolTip(help_text)
+            self.header.btn_calibrate.setAccessibleDescription(help_text)
 
     def _calibrate_center(self):
         reason = self._center_calibration_reason()
@@ -610,6 +614,7 @@ class MainWindow(QMainWindow):
         self._update_center_calibration_action()
 
     def _refresh_installation_status(self):
+        self._refresh_camera_rig_scene()
         camera = "Skipped (development)" if self._driver_skips["camera"] else "Calibrated lens" if self._driver_lens else "Not calibrated"
         live = self.controls.check_live_driver_distance.isChecked()
         tof = ("Skipped / IPD bench estimate" if live else "Skipped (development)") if self._driver_skips["tof"] else "Range profile calibrated" if self._tof_profile else "Not connected / not calibrated"
@@ -630,6 +635,12 @@ class MainWindow(QMainWindow):
                 f" - fixed {self.controls.spin_eye_dist.value():.1f} cm eye-depth reference (bench testing)" if policy.use_driver_camera and not live else
                 " - camera-only IPD depth remains a bench estimate" if policy.use_driver_camera and (
                     self._driver_skips["tof"] or not self._tof_profile) else " - independently verify actual spot accuracy"))
+
+    def _refresh_camera_rig_scene(self):
+        poses = installed_camera_scene_poses(
+            self._rig_profile, self._installation_setup(), self._installation_stereo)
+        self.scene_3d.set_installed_camera_poses(
+            poses, confirmed=self.controls.check_rig_unchanged.isChecked())
 
     def _installation_confirmation_changed(self):
         self._reset_observation_authority()
@@ -1091,6 +1102,7 @@ class MainWindow(QMainWindow):
                 "No secondary display detected. In Windows, choose Extend "
                 "these displays, then select Refresh."
             )
+        self._refresh_camera_rig_scene()
 
     def _display_topology_changed(self, *_):
         # QScreen removal is delivered while Qt is still updating its screen
@@ -1098,6 +1110,7 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(0, self._refresh_available_lcd_displays)
 
     def _lcd_display_selection_changed(self, *_):
+        self._refresh_camera_rig_scene()
         self._save_lcd_output_settings()
         if self.lcd_blocker.output_enabled:
             self.lcd_blocker.disable_output()
@@ -1411,6 +1424,9 @@ class MainWindow(QMainWindow):
             state = SessionState(state)
 
         self._session_state = state
+        if state is SessionState.RUN:
+            # Run leaves alignment/testing mode and resumes fresh observations.
+            self._lcd_test_active = False
         self._reset_observation_authority()
         if state is SessionState.STOP:
             self._installation_generation += 1
@@ -2321,9 +2337,12 @@ class MainWindow(QMainWindow):
         if not hasattr(self, "main_splitter"):
             return
         narrow = self.width() < 1180
-        if not force and narrow == self._layout_is_narrow:
+        compact = self.width() < 1400
+        if (not force and narrow == self._layout_is_narrow
+                and compact == getattr(self, "_layout_is_compact", None)):
             return
         self._layout_is_narrow = narrow
+        self._layout_is_compact = compact
         self.main_splitter.setOrientation(Qt.Vertical if narrow else Qt.Horizontal)
         if narrow:
             self.sidebar.setMinimumWidth(0)
@@ -2332,13 +2351,17 @@ class MainWindow(QMainWindow):
                 max(420, int(self.height() * 0.68)),
                 max(180, int(self.height() * 0.32)),
             ])
+            self.visual_splitter.setSizes([210, 210])
         else:
-            self.sidebar.setMinimumWidth(390)
-            self.sidebar.setMaximumWidth(560)
-            sidebar_width = min(460, max(390, self.width() // 3))
+            self.sidebar.setMinimumWidth(360)
+            self.sidebar.setMaximumWidth(480)
+            sidebar_width = min(420, max(360, int(self.width() * .27)))
             self.main_splitter.setSizes([
                 max(570, self.width() - sidebar_width), sidebar_width,
             ])
+            telemetry_width = 260 if compact else 300
+            self.bottom_splitter.setSizes([
+                max(540, self.width() - sidebar_width - telemetry_width - 5), telemetry_width])
 
     # ── clean shutdown ──────────────────────────────────────────────
 

@@ -7,8 +7,8 @@ overlay — all updated in-place via ``setData()`` for 60+ FPS.
 
 import numpy as np
 
-from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtGui import QColor, QFont
+from PyQt5.QtCore import QEvent, Qt, pyqtSignal
+from PyQt5.QtGui import QColor, QFont, QVector4D
 from PyQt5.QtWidgets import (
     QWidget, QVBoxLayout, QFrame, QGridLayout, QLabel,
     QToolButton, QPushButton, QSlider, QColorDialog,
@@ -49,11 +49,17 @@ class Scene3DWidget(QWidget):
         self._last_ray_positions = None
         self._light_scene = False
         self._grid_visible = True
+        self._context_visible = True
+        self._installed_camera_poses = ()
+        self._camera_rig_visible = True
+        self._camera_reference_position = (0., 0., 30.)
+        self._camera_rig_state = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.gl_view = gl.GLViewWidget()
+        self.gl_view.installEventFilter(self)
         self.gl_view.setBackgroundColor(QColor("#050810"))
         self.gl_view.setCameraPosition(distance=145, elevation=22, azimuth=-45)
         layout.addWidget(self.gl_view)
@@ -202,6 +208,8 @@ class Scene3DWidget(QWidget):
             self._eye_labels.append(eye_label)
 
         # Camera marker
+        camera_font = QFont("Segoe UI")
+        camera_font.setPixelSize(12)
         self._camera_glow = gl.GLScatterPlotItem(
             pos=np.array([[0, 0, 30]], dtype=np.float32),
             size=24, color=(0.58, 0.68, 0.78, 0.12), pxMode=True)
@@ -210,13 +218,49 @@ class Scene3DWidget(QWidget):
             pos=np.array([[0, 0, 30]], dtype=np.float32),
             size=8, color=(0.70, 0.79, 0.88, 1.0), pxMode=True)
         self.gl_view.addItem(self._camera_scatter)
-        self._camera_label = GLTextItem(pos=(0, 0, 30), text="Webcam",
-                                        color=(0.8, 0.8, 0.8, 1.0))
+        self._camera_label = GLTextItem(pos=(0, 0, 30), text="Camera reference (demo)",
+                                        color=QColor("#c4cbd4"), font=camera_font)
         self.gl_view.addItem(self._camera_label)
+        self._rig_camera_items = {}
+        camera_font = QFont("Segoe UI")
+        camera_font.setPixelSize(12)
+        for role in ("driver", "road_left", "road_right"):
+            point = gl.GLScatterPlotItem(pos=_OFFSCREEN_POINT, size=9, pxMode=True)
+            direction = gl.GLLinePlotItem(pos=_OFFSCREEN_LINE, mode="lines", width=1.8, antialias=True)
+            label = QLabel(self)
+            label.setFont(camera_font)
+            label.setAttribute(Qt.WA_TransparentForMouseEvents, True)
+            label.hide()
+            for item in (point, direction):
+                item.setVisible(False)
+                self.gl_view.addItem(item)
+            self._rig_camera_items[role] = (point, direction, label)
 
         self._eye_visible = False
         self._ray_visible = False
         self._active_light_count = 0
+        # Schematic shapes decorate measured points; they never supply geometry.
+        self._driver_outline = gl.GLLinePlotItem(
+            pos=_OFFSCREEN_LINE, mode="lines", width=1.5, antialias=True)
+        self.gl_view.addItem(self._driver_outline)
+        self._lamp_outlines = []
+        for _ in range(_MAX_LIGHTS):
+            item = gl.GLLinePlotItem(pos=_OFFSCREEN_LINE, mode="lines", width=1.3, antialias=True)
+            self.gl_view.addItem(item)
+            self._lamp_outlines.append(item)
+        # Build local shapes once; subsequent frames only translate changed,
+        # visible models rather than rebuilding circles and every lamp buffer.
+        features = np.array([[-1, -3, 1], [0, 1, -.5], [0, 1, -.5], [1, -3, 1],
+                             [-2, -3, -4], [2, -3, -4]]) + [0., 0., -1.5]
+        self._driver_shape = np.vstack((
+            self._ring_segments((0., 0., -1.5), 6., 8., y_offset=-3.), features)).astype(np.float32)
+        rails = np.array([[2.5, 1, 0], [2.5, 8, 0], [-2.5, 1, 0], [-2.5, 8, 0],
+                          [0, 1, 2.5], [0, 8, 2.5], [0, 1, -2.5], [0, 8, -2.5]])
+        self._lamp_shape = np.vstack((
+            self._ring_segments((0., 0., 0.), 2.5, 2.5, y_offset=1.),
+            self._ring_segments((0., 0., 0.), 2.5, 2.5, y_offset=8.), rails)).astype(np.float32)
+        self._context_driver_key = None
+        self._context_lamp_keys = [None] * _MAX_LIGHTS
 
     # ── windshield mesh ─────────────────────────────────────────────
 
@@ -277,6 +321,7 @@ class Scene3DWidget(QWidget):
                 self._light_glows[i].setData(pos=_OFFSCREEN_POINT)
                 self._light_scatters[i].setData(pos=_OFFSCREEN_POINT)
                 self._light_labels[i].setData(pos=(9999, 9999, 9999))
+        self._refresh_context_models()
 
     def update_eye(self, x, y, z):
         self.update_eyes(((x, y, z),))
@@ -300,12 +345,113 @@ class Scene3DWidget(QWidget):
                 self._eye_scatters[idx].setData(pos=_OFFSCREEN_POINT)
                 self._eye_labels[idx].setData(pos=(9999, 9999, 9999))
         self._eye_visible = bool(positions)
+        self._refresh_context_models()
 
     def update_camera(self, x, y, z):
+        self._camera_reference_position = (x, y, z)
+        if self._installed_camera_poses:
+            return  # Legacy/manual updates must not overwrite calibrated poses.
         pos = np.array([[x, y, z]], dtype=np.float32)
         self._camera_glow.setData(pos=pos)
         self._camera_scatter.setData(pos=pos)
         self._camera_label.setData(pos=(x, y, z))
+
+    def set_installed_camera_poses(self, poses, confirmed=False):
+        """Display static optical centres and viewing axes without touching tracking."""
+        poses = tuple(poses)
+        state = (poses, bool(confirmed))
+        if state == self._camera_rig_state:
+            return
+        self._camera_rig_state = state
+        self._installed_camera_poses = poses
+        labels = {"driver": "Driver", "road_left": "Road L", "road_right": "Road R"}
+        colors = {"driver": (.38, .65, .98, 1.), "road_left": (.35, .88, .73, 1.),
+                  "road_right": (.3, .74, .9, 1.)}
+        if self._light_scene:
+            colors = {"driver": (.12, .33, .6, 1.), "road_left": (.05, .38, .3, 1.),
+                      "road_right": (.1, .35, .46, 1.)}
+        present = set()
+        details = []
+        for pose in poses:
+            present.add(pose.role)
+            center = np.asarray(pose.center_cm, dtype=np.float32)
+            rotation = np.asarray(pose.rotation, dtype=np.float32)
+            # An 8 cm direction arrow is an orientation aid, not a camera body
+            # or calibrated field-of-view boundary. All vertices use world cm.
+            local = np.array([[0, 0, 0], [0, 0, 8], [-1, 0, 6.5], [0, 0, 8],
+                              [1, 0, 6.5], [0, 0, 8]], dtype=np.float32)
+            color = colors[pose.role]
+            point, direction, label = self._rig_camera_items[pose.role]
+            point.setData(pos=center[None, :], color=color)
+            direction.setData(pos=local @ rotation.T + center, color=color)
+            label.setText(f"{labels[pose.role]} ({pose.camera_index})")
+            label.setProperty("cameraColor", QColor.fromRgbF(*color))
+            label.setStyleSheet(f"color:{QColor.fromRgbF(*color).name()}; background:transparent; "
+                               "border:none; font-family:'Segoe UI'; font-size:12px;")
+            label.adjustSize()
+            details.append(f"{labels[pose.role]} / Camera {pose.camera_index}: "
+                           f"X {center[0]:.2f}, Y {center[1]:.2f}, Z {center[2]:.2f} cm")
+        for role, items in self._rig_camera_items.items():
+            for item in items[:2]:
+                item.setVisible(role in present and self._camera_rig_visible)
+            items[2].setVisible(role in present and self._camera_rig_visible)
+            items[2].raise_()
+        for item in (self._camera_glow, self._camera_scatter, self._camera_label):
+            item.setVisible(not poses and self._camera_rig_visible)
+        if not poses:
+            self.update_camera(*self._camera_reference_position)
+        self.rig_note.setText(
+            "Saved rig poses · cm · " + ("mounts confirmed" if confirmed else "confirm mounts")
+            if poses else "Scene units: cm · camera reference is uncalibrated")
+        self.rig_note.setToolTip("\n".join(details) + (
+            "\nOptical centres and directions from saved calibration; verify the physical setup."
+            if poses else "\nComplete installed-rig / LCD calibration to place the real cameras."))
+        self._position_settings()
+
+    def _toggle_camera_rig(self, visible):
+        self._camera_rig_visible = bool(visible)
+        state = self._camera_rig_state or ((), False)
+        self._camera_rig_state = None
+        self.set_installed_camera_poses(*state)
+
+    def _position_camera_labels(self):
+        """Project annotation labels only; measured points remain in world cm."""
+        if not hasattr(self, "_rig_camera_items"):
+            return
+        if not self._installed_camera_poses or not self._camera_rig_visible:
+            for _, _, label in self._rig_camera_items.values():
+                label.hide()
+            return
+        width, height = self.gl_view.width(), self.gl_view.height()
+        if width <= 0 or height <= 0:
+            return
+        viewport = self.gl_view.getViewport()
+        matrix = self.gl_view.projectionMatrix(viewport, viewport) * self.gl_view.viewMatrix()
+        poses = {pose.role: pose for pose in self._installed_camera_poses}
+        for role, (_, _, label) in self._rig_camera_items.items():
+            pose = poses.get(role)
+            if pose is None or not self._camera_rig_visible:
+                label.hide()
+                continue
+            clip = matrix * QVector4D(*pose.center_cm, 1.)
+            if clip.w() <= 0:
+                label.hide()
+                continue
+            x, y, z = clip.x() / clip.w(), clip.y() / clip.w(), clip.z() / clip.w()
+            if not (-1 <= x <= 1 and -1 <= y <= 1 and -1 <= z <= 1):
+                label.hide()
+                continue
+            px, py = (x + 1) * width / 2, (1 - y) * height / 2
+            dx = -label.width() - 8 if role == "road_left" else (-20 if role == "driver" else 8)
+            dy = 12 if role == "driver" else -label.height() - 6
+            label.move(int(max(0, min(width - label.width(), px + dx))),
+                       int(max(0, min(height - label.height(), py + dy))))
+            label.show()
+
+    def eventFilter(self, watched, event):
+        if watched is self.gl_view and event.type() in (QEvent.Paint, QEvent.Resize):
+            self._position_camera_labels()
+        return super().eventFilter(watched, event)
 
     def update_intersection(self, ix, iy, iz):
         self.update_intersections([(ix, iy, iz)])
@@ -371,6 +517,45 @@ class Scene3DWidget(QWidget):
             r.setData(pos=_OFFSCREEN_LINE)
         self._eye_visible = False
         self._ray_visible = False
+        self._refresh_context_models()
+
+    @staticmethod
+    def _ring_segments(center, radius_x, radius_z, y_offset=0., count=24):
+        angles = np.linspace(0, 2 * np.pi, count + 1)
+        points = np.column_stack((radius_x * np.cos(angles), np.full(count + 1, y_offset),
+                                  radius_z * np.sin(angles))) + np.asarray(center)
+        return np.stack((points[:-1], points[1:]), axis=1).reshape(-1, 3)
+
+    def _refresh_context_models(self):
+        visible = self._context_visible
+        eye_color = (0.12, 0.28, 0.42, .65) if self._light_scene else (.42, .64, .8, .55)
+        lamp_color = (.45, .30, .10, .70) if self._light_scene else (.73, .64, .38, .65)
+        eyes = self._last_eye_positions or ()
+        show_driver = bool(visible and self._eye_visible and eyes and self._eye_points_visible)
+        if self._driver_outline.visible() != show_driver:
+            self._driver_outline.setVisible(show_driver)
+        driver_key = (eyes, eye_color)
+        if show_driver and driver_key != self._context_driver_key:
+            center = np.mean(eyes, axis=0).astype(np.float32)
+            self._driver_outline.setData(pos=self._driver_shape + center, color=eye_color)
+            self._context_driver_key = driver_key
+        lights = self._last_light_positions or ()
+        for i, item in enumerate(self._lamp_outlines):
+            show_lamp = bool(visible and i < len(lights) and self._light_points_visible)
+            if item.visible() != show_lamp:
+                item.setVisible(show_lamp)
+            if not show_lamp:
+                continue
+            key = (lights[i], lamp_color)
+            if key != self._context_lamp_keys[i]:
+                item.setData(pos=self._lamp_shape + np.asarray(lights[i], dtype=np.float32), color=lamp_color)
+                self._context_lamp_keys[i] = key
+
+    def _toggle_context_models(self, visible):
+        self._context_visible = bool(visible)
+        self._refresh_context_models()
+        self.context_note.setVisible(self._context_visible)
+        self._position_settings()
 
     # ── settings overlay ────────────────────────────────────────────
 
@@ -380,14 +565,18 @@ class Scene3DWidget(QWidget):
         self.settings_button.setIcon(IconFactory.icon("settings", "#c4b5fd"))
         self.settings_button.setIconSize(ICON_SIZE)
         self.settings_button.setToolTip("3D view settings")
-        self.settings_button.setFixedSize(36, 36)
+        self.settings_button.setAccessibleName("3D view settings")
+        self.settings_button.setFocusPolicy(Qt.StrongFocus)
+        self.settings_button.setFixedSize(28, 28)
         self.settings_button.clicked.connect(self._toggle_settings)
 
         self.theme_button = QToolButton(self)
         self.theme_button.setObjectName("sceneToolButton")
         self.theme_button.setIconSize(ICON_SIZE)
         self.theme_button.setToolTip("Use a light gray 3D canvas")
-        self.theme_button.setFixedSize(36, 36)
+        self.theme_button.setAccessibleName("Light 3D canvas")
+        self.theme_button.setFocusPolicy(Qt.StrongFocus)
+        self.theme_button.setFixedSize(28, 28)
         self.theme_button.setCheckable(True)
         self.theme_button.toggled.connect(self._toggle_scene_theme)
 
@@ -396,7 +585,9 @@ class Scene3DWidget(QWidget):
         self.grid_button.setIcon(IconFactory.icon("grid", "#78b7ff"))
         self.grid_button.setIconSize(ICON_SIZE)
         self.grid_button.setToolTip("Hide ground grid")
-        self.grid_button.setFixedSize(36, 36)
+        self.grid_button.setAccessibleName("Ground grid")
+        self.grid_button.setFocusPolicy(Qt.StrongFocus)
+        self.grid_button.setFixedSize(28, 28)
         self.grid_button.setCheckable(True)
         self.grid_button.setChecked(True)
         self.grid_button.toggled.connect(self._toggle_grid)
@@ -405,11 +596,12 @@ class Scene3DWidget(QWidget):
         self.settings_panel.setObjectName("sceneSettingsPanel")
         self.settings_panel.setStyleSheet(
             "QFrame#sceneSettingsPanel { background: rgba(17, 18, 23, 245); "
-            "border: 1px solid #5d458c; border-radius: 8px; }"
+            "border: 1px solid #52667d; border-radius: 4px; }"
             "QLabel { color: #b5bac4; background: transparent; }"
             "QToolButton { color: #b5bac4; background: #1a1c23; border: 1px solid #343943; "
-            "border-radius: 5px; padding: 4px; }"
-            "QToolButton:checked { background: #251d35; border-color: #8b5cf6; color: #c4b5fd; }"
+            "border-radius: 4px; padding: 3px 8px; }"
+            "QToolButton:checked { background: #293e55; border-color: #5b83ae; color: #bbd5f2; }"
+            "QToolButton:focus { border-color: #abd4ff; }"
             "QPushButton { border: 1px solid #414957; border-radius: 4px; min-width: 34px; "
             "min-height: 22px; }"
         )
@@ -428,6 +620,8 @@ class Scene3DWidget(QWidget):
         self.eye_toggle.setIcon(IconFactory.icon("eye"))
         self.eye_toggle.setIconSize(ICON_SIZE)
         self.eye_toggle.setText("Eye markers")
+        self.eye_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.eye_toggle.setFocusPolicy(Qt.StrongFocus)
         self.eye_toggle.setCheckable(True)
         self.eye_toggle.setChecked(True)
         self.eye_toggle.clicked.connect(self._toggle_eye_visibility)
@@ -437,10 +631,38 @@ class Scene3DWidget(QWidget):
         self.light_toggle.setIcon(IconFactory.icon("light"))
         self.light_toggle.setIconSize(ICON_SIZE)
         self.light_toggle.setText("Light markers")
+        self.light_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.light_toggle.setFocusPolicy(Qt.StrongFocus)
         self.light_toggle.setCheckable(True)
         self.light_toggle.setChecked(True)
         self.light_toggle.clicked.connect(self._toggle_light_visibility)
         panel.addWidget(self.light_toggle, 7, 0, 1, 2)
+
+        self.context_toggle = QToolButton()
+        self.context_toggle.setIcon(IconFactory.icon("panel"))
+        self.context_toggle.setIconSize(ICON_SIZE)
+        self.context_toggle.setText("Illustrative objects")
+        self.context_toggle.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.context_toggle.setFocusPolicy(Qt.StrongFocus)
+        self.context_toggle.setCheckable(True)
+        self.context_toggle.setChecked(True)
+        self.context_toggle.setToolTip("Driver outline and generic lamp housings are schematic, not measured objects or vehicle classification.")
+        self.context_toggle.toggled.connect(self._toggle_context_models)
+        panel.addWidget(self.context_toggle, 8, 0, 1, 2)
+        self.camera_rig_toggle = QToolButton()
+        self.camera_rig_toggle.setText("Camera positions")
+        self.camera_rig_toggle.setToolTip("Show saved camera optical centres and viewing directions in centimetres")
+        self.camera_rig_toggle.setAccessibleName("Camera positions in scene")
+        self.camera_rig_toggle.setCheckable(True)
+        self.camera_rig_toggle.setChecked(True)
+        self.camera_rig_toggle.toggled.connect(self._toggle_camera_rig)
+        panel.addWidget(self.camera_rig_toggle, 9, 0, 1, 2)
+        self.rig_note = QLabel("Scene units: cm · camera reference is uncalibrated", self)
+        self.rig_note.setStyleSheet("color:#9baec0; background:transparent; border:none; font-size:10px;")
+        self.rig_note.setWordWrap(True)
+        self.context_note = QLabel("Illustrative driver/lamp symbols · positions remain the tracked geometry", self)
+        self.context_note.setStyleSheet("color:#929aa7; background:transparent; border:none; font-size:10px;")
+        self.context_note.setWordWrap(True)
 
         self.settings_panel.adjustSize()
         self.settings_panel.hide()
@@ -451,7 +673,7 @@ class Scene3DWidget(QWidget):
         self.legend_panel.setStyleSheet(
             "QFrame#sceneLegend { background: rgba(12, 13, 17, 220); "
             "border: 1px solid #30353e; border-radius: 7px; }"
-            "QLabel { color: #929aa7; background: transparent; font-size: 8pt; }"
+            "QLabel { color: #929aa7; background: transparent; font-size: 10px; }"
         )
         row = QGridLayout(self.legend_panel)
         row.setContentsMargins(9, 6, 9, 6)
@@ -474,6 +696,7 @@ class Scene3DWidget(QWidget):
         layout.addWidget(QLabel(label), row, 0)
         btn = QPushButton()
         btn.setToolTip(f"Change {label.lower()} color")
+        btn.setAccessibleName(btn.toolTip())
         btn.clicked.connect(lambda: self._pick_color(key))
         self._style_color_button(btn, self._scene_colors[key])
         setattr(self, f"_{key}_color_button", btn)
@@ -572,7 +795,7 @@ class Scene3DWidget(QWidget):
             self.legend_panel.setStyleSheet(
                 "QFrame#sceneLegend { background: rgba(218, 223, 227, 240); "
                 "border: 1px solid #71808b; border-radius: 7px; }"
-                "QLabel { color: #2f3d46; background: transparent; font-size: 8pt; }"
+                "QLabel { color: #2f3d46; background: transparent; font-size: 10px; }"
             )
             icon_color = "#245d94"
             self.theme_button.setIcon(IconFactory.icon("moon", icon_color))
@@ -602,7 +825,7 @@ class Scene3DWidget(QWidget):
             self.legend_panel.setStyleSheet(
                 "QFrame#sceneLegend { background: rgba(12, 13, 17, 220); "
                 "border: 1px solid #30353e; border-radius: 7px; }"
-                "QLabel { color: #929aa7; background: transparent; font-size: 8pt; }"
+                "QLabel { color: #929aa7; background: transparent; font-size: 10px; }"
             )
             icon_color = "#78b7ff"
             self.theme_button.setIcon(IconFactory.icon("sun", icon_color))
@@ -614,6 +837,17 @@ class Scene3DWidget(QWidget):
             line.setData(color=color)
         for label, color in zip(self._axis_labels, label_colors):
             label.setData(color=color)
+        self.context_note.setStyleSheet(
+            f"color:{'#34495b' if self._light_scene else '#929aa7'}; background:transparent; border:none; font-size:10px;")
+        self._refresh_context_models()
+        self.rig_note.setStyleSheet(
+            f"color:{'#334a5f' if self._light_scene else '#9baec0'}; "
+            "background:transparent; border:none; font-size:10px;")
+        self._camera_label.setData(color=QColor("#34495b" if self._light_scene else "#c4cbd4"))
+        if self._camera_rig_state is not None:
+            state = self._camera_rig_state
+            self._camera_rig_state = None
+            self.set_installed_camera_poses(*state)
 
     def _set_tracking_colors(self, eye, light, intersection, ray, additive):
         option = "additive" if additive else "translucent"
@@ -650,6 +884,7 @@ class Scene3DWidget(QWidget):
             glow.setVisible(visible)
             scatter.setVisible(visible)
             label.setVisible(visible)
+        self._refresh_context_models()
 
     def _toggle_light_visibility(self, visible):
         self._light_points_visible = visible
@@ -657,8 +892,10 @@ class Scene3DWidget(QWidget):
             g.setVisible(visible)
             s.setVisible(visible)
             l.setVisible(visible)
+        self._refresh_context_models()
 
     def _position_settings(self):
+        self._position_camera_labels()
         margin = 10
         self.settings_button.move(self.width() - self.settings_button.width() - margin, margin)
         self.theme_button.move(
@@ -677,10 +914,23 @@ class Scene3DWidget(QWidget):
                 self.settings_button.height() + margin * 2)
             self.settings_panel.raise_()
         if hasattr(self, "legend_panel"):
+            self.context_note.setVisible(self._context_visible and self.height() >= 240)
             self.legend_panel.adjustSize()
             self.legend_panel.move(
                 margin, self.height() - self.legend_panel.height() - margin)
             self.legend_panel.raise_()
+            self.rig_note.setFixedWidth(min(320, max(160, self.width() - margin * 2)))
+            self.rig_note.adjustSize()
+            note_beside = self.width() >= self.legend_panel.width() + self.rig_note.width() + 3 * margin
+            self.rig_note.move(
+                self.width() - self.rig_note.width() - margin if note_beside else margin,
+                self.legend_panel.y() if note_beside else self.legend_panel.y() - self.rig_note.height() - 5)
+            self.rig_note.raise_()
+            self.context_note.setFixedWidth(max(120, self.width() - margin * 2))
+            self.context_note.adjustSize()
+            above = self.legend_panel.y() if note_beside else self.rig_note.y()
+            self.context_note.move(margin, above - self.context_note.height() - 5)
+            self.context_note.raise_()
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

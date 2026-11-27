@@ -2,40 +2,57 @@
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import QGroupBox, QFormLayout, QVBoxLayout, QLabel, QSizePolicy
+from PyQt5.QtWidgets import QFrame, QFormLayout, QVBoxLayout, QLabel, QSizePolicy, QScrollArea, QWidget
 
 
 _READOUT_STYLE = (
-    "color: {color}; background: transparent; padding: 3px 0; border: none;"
-    "font-family: 'Consolas', 'Cascadia Code', monospace;"
+    "color: {color}; background: transparent; padding: 1px 0; border: none;"
+    "font-family: 'Consolas'; font-size: 11px;"
 )
 _DEFAULT_COLOR = "#34d399"
 
 
-class ReadoutPanel(QGroupBox):
+class ReadoutPanel(QFrame):
     """Monospace telemetry readout showing coordinates and tracking status."""
 
     def __init__(self, parent=None):
-        super().__init__("Telemetry", parent)
+        super().__init__(parent)
+        self.setObjectName("telemetryPanel")
         self.setProperty("section", "telemetry")
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-        layout = QFormLayout(self)
-        layout.setContentsMargins(6, 5, 6, 6)
-        layout.setHorizontalSpacing(12)
-        layout.setVerticalSpacing(4)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setSpacing(0)
+        title = QLabel("TELEMETRY")
+        title.setObjectName("editorRegionTitle")
+        title.setFixedHeight(28)
+        title.setContentsMargins(12, 0, 12, 0)
+        outer.addWidget(title)
+        content = QWidget()
+        content.setObjectName("telemetryContent")
+        layout = QFormLayout(content)
+        layout.setContentsMargins(12, 10, 12, 12)
+        layout.setHorizontalSpacing(10)
+        layout.setVerticalSpacing(6)
         layout.setLabelAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         layout.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
-        layout.setRowWrapPolicy(QFormLayout.WrapLongRows)
+        layout.setRowWrapPolicy(QFormLayout.DontWrapRows)
+        layout.setFormAlignment(Qt.AlignTop)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setWidget(content)
+        outer.addWidget(scroll, 1)
 
         mono = QFont("Consolas", 9)
         self._labels: dict[str, QLabel] = {}
         self._label_colors: dict[str, str] = {}
 
         for key, label_text in [
-            ("eye_pos", "Eye Position"),
-            ("light_pos", "Light Sources"),
-            ("drowsiness", "Driver Monitoring"),
-            ("fps", "Frame Rate"),
+            ("eye_pos", "Eye position"),
+            ("light_pos", "Light sources"),
+            ("drowsiness", "Drowsiness"),
+            ("fps", "Frame rate"),
             ("status", "Tracking"),
         ]:
             lbl = QLabel("---")
@@ -49,13 +66,17 @@ class ReadoutPanel(QGroupBox):
             self._label_colors[key] = _DEFAULT_COLOR
 
         # Dynamic intersection list
-        self._intersection_box = QGroupBox("Intersections")
+        self._intersection_box = QWidget()
+        self._intersection_box.setObjectName("telemetryIntersections")
         self._intersection_box.setProperty("section", "results")
         self._intersection_box.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
         self._intersection_layout = QVBoxLayout(self._intersection_box)
-        self._intersection_layout.setContentsMargins(4, 6, 4, 4)
+        self._intersection_layout.setContentsMargins(0, 8, 0, 0)
         self._intersection_layout.setSpacing(2)
         self._intersection_labels: list[QLabel] = []
+        caption = QLabel("INTERSECTIONS")
+        caption.setObjectName("propertyPageTitle")
+        self._intersection_layout.addWidget(caption)
         self._intersection_placeholder = self._make_intersection_label(
             "---", "#3d5268")
         self._intersection_layout.addWidget(self._intersection_placeholder)

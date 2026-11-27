@@ -8,64 +8,18 @@ from PyQt5.QtCore import QThread, Qt, pyqtSignal
 from PyQt5.QtGui import QPixmap
 from PyQt5.QtWidgets import (
     QCheckBox, QComboBox, QDialog, QFormLayout, QHBoxLayout, QLabel,
-    QLineEdit, QMessageBox, QPushButton, QTabWidget, QTextBrowser,
+    QLineEdit, QMessageBox, QTabWidget,
     QVBoxLayout, QWidget,
 )
 
 from glare_tracker.installation import board_points, fit_installed_pose, fit_panel_mapping
+from glare_tracker.widgets.calibration_guide import (
+    CalibrationActions, CalibrationGuideDialog, LCD_STEPS, RIG_STEPS, VERIFY_STEPS,
+    size_calibration_dialog,
+)
 from glare_tracker.widgets.driver_calibration import note, number, session_folder, scroll_page
+from glare_tracker.widgets.icons import command_button
 from glare_tracker.widgets.stereo_calibration import SingleBoardCapture
-
-
-RIG_GUIDE = """
-<h1>Installed rig calibration</h1>
-<h2>1. Complete component calibration, then freeze the rig</h2>
-<p>Save road stereo and driver lens calibration first. Fit both road cameras rigidly
-on the top frame, facing the road with shared view. Driver camera and ToF face the
-driver. Fix the LCD active area to the frame. The cameras do NOT look at the LCD.
-Record mount IDs and the active pixel edges, not the bezel. A remount, focus change,
-camera swap or changed frame size requires revalidation.</p>
-<pre>driver side (-Y) | LCD Y=0 | road side (+Y)
-driver camera &lt;--|         |--&gt; road LEFT + RIGHT
-origin: bottom-centre; X driver's right looking roadward, Z up</pre>
-<h2>2. Use a measured temporary board jig</h2>
-<p>Place the rigid checkerboard on the side the selected camera sees. A rail or square
-stand provides repeatable measured positions relative to the LCD. The pose origin
-is the FIRST INNER corner, not the paper edge. Parallel board placements with zero
-rotations are simplest. Measure all three coordinates. Freely waving the board is
-valid for lens calibration but NOT for this installed-pose step.</p>
-<h2>3. Road LEFT pose</h2>
-<p>Road-side board Y is positive. With zero rotations the numbered corners progress
-along LCD +X and down -Z. Confirm the native preview's corner 1 agrees with your
-marked corner. If the detector starts at the opposite end, use Reverse corner order.
-Capture six different FIT placements across three Y depths and the image area.
-Capture three separate VALIDATION placements, then Fit. Do not reuse the same poses
-for validation. RIGHT pose is anchored through the saved stereo calibration.</p>
-<h2>4. Driver pose</h2>
-<p>Driver-side board Y is negative. With zero rotations the board columns progress
-along LCD -X and rows down -Z as viewed by that camera. Repeat six fit and three
-held-out placements. Rotation fields are measured right-hand rotations about LCD
-X, then Y, then Z, composed Rz*Ry*Rx. Do not guess a tilted pose from the preview.</p>
-<h2>5. LCD physical mapping</h2>
-<p>Connect the final LCD in Extended Desktop mode, select it under Prototype Display
-Output, then return here. For each target, Show mark draws that target on the actual
-LCD. Measure its X/Z from the bottom-centre active-area origin and Capture mark.
-Use all six Fit marks and all three distinct Validation marks. Fit the mapping.
-This corrects small pixel/physical offsets; a rotation or wrong panel-size mismatch
-must be fixed in installation settings, not hidden in the fit.</p>
-<h2>6. Save, confirm unchanged installation, then Run</h2>
-<p>Save the rig only after all required pose fits and LCD mapping pass. Return to the
-Calibration panel and confirm physical camera identity/order and unchanged mounts.
-Run uses those transforms rather than the old approximate height/centre shifts.
-With Live driver distance ON, ToF skipped means experimental IPD depth; OFF uses the
-entered fixed reference. Neither is verified sensor-assisted eye depth.
-Lens RMS, held-out pose ray agreement and LCD target error are separate metrics.</p>
-<h2>7. Verify actual dark-dot accuracy</h2>
-<p>Use independently measured artificial eye and lamp targets, each eye separately,
-several lamps, multiple depths and panel edges. Compare actual rays and spots, record
-cm/mm error and latency, then test faces. Pose checks cannot alone verify stereo
-range, eye depth, mask size or physical light attenuation. Keep failed runs as evidence.</p>
-"""
 
 
 class FitJob(QThread):
@@ -93,7 +47,10 @@ class InstalledPosePage(QWidget):
         self.archive = None
         self.frozen = False
         layout = QVBoxLayout(self)
-        layout.addWidget(note(f"{side.upper()} camera {index}: enter a measured board pose relative to the LCD. Lens calibration must already be saved. Six fit placements / three depths, then three held-out placements."))
+        role = "Road LEFT" if side == "road" else "Driver"
+        layout.addWidget(note(
+            f"{role} camera {index}. Measure the first inner corner from the LCD bottom centre. "
+            "Capture six fit placements at three or more depths, then three new validation placements."))
         form = QFormLayout()
         self.square = number(2., .1, 20.)
         form.addRow("Measured square side:", self.square)
@@ -109,7 +66,7 @@ class InstalledPosePage(QWidget):
         self.split.addItems(["fit", "validation"])
         form.addRow("Placement use:", self.split)
         self.reverse = QCheckBox("Reverse detected corner order (180 degrees)")
-        self.confirm = QCheckBox("Measured pose and marked first inner corner match this capture")
+        self.confirm = QCheckBox("The measurements and marked corner match this view")
         form.addRow(self.reverse)
         form.addRow(self.confirm)
         layout.addLayout(form)
@@ -119,20 +76,17 @@ class InstalledPosePage(QWidget):
         layout.addWidget(self.preview, 1)
         self.message = note("No measured placements captured")
         layout.addWidget(self.message)
-        actions = QHBoxLayout()
-        self.start = QPushButton("Start preview")
-        self.capture = QPushButton("Capture measured placement")
-        self.fit = QPushButton("Fit / validate installed pose")
-        self.undo = QPushButton("Undo last placement")
-        for button in (self.start, self.capture, self.fit):
-            actions.addWidget(button)
+        self.start = command_button("Start preview", "play")
+        self.capture = command_button("Capture measured placement", "camera")
+        self.fit = command_button("Fit / validate installed pose", "fit")
+        self.undo = command_button("Undo last placement", "undo")
         self.capture.setEnabled(False)
         self.fit.setEnabled(False)
         self.start.setEnabled(model is not None)
         self.start.clicked.connect(self._start)
         self.capture.clicked.connect(self._capture)
         self.fit.clicked.connect(self._fit)
-        layout.addLayout(actions)
+        layout.addLayout(CalibrationActions(self.start, self.capture, self.fit))
         self.undo.clicked.connect(self._undo)
         layout.addWidget(self.undo)
         if model is None:
@@ -280,7 +234,9 @@ class PanelMappingPage(QWidget):
         self.result = None
         self.shown_index = None
         layout = QVBoxLayout(self)
-        layout.addWidget(note("Select the final non-primary LCD first. Show each target, measure its actual X/Z from the panel's bottom-centre, then capture. Do not enter calculated coordinates as if measured. First six are fit marks; last three are held out."))
+        layout.addWidget(note(
+            "Show each dot on the secondary LCD. Use a ruler to measure sideways (X) "
+            "and up (Z) from the bottom centre. Capture all nine dots."))
         form = QFormLayout()
         self.target = QComboBox()
         self.target.addItems([f"{i + 1}: {'FIT' if i < 6 else 'VALIDATION'} ({u:.1f}, {v:.1f})"
@@ -293,14 +249,11 @@ class PanelMappingPage(QWidget):
         form.addRow("Measured Z:", self.z)
         form.addRow(self.confirm)
         layout.addLayout(form)
-        actions = QHBoxLayout()
-        self.show = QPushButton("Show mark on selected LCD")
-        self.take = QPushButton("Capture measured mark")
-        self.fit = QPushButton("Fit / validate LCD mapping")
-        self.undo = QPushButton("Undo last mark")
-        for button in (self.show, self.take, self.fit):
-            actions.addWidget(button)
-        layout.addLayout(actions)
+        self.show = command_button("Show mark on selected LCD", "display")
+        self.take = command_button("Capture measured mark", "target")
+        self.fit = command_button("Fit / validate LCD mapping", "fit")
+        self.undo = command_button("Undo last mark", "undo")
+        layout.addLayout(CalibrationActions(self.show, self.take, self.fit))
         self.undo.clicked.connect(self._undo)
         layout.addWidget(self.undo)
         self.message = note("0/9 physical LCD marks captured")
@@ -359,12 +312,15 @@ class RigCalibrationDialog(QDialog):
         self.setup, self.store = setup, store
         self.saved_profile = None
         self.setWindowTitle("Installed rig - camera to LCD calibration")
-        self.resize(1000, 800)
+        size_calibration_dialog(self, 1000, 800)
         layout = QVBoxLayout(self)
-        layout.addWidget(note("Third calibration: keep cameras in their final directions on the top bar. Use measured board-jig placements on each visible side, then measure actual LCD marks. A passing fit still needs end-to-end eye/light verification."))
+        layout.addWidget(note(
+            "Keep the cameras and LCD in their final mounts. Complete the camera tabs shown "
+            "here, then measure the dots on the LCD. The guide shows where to put the board "
+            "and where to start measuring."))
         form = QFormLayout()
         self.rig_id = QLineEdit("rig-v1")
-        self.identity_confirm = QCheckBox("I confirmed physical LEFT/RIGHT/driver identities and fixed all camera/LCD mounts")
+        self.identity_confirm = QCheckBox("Camera order and mounts checked")
         form.addRow("Physical rig / mount revision:", self.rig_id)
         form.addRow(self.identity_confirm)
         layout.addLayout(form)
@@ -382,17 +338,13 @@ class RigCalibrationDialog(QDialog):
         layout.addWidget(self.tabs, 1)
         self.status = note("Not saved. Complete required camera poses and LCD mapping.")
         layout.addWidget(self.status)
-        row = QHBoxLayout()
-        guide = QPushButton("Installed rig calibration guide...")
-        self.save = QPushButton("Save installed rig profile")
-        close = QPushButton("Close")
-        row.addWidget(guide)
-        row.addWidget(self.save)
-        row.addWidget(close)
+        guide = command_button("Installed rig calibration guide...", "help", role="guide")
+        self.save = command_button("Save installed rig profile", "save", role="accent")
+        close = command_button("Close", "close")
         guide.clicked.connect(self._guide)
         self.save.clicked.connect(self._save)
         close.clicked.connect(self.reject)
-        layout.addLayout(row)
+        layout.addLayout(CalibrationActions(guide, self.save, close))
         self.tabs.currentChanged.connect(lambda _: self._stop_other_cameras())
 
     def _stop_other_cameras(self):
@@ -401,17 +353,11 @@ class RigCalibrationDialog(QDialog):
                 page.stop()
 
     def _guide(self):
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Installed rig calibration guide")
-        dialog.resize(850, 720)
-        layout = QVBoxLayout(dialog)
-        browser = QTextBrowser()
-        browser.setHtml(RIG_GUIDE)
-        layout.addWidget(browser)
-        close = QPushButton("Return to rig calibration")
-        close.clicked.connect(dialog.accept)
-        layout.addWidget(close)
-        dialog.exec_()
+        sections = [("Installed rig", RIG_STEPS)] if self.pages else []
+        current = len(sections) if self.tabs.currentIndex() == len(self.pages) else 0
+        sections.extend((("LCD mapping", LCD_STEPS), ("Verify", VERIFY_STEPS)))
+        CalibrationGuideDialog(
+            "Installed rig calibration guide", sections, self, current=current).exec_()
 
     def _save(self):
         if not self.rig_id.text().strip() or not self.identity_confirm.isChecked():
